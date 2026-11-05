@@ -1,0 +1,27 @@
+use std::fmt;
+
+use serde::{Deserializer, de};
+
+/// Discord sends 64 bit integers as strings so JavaScript can hold them, but
+/// a few payloads use plain numbers. Take either.
+pub(crate) fn u64_from_str_or_num<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    struct Visitor;
+
+    impl de::Visitor<'_> for Visitor {
+        type Value = u64;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("an unsigned integer or a numeric string")
+        }
+
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<u64, E> {
+            Ok(v)
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<u64, E> {
+            v.parse().map_err(E::custom)
+        }
+    }
+
+    d.deserialize_any(Visitor)
+}

@@ -4438,6 +4438,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxicord-model"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "chrono",
+ "serde",
+ "serde_json",
+ "serde_repr",
+]
+
+[[package]]
 name = "oxicord-ui"
 version = "0.1.0"
 dependencies = [
