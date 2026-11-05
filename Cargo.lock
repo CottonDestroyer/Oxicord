@@ -5198,6 +5198,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "oxicord-model",
+ "oxicord-settings",
  "percent-encoding",
  "reqwest",
  "serde",
@@ -5262,6 +5263,14 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+]
+
+[[package]]
+name = "oxicord-settings"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

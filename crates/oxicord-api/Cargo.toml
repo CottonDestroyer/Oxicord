@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 oxicord-model.workspace = true
+oxicord-settings.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 serde.workspace = true

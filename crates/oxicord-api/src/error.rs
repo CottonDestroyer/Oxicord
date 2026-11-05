@@ -16,6 +16,9 @@ pub enum ApiError {
     #[error("could not decode response: {0}")]
     Decode(#[from] serde_json::Error),
 
+    #[error("unexpected settings data: {0}")]
+    Protocol(String),
+
     #[error("still rate limited after {0} retries")]
     RateLimited(u32),
 

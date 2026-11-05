@@ -40,6 +40,7 @@ oxicord-media = { path = "crates/oxicord-media" }
 oxicord-markdown = { path = "crates/oxicord-markdown" }
 oxicord-gateway = { path = "crates/oxicord-gateway" }
 oxicord-store = { path = "crates/oxicord-store" }
+oxicord-settings = { path = "crates/oxicord-settings" }
 
 oxicord-ui = { path = "crates/oxicord-ui" }
 
