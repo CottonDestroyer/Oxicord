@@ -13,7 +13,7 @@ use oxicord_browser_login::{Capture, Identity, Outcome};
 use oxicord_media::Fetcher;
 use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, GatewayHandle};
 use oxicord_model::{SearchPage, Snowflake, User, gateway::DispatchEvent};
-use oxicord_ui::{AccountEvent, AccountRequest, Backend, Command, Event};
+use oxicord_ui::{AccountEvent, AccountRequest, AdminEvent, AdminRequest, Backend, Command, Event};
 
 use crate::credentials;
 
@@ -438,6 +438,9 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::Search { raw, offset, result }).await;
             });
         }
+        Command::Admin(request) => {
+            tokio::spawn(async move { admin_request(&api, request, &events).await });
+        }
         Command::Account(request) => {
             tokio::spawn(async move { account_request(&api, request, &events).await });
         }
@@ -559,6 +562,52 @@ async fn run_search(
     Err("Discord is still indexing this server. Try again in a moment.".into())
 }
 
+
+/// Runs a server management request. Changes are reported by the gateway,
+/// so only the lists are answered here, and a list is read again after a
+/// change to it.
+async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<Event>) {
+    let say = |event| async move {
+        let _ = events.send(Event::Admin(event)).await;
+    };
+    let text = |err: ApiError| {
+        tracing::warn!(?err, "server management request failed");
+        describe_request(&err)
+    };
+    // Reports a failed change in the usual notice line.
+    let check = |result: Result<(), ApiError>, what: &'static str| async move {
+        if let Err(err) = result {
+            notify(events, what, &err).await;
+        }
+    };
+
+    match request {
+        AdminRequest::LoadInvites(guild) => say(AdminEvent::Invites(guild, api.guild_invites(guild).await.map_err(text))).await,
+        AdminRequest::RevokeInvite { guild, code } => {
+            check(api.revoke_invite(&code).await, "revoke that invite").await;
+            say(AdminEvent::Invites(guild, api.guild_invites(guild).await.map_err(text))).await;
+        }
+        AdminRequest::LoadBans(guild) => say(AdminEvent::Bans(guild, api.guild_bans(guild).await.map_err(text))).await,
+        AdminRequest::Unban { guild, user } => {
+            check(api.unban(guild, user).await, "unban that person").await;
+            say(AdminEvent::Bans(guild, api.guild_bans(guild).await.map_err(text))).await;
+        }
+        AdminRequest::LoadAudit(guild) => say(AdminEvent::Audit(guild, api.audit_log(guild).await.map_err(text))).await,
+        AdminRequest::EditGuild { guild, fields } => check(api.edit_guild(guild, &fields).await, "save the server").await,
+        AdminRequest::CreateRole { guild, name } => check(api.create_role(guild, &name).await, "create that role").await,
+        AdminRequest::EditRole { guild, role, fields } => check(api.edit_role(guild, role, &fields).await, "save that role").await,
+        AdminRequest::DeleteRole { guild, role } => check(api.delete_role(guild, role).await, "delete that role").await,
+        AdminRequest::RenameEmoji { guild, emoji, name } => {
+            check(api.rename_emoji(guild, emoji, &name).await, "rename that emoji").await;
+        }
+        AdminRequest::DeleteEmoji { guild, emoji } => check(api.delete_emoji(guild, emoji).await, "delete that emoji").await,
+        AdminRequest::CreateChannel { guild, name, kind, parent } => {
+            check(api.create_channel(guild, &name, kind, parent).await, "create that channel").await;
+        }
+        AdminRequest::EditChannel { channel, fields } => check(api.edit_channel(channel, &fields).await, "save that channel").await,
+        AdminRequest::DeleteChannel(channel) => check(api.close_channel(channel).await, "delete that channel").await,
+    }
+}
 /// Runs one account request and reports what the screens need to refresh.
 async fn account_request(api: &ApiClient, request: AccountRequest, events: &Sender<Event>) {
     let say = |event| async move {

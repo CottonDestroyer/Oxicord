@@ -23,7 +23,7 @@ impl<T> Load<T> {
         }
     }
 
-    fn from_result(result: Result<T, String>) -> Self {
+    pub(crate) fn from_result(result: Result<T, String>) -> Self {
         match result {
             Ok(value) => Self::Ready(value),
             Err(error) => Self::Failed(error),

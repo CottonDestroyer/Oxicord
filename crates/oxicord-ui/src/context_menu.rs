@@ -13,7 +13,8 @@ use crate::{
     backend::{Backend, Command},
     icons::icon,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
-    session::{OpenInviteDialog, Session},
+    server_settings,
+    session::{OpenInviteDialog, OpenServerSettings, Session},
     theme,
 };
 
@@ -228,6 +229,15 @@ impl Render for ContextMenu {
                 this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
                 this.close(cx);
             }, cx));
+        }
+        if let Target::Guild(guild) = target {
+            let allowed = server_settings::can_manage(self.session.read(cx).store.guild_permissions(guild));
+            if allowed {
+                menu = menu.child(self.item("server-settings", "Server Settings", theme::TEXT, false, move |this, _, _, cx| {
+                    this.session.update(cx, |_, cx| cx.emit(OpenServerSettings(guild)));
+                    this.close(cx);
+                }, cx));
+            }
         }
         menu = menu.child(self.item("mark-read", "Mark as read", theme::TEXT, false, |this, _, _, cx| {
             this.run(Action::MarkRead, cx);

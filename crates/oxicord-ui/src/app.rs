@@ -162,6 +162,9 @@ impl AppView {
             Event::Search { raw, result, .. } => {
                 self.session.update(cx, |session, cx| session.apply_search(raw, result, cx));
             }
+            Event::Admin(event) => {
+                self.session.update(cx, |session, cx| session.apply_admin(event, cx));
+            }
             Event::Account(event) => {
                 self.session.update(cx, |session, cx| session.apply_account(event, cx));
             }

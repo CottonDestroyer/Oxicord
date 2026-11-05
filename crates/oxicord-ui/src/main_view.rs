@@ -30,8 +30,9 @@ use crate::{
     member_list::{MemberList, presence_dot},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenInbox, OpenInviteDialog, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenInbox, OpenInviteDialog, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
+    server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
     theme, user_menu,
@@ -125,6 +126,8 @@ pub struct MainView {
     inbox_open: bool,
     invite: Entity<InviteDialog>,
     invite_open: bool,
+    server_settings: Entity<ServerSettings>,
+    server_settings_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
     focus: FocusHandle,
     /// Whether the member list was showing at the last redraw, so turning it
@@ -171,6 +174,10 @@ impl MainView {
             cx.new(|cx| Inbox::new(session, media, backend, cx))
         };
         let popup = cx.new(|_| PopupMenu::default());
+        let server_settings = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| ServerSettings::new(session, media, backend, window, cx))
+        };
         let invite = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| InviteDialog::new(session, media, backend, cx))
@@ -179,6 +186,15 @@ impl MainView {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let subscriptions = vec![
+            cx.subscribe(&server_settings, |this, _, _: &CloseServerSettings, cx| {
+                this.server_settings_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenServerSettings, window, cx| {
+                this.server_settings_open = true;
+                this.server_settings.update(cx, |view, cx| view.opened(open.0, window, cx));
+                cx.notify();
+            }),
             cx.subscribe(&session, |this, _, open: &OpenUserMenu, cx| this.open_user_menu(open, cx)),
             cx.subscribe(&invite, |this, _, _: &CloseInvite, cx| {
                 this.invite_open = false;
@@ -318,6 +334,8 @@ impl MainView {
             inbox_open: false,
             invite,
             invite_open: false,
+            server_settings,
+            server_settings_open: false,
             focus,
             _subscriptions: subscriptions,
         }
@@ -1636,6 +1654,7 @@ impl Render for MainView {
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
         let invite = self.invite_open.then(|| self.invite.clone());
+        let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
 
         div()
@@ -1675,6 +1694,7 @@ impl Render for MainView {
             .children(viewer)
             .children(join)
             .children(invite)
+            .children(server_settings)
             .children(switcher)
             .children(picker)
             .children(popup)

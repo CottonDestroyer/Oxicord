@@ -3,7 +3,7 @@
 //! through the account settings blob, the rest live in the local file.
 
 mod pages;
-mod widgets;
+pub(crate) mod widgets;
 
 use gpui_kit::{
     AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,

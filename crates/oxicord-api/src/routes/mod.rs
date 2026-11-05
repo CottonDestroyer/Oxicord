@@ -1,6 +1,7 @@
 //! One file per resource. Each adds methods to `ApiClient`.
 
 mod account;
+mod admin;
 mod channels;
 mod commands;
 mod gifs;

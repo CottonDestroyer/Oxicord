@@ -22,6 +22,7 @@ pub struct Session {
     pub notice: Option<String>,
     pub settings: Settings,
     pub account: AccountState,
+    pub admin: crate::admin::AdminState,
     /// Pinned messages per channel, loaded when the panel asks.
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
@@ -116,6 +117,11 @@ pub struct OpenInviteDialog(pub Snowflake);
 
 impl EventEmitter<OpenInviteDialog> for Session {}
 
+/// Someone wants the settings of this server.
+pub struct OpenServerSettings(pub Snowflake);
+
+impl EventEmitter<OpenServerSettings> for Session {}
+
 /// The inbox button was pressed.
 pub struct OpenInbox;
 
@@ -161,6 +167,7 @@ impl Session {
             notice: None,
             settings,
             account: AccountState::default(),
+            admin: crate::admin::AdminState::default(),
             pins: HashMap::new(),
             search: None,
             archived_threads: HashMap::new(),
@@ -451,6 +458,34 @@ impl Session {
         let changes = self.store.set_pinned(channel, message, pinned);
         backend.send(Command::SetPinned { channel, message, pinned });
         cx.emit(changes);
+        cx.notify();
+    }
+
+    pub fn apply_admin(&mut self, event: crate::AdminEvent, cx: &mut Context<Self>) {
+        self.admin.apply(event);
+        cx.notify();
+    }
+
+    /// Sends a server management request. A list request first resets that
+    /// list to loading so the page shows a spinner instead of stale rows.
+    pub fn request_admin(&mut self, backend: &Backend, request: crate::AdminRequest, cx: &mut Context<Self>) {
+        use crate::{AdminRequest as R, account::Load};
+        match &request {
+            R::LoadInvites(g) => {
+                self.admin.switch_to(*g);
+                self.admin.invites = Load::Loading;
+            }
+            R::LoadBans(g) => {
+                self.admin.switch_to(*g);
+                self.admin.bans = Load::Loading;
+            }
+            R::LoadAudit(g) => {
+                self.admin.switch_to(*g);
+                self.admin.audit = Load::Loading;
+            }
+            _ => {}
+        }
+        backend.send(Command::Admin(request));
         cx.notify();
     }
 

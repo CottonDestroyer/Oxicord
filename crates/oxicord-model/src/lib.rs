@@ -4,6 +4,7 @@
 mod serde_util;
 
 pub mod account;
+pub mod admin;
 pub mod attachment;
 pub mod channel;
 pub mod command;

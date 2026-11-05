@@ -108,6 +108,14 @@ impl Store {
         self.my_roles.get(&guild).map_or(&[], Vec::as_slice)
     }
 
+    /// What we may do across the whole server, which gates its settings.
+    pub fn guild_permissions(&self, guild: Snowflake) -> Permissions {
+        match (self.me.as_ref(), self.guilds.get(&guild)) {
+            (Some(me), Some(g)) => perms::base_permissions(g, me.id, self.my_roles(guild)),
+            _ => Permissions::empty(),
+        }
+    }
+
     /// What we may do in `channel`. Threads inherit from their parent.
     pub fn permissions_in(&self, channel: &Channel) -> Permissions {
         let Some(guild_id) = channel.guild_id else {

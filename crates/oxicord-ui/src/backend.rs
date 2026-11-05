@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
-use crate::{AccountEvent, AccountRequest, Settings};
+use crate::{AccountEvent, AccountRequest, AdminEvent, AdminRequest, Settings};
 use oxicord_model::{Channel, Emoji, Message, Profile, SearchPage, Snowflake, ThreadPage, User};
 
 /// Things the UI asks for.
@@ -176,6 +176,8 @@ pub enum Command {
     },
     /// Anything about the account: details, preferences, linked apps.
     Account(AccountRequest),
+    /// Anything about managing a server: invites, bans, roles and so on.
+    Admin(AdminRequest),
     /// Raise a desktop notification.
     Notify {
         title: String,
@@ -242,6 +244,7 @@ pub enum Event {
     },
     DmOpened(Result<Channel, String>),
     Account(AccountEvent),
+    Admin(AdminEvent),
     Pins {
         channel: Snowflake,
         result: Result<Vec<Message>, String>,
