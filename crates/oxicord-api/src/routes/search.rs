@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use oxicord_model::{Message, SearchPage, Snowflake};
+use oxicord_model::{Message, SearchPage, SearchQuery, Snowflake};
 use reqwest::Method;
 use serde_json::Value;
 
@@ -30,7 +30,7 @@ impl ApiClient {
     pub async fn search_messages(
         &self,
         scope: SearchScope,
-        query: &str,
+        query: &SearchQuery,
         offset: u32,
     ) -> Result<SearchOutcome, ApiError> {
         let (base, route) = match scope {
@@ -43,8 +43,7 @@ impl ApiClient {
                 format!("GET /channels/{id}/messages/search"),
             ),
         };
-        let encoded = percent_encoding::utf8_percent_encode(query, percent_encoding::NON_ALPHANUMERIC);
-        let path = format!("{base}?content={encoded}&limit={SEARCH_PAGE}&offset={offset}");
+        let path = format!("{base}?{}", search_params(query, offset));
         let body: Value = self.json(Method::GET, &path, &route, None).await?;
         parse_search(&body)
     }
@@ -77,6 +76,24 @@ impl ApiClient {
         )
         .await
     }
+}
+
+/// The query string for a search: filters as repeated parameters, the way
+/// Discord's own client sends them.
+fn search_params(query: &SearchQuery, offset: u32) -> String {
+    use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+
+    let mut params = Vec::new();
+    if !query.content.is_empty() {
+        params.push(format!("content={}", utf8_percent_encode(&query.content, NON_ALPHANUMERIC)));
+    }
+    params.extend(query.authors.iter().map(|id| format!("author_id={id}")));
+    params.extend(query.channels.iter().map(|id| format!("channel_id={id}")));
+    params.extend(query.mentions.iter().map(|id| format!("mentions={id}")));
+    params.extend(query.has.iter().map(|h| format!("has={}", utf8_percent_encode(h, NON_ALPHANUMERIC))));
+    params.push(format!("limit={SEARCH_PAGE}"));
+    params.push(format!("offset={offset}"));
+    params.join("&")
 }
 
 /// The pins endpoint answers `{ items: [{ pinned_at, message }] }`, and the
@@ -135,6 +152,23 @@ mod tests {
             "author": { "id": "1", "username": "ada" },
             "timestamp": "2024-05-01T12:00:00.000000+00:00", "type": 0
         })
+    }
+
+    #[test]
+    fn filters_become_repeated_parameters() {
+        let query = SearchQuery {
+            content: "hello world".into(),
+            authors: vec![Snowflake(5)],
+            channels: vec![Snowflake(7), Snowflake(8)],
+            mentions: vec![],
+            has: vec!["image".into()],
+        };
+        assert_eq!(
+            search_params(&query, 25),
+            "content=hello%20world&author_id=5&channel_id=7&channel_id=8&has=image&limit=25&offset=25"
+        );
+        let only_filter = SearchQuery { has: vec!["link".into()], ..SearchQuery::default() };
+        assert_eq!(search_params(&only_filter, 0), "has=link&limit=25&offset=0");
     }
 
     #[test]

@@ -1082,6 +1082,17 @@ impl ChatView {
                 );
         }
 
+        bar = bar
+            .child(
+                action_button(("copy-text", id.0), "copy", theme::TEXT_MUTED).on_click(cx.listener(
+                    move |this, _, _, cx| this.copy_text(id, cx),
+                )),
+            )
+            .child(
+                action_button(("copy-link", id.0), "link", theme::TEXT_MUTED).on_click(cx.listener(
+                    move |this, _, _, cx| this.copy_link(id, cx),
+                )),
+            );
         if allowed.reply {
             bar = bar.child(
                 action_button(("reply", id.0), "reply", theme::TEXT_MUTED).on_click(
@@ -1286,6 +1297,19 @@ impl ChatView {
             )
             .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(count))
             .into_any_element()
+    }
+
+    fn copy_text(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        if let Some(m) = self.message(message, cx) {
+            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(m.content));
+        }
+    }
+
+    fn copy_link(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        if let Some(channel) = self.channel {
+            let link = crate::menus::message_link(self.guild(cx), channel, message);
+            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(link));
+        }
     }
 
     /// Starts a thread on `message`, named after what it says.

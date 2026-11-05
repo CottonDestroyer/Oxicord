@@ -132,11 +132,12 @@ impl Session {
         backend: &Backend,
         guild: Option<Snowflake>,
         channel: Snowflake,
-        query: String,
+        raw: String,
         cx: &mut Context<Self>,
     ) {
-        self.search = Some((query.clone(), Load::Loading));
-        backend.send(Command::Search { guild, channel, query, offset: 0 });
+        let query = crate::search_query::parse(&self.store, guild, channel, &raw);
+        self.search = Some((raw.clone(), Load::Loading));
+        backend.send(Command::Search { guild, channel, raw, query, offset: 0 });
         cx.notify();
     }
 

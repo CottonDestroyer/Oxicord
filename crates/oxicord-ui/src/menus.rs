@@ -95,6 +95,11 @@ pub fn channel_link(guild: Option<Snowflake>, channel: Snowflake) -> String {
     }
 }
 
+/// The link Discord uses for one message.
+pub fn message_link(guild: Option<Snowflake>, channel: Snowflake, message: Snowflake) -> String {
+    format!("{}/{message}", channel_link(guild, channel))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +143,14 @@ mod tests {
         for action in [Action::MarkRead, Action::CopyLink, Action::Leave] {
             assert!(settings_body(Place::Guild(Snowflake(1)), action, now()).is_none());
         }
+    }
+
+    #[test]
+    fn a_message_link_extends_the_channel_link() {
+        assert_eq!(
+            message_link(Some(Snowflake(1)), Snowflake(2), Snowflake(3)),
+            "https://discord.com/channels/1/2/3"
+        );
     }
 
     #[test]

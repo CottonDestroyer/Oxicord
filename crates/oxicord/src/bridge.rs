@@ -343,11 +343,11 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 send_pins(&api, channel, &events).await;
             });
         }
-        Command::Search { guild, channel, query, offset } => {
+        Command::Search { guild, channel, raw, query, offset } => {
             tokio::spawn(async move {
                 let scope = guild.map_or(SearchScope::Channel(channel), SearchScope::Guild);
                 let result = run_search(&api, scope, &query, offset).await;
-                let _ = events.send(Event::Search { query, offset, result }).await;
+                let _ = events.send(Event::Search { raw, offset, result }).await;
             });
         }
         Command::Account(request) => {
@@ -429,7 +429,7 @@ async fn send_pins(api: &ApiClient, channel: Snowflake, events: &Sender<Event>) 
 async fn run_search(
     api: &ApiClient,
     scope: SearchScope,
-    query: &str,
+    query: &oxicord_model::SearchQuery,
     offset: u32,
 ) -> Result<SearchPage, String> {
     for _ in 0..4 {

@@ -386,7 +386,9 @@ impl SidePanel {
             PanelKind::Search => {
                 let state = self.session.read(cx).search.clone();
                 match state {
-                    None => vec![Self::note("Type something and press Enter.")],
+                    None => vec![Self::note(
+                        "Type something and press Enter. You can narrow it with from:name, in:channel, has:image or mentions:name.",
+                    )],
                     Some((_, Load::Idle | Load::Loading)) => vec![Self::note("Searching...")],
                     Some((_, Load::Failed(error))) => {
                         vec![Self::note(format!("Search failed. {error}"))]

@@ -68,7 +68,9 @@ pub enum Command {
     Search {
         guild: Option<Snowflake>,
         channel: Snowflake,
-        query: String,
+        /// What was typed, echoed back so answers can be matched to it.
+        raw: String,
+        query: oxicord_model::SearchQuery,
         offset: u32,
     },
     /// Load a page of a channel's threads. The answer arrives as
@@ -194,7 +196,7 @@ pub enum Event {
         result: Result<Vec<Message>, String>,
     },
     Search {
-        query: String,
+        raw: String,
         offset: u32,
         result: Result<SearchPage, String>,
     },

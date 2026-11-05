@@ -14,6 +14,7 @@ mod menus;
 mod notify;
 mod member_list;
 mod profile;
+mod search_query;
 mod session;
 mod settings_view;
 mod side_panel;
