@@ -4,7 +4,7 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    FocusHandle, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb,
+    FocusHandle, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
@@ -13,6 +13,7 @@ use oxicord_model::{ChannelType, RelationshipKind, Snowflake, Status};
 use oxicord_store::Unread;
 
 use crate::{
+    account::Load,
     backend::{Backend, Command},
     chat::ChatView,
     context_menu::{CloseMenu, ContextMenu, Target},
@@ -21,6 +22,7 @@ use crate::{
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
+    rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
     keys::QuickSwitch,
     media::{Media, ViewImage, acronym, avatar},
@@ -97,6 +99,8 @@ pub struct MainView {
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
+    /// Folders opened in the rail.
+    expanded: HashSet<u64>,
     picker_open: bool,
     inbox: Entity<Inbox>,
     inbox_open: bool,
@@ -260,6 +264,7 @@ impl MainView {
             switcher,
             switcher_open: false,
             picker,
+            expanded: HashSet::new(),
             picker_open: false,
             inbox,
             inbox_open: false,
@@ -670,6 +675,47 @@ impl MainView {
             })
     }
 
+    /// One server in the rail.
+    fn guild_button(&mut self, item: &GuildItem, cx: &mut Context<Self>) -> AnyElement {
+        let selected = self.guild == Some(item.id);
+        let id = item.id;
+        let body = guild_icon(&self.media, item.icon.as_deref(), &item.name, selected, cx);
+        rail_button(
+            "guild",
+            id.0,
+            selected,
+            item.unread,
+            body,
+            cx.listener(move |this, _, window, cx| this.select_guild(Some(id), window, cx)),
+        )
+        .into_any_element()
+    }
+
+    /// What a folder looks like in the rail: a folder glyph when open, and
+    /// a grid of its first servers when closed.
+    fn folder_body(&mut self, members: &[&GuildItem], tint: u32, open: bool, cx: &mut Context<Self>) -> AnyElement {
+        let base = div()
+            .size(px(48.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(16.))
+            .bg(rgba((tint << 8) | 0x59));
+        if open {
+            return base.child(icon("folder-open", 24., tint)).into_any_element();
+        }
+        let mut grid = div().w(px(36.)).flex().flex_wrap().gap(px(2.));
+        for item in members.iter().take(4) {
+            let image = item.icon.as_deref().and_then(|url| self.media.update(cx, |m, _| m.get(url)));
+            let cell = div().size(px(17.)).rounded(px(5.)).overflow_hidden().bg(rgb(theme::BG_CHAT));
+            grid = grid.child(match image {
+                Some(image) => cell.child(img(ImageSource::Image(image)).size_full()),
+                None => cell,
+            });
+        }
+        base.child(grid).into_any_element()
+    }
+
     fn render_rail(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let guilds = self.guild_items(cx);
         let home_unread = self.home_unread(cx);
@@ -692,19 +738,54 @@ impl MainView {
             cx.listener(|this, _, window, cx| this.select_guild(None, window, cx)),
         );
 
+        let items = guilds;
+        let known: Vec<Snowflake> = items.iter().map(|i| i.id).collect();
+        let layout = match &self.session.read(cx).account.settings {
+            Load::Ready(settings) => settings.folders().to_vec(),
+            _ => Vec::new(),
+        };
+
         let mut list = div().flex().flex_col().gap_2().items_center().w_full();
-        for item in guilds {
-            let selected = selected_guild == Some(item.id);
-            let id = item.id;
-            let body = guild_icon(&self.media, item.icon.as_deref(), &item.name, selected, cx);
-            list = list.child(rail_button(
-                "guild",
-                id.0,
-                selected,
-                item.unread,
-                body,
-                cx.listener(move |this, _, window, cx| this.select_guild(Some(id), window, cx)),
-            ));
+        for entry in rail::arrange(&layout, &known) {
+            match entry {
+                Entry::Guild(id) => {
+                    if let Some(item) = items.iter().find(|i| i.id == id) {
+                        list = list.child(self.guild_button(item, cx));
+                    }
+                }
+                Entry::Folder { key, color, guilds, .. } => {
+                    let members: Vec<&GuildItem> = guilds.iter().filter_map(|g| items.iter().find(|i| i.id == *g)).collect();
+                    let open = self.expanded.contains(&key);
+                    let tint = color.unwrap_or(theme::ACCENT);
+                    let unread = members.iter().fold(Unread::default(), |sum, m| Unread {
+                        unread: sum.unread || m.unread.unread,
+                        mentions: sum.mentions + m.unread.mentions,
+                    });
+                    let body = self.folder_body(&members, tint, open, cx);
+                    let header = rail_button(
+                        "folder",
+                        key,
+                        false,
+                        // An open folder shows its servers' own badges.
+                        if open { Unread::default() } else { unread },
+                        body,
+                        cx.listener(move |this, _, _, cx| {
+                            if !this.expanded.remove(&key) {
+                                this.expanded.insert(key);
+                            }
+                            cx.notify();
+                        }),
+                    );
+                    let mut group = div().w_full().flex().flex_col().gap_2().items_center().child(header);
+                    if open {
+                        group = group.bg(rgba((tint << 8) | 0x33)).rounded(px(16.)).pb_2();
+                        for item in members {
+                            group = group.child(self.guild_button(item, cx));
+                        }
+                    }
+                    list = list.child(group);
+                }
+            }
         }
 
         div()

@@ -34,6 +34,25 @@ impl<'a> Field<'a> {
         let mut value = self.value;
         read_varint(&mut value)
     }
+
+    /// The payload of a length-delimited field read as text.
+    pub fn text(&self) -> Result<&'a str, Error> {
+        std::str::from_utf8(self.message()?).map_err(|_| Error::Malformed("text is not utf-8"))
+    }
+
+    /// Repeated fixed64 values, packed in one field or sent one by one.
+    pub fn fixed64s(&self) -> Result<Vec<u64>, Error> {
+        match self.wire_type {
+            1 | 2 => {
+                let chunks = self.value.chunks_exact(8);
+                if !chunks.remainder().is_empty() {
+                    return Err(Error::Malformed("bad fixed64 run"));
+                }
+                Ok(chunks.map(|c| u64::from_le_bytes(c.try_into().unwrap_or([0; 8]))).collect())
+            }
+            _ => Err(Error::Malformed("expected fixed64 values")),
+        }
+    }
 }
 
 pub fn read_varint(input: &mut &[u8]) -> Result<u64, Error> {

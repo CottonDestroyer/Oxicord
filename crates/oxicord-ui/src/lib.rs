@@ -19,6 +19,7 @@ mod notify;
 mod plain;
 mod member_list;
 mod profile;
+mod rail;
 mod search_query;
 mod session;
 mod settings_view;

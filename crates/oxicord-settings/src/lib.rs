@@ -203,6 +203,16 @@ pub struct Patch {
     pub required_data_version: u32,
 }
 
+/// A group of servers in the rail. A server outside any folder shows up as
+/// a folder without an id holding just itself.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GuildFolder {
+    pub id: Option<i64>,
+    pub name: Option<String>,
+    pub color: Option<u32>,
+    pub guilds: Vec<u64>,
+}
+
 /// What we know about the account's preferences.
 #[derive(Clone, Debug, Default)]
 pub struct AccountSettings {
@@ -211,6 +221,8 @@ pub struct AccountSettings {
     /// the fields it isn't changing.
     sections: BTreeMap<u32, Vec<u8>>,
     values: BTreeMap<Key, Value>,
+    /// The rail layout, empty when the account never arranged it.
+    folders: Vec<GuildFolder>,
 }
 
 impl AccountSettings {
@@ -236,6 +248,7 @@ impl AccountSettings {
                         }
                     }
                 }
+                14 => settings.folders = read_folders(field.message()?)?,
                 n if wanted.contains(&n) => {
                     settings.sections.insert(n, field.message()?.to_vec());
                 }
@@ -262,6 +275,11 @@ impl AccountSettings {
             }
         }
         Ok(settings)
+    }
+
+    /// Servers and folders in the order the user arranged them.
+    pub fn folders(&self) -> &[GuildFolder] {
+        &self.folders
     }
 
     pub fn data_version(&self) -> u32 {
@@ -327,6 +345,34 @@ impl AccountSettings {
     }
 }
 
+/// The `GuildFolders` message: field 1 holds the folders in order.
+fn read_folders(bytes: &[u8]) -> Result<Vec<GuildFolder>, Error> {
+    let mut out = Vec::new();
+    for field in wire::fields(bytes)? {
+        if field.number != 1 {
+            continue;
+        }
+        let mut folder = GuildFolder::default();
+        for inner in wire::fields(field.message()?)? {
+            match inner.number {
+                1 => folder.guilds.extend(inner.fixed64s()?),
+                // The wrappers below are protobuf's Int64Value, StringValue
+                // and UInt32Value, each holding its value in field 1.
+                2 => folder.id = wrapped(&inner)?.and_then(|f| f.varint().ok()).map(|v| v as i64),
+                3 => folder.name = wrapped(&inner)?.and_then(|f| f.text().ok()).map(str::to_owned),
+                4 => folder.color = wrapped(&inner)?.and_then(|f| f.varint().ok()).and_then(|v| u32::try_from(v).ok()),
+                _ => {}
+            }
+        }
+        out.push(folder);
+    }
+    Ok(out)
+}
+
+fn wrapped<'a>(field: &wire::Field<'a>) -> Result<Option<wire::Field<'a>>, Error> {
+    Ok(wire::fields(field.message()?)?.into_iter().find(|f| f.number == 1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,6 +402,43 @@ mod tests {
         assert!(settings.get(Key::InlineAttachmentMedia).as_bool());
         assert_eq!(settings.get(Key::FriendSourceFlags).as_number(), 14);
         assert_eq!(settings.get(Key::RenderSpoilers).as_text(), "ON_CLICK");
+    }
+
+    #[test]
+    fn the_rail_layout_is_read_from_field_14() {
+        let wrap_varint = |v: u64| {
+            let mut inner = Vec::new();
+            wire::put_varint(1, v, &mut inner);
+            inner
+        };
+        let mut folder = Vec::new();
+        let mut ids = Vec::new();
+        ids.extend(11u64.to_le_bytes());
+        ids.extend(12u64.to_le_bytes());
+        wire::put_message(1, &ids, &mut folder);
+        wire::put_message(2, &wrap_varint(77), &mut folder);
+        let mut name = Vec::new();
+        wire::put_message(1, b"Friends", &mut name);
+        wire::put_message(3, &name, &mut folder);
+        wire::put_message(4, &wrap_varint(0x5865f2), &mut folder);
+
+        let mut lone = Vec::new();
+        wire::put_message(1, &13u64.to_le_bytes(), &mut lone);
+
+        let mut folders = Vec::new();
+        wire::put_message(1, &folder, &mut folders);
+        wire::put_message(1, &lone, &mut folders);
+        let mut blob = Vec::new();
+        wire::put_message(14, &folders, &mut blob);
+
+        let settings = AccountSettings::decode(&STANDARD.encode(blob)).unwrap();
+        assert_eq!(
+            settings.folders(),
+            [
+                GuildFolder { id: Some(77), name: Some("Friends".into()), color: Some(0x5865f2), guilds: vec![11, 12] },
+                GuildFolder { id: None, name: None, color: None, guilds: vec![13] },
+            ]
+        );
     }
 
     #[test]
