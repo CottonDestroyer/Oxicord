@@ -1,3 +1,4 @@
+mod attachments;
 mod format;
 mod markdown;
 mod rows;

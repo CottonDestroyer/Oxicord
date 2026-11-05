@@ -6,7 +6,7 @@
 
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::GatewayEvent;
-use oxicord_model::{Message, Snowflake, User};
+use oxicord_model::{Emoji, Message, Snowflake, User};
 
 /// Things the UI asks for.
 #[derive(Debug)]
@@ -48,6 +48,14 @@ pub enum Command {
     },
     /// Show the "is typing" indicator to others for a few seconds.
     Typing(Snowflake),
+    /// Add (or with `add` false, remove) our reaction. The new count arrives
+    /// through the gateway.
+    React {
+        channel: Snowflake,
+        message: Snowflake,
+        emoji: Emoji,
+        add: bool,
+    },
 }
 
 /// Things the backend reports.

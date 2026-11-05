@@ -15,10 +15,11 @@ use gpui_kit::{
 };
 use oxicord_markdown::Block;
 use oxicord_media::cdn;
-use oxicord_model::{Message, MessageType, Permissions, Snowflake};
+use oxicord_model::{Emoji, Message, MessageType, Permissions, Snowflake};
 use oxicord_store::Changes;
 
 use super::{
+    attachments::{render_attachments, render_embeds},
     format,
     markdown::{self, Names, Options, SpoilerHandler},
     rows::{Row, build_rows, diff},
@@ -57,6 +58,8 @@ pub struct ChatView {
     confirm_delete: Option<Snowflake>,
     /// Spoilers the reader has clicked open, as (message, index in message).
     revealed: HashSet<(Snowflake, usize)>,
+    /// The message whose quick-reaction row is open.
+    picker_for: Option<Snowflake>,
 
     /// The newest message we have acknowledged per channel, so we don't ack
     /// the same one twice.
@@ -142,6 +145,7 @@ impl ChatView {
             editing: None,
             confirm_delete: None,
             revealed: HashSet::new(),
+            picker_for: None,
             acked: HashMap::new(),
             unread_after: None,
             last_typing_sent: None,
@@ -415,6 +419,118 @@ impl ChatView {
         cx.notify();
     }
 
+    fn react(&mut self, message: Snowflake, emoji: Emoji, add: bool, cx: &mut Context<Self>) {
+        if let Some(channel) = self.channel {
+            self.backend.send(Command::React {
+                channel,
+                message,
+                emoji,
+                add,
+            });
+        }
+        self.picker_for = None;
+        cx.notify();
+    }
+
+    /// The pills under a message. Clicking one adds or removes our own
+    /// reaction with that emoji.
+    fn render_reactions(
+        &mut self,
+        message: &Message,
+        can_react: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if message.reactions.is_empty() {
+            return None;
+        }
+
+        let mut row = div().flex().flex_wrap().gap_1().mt_1();
+        for (ix, reaction) in message.reactions.iter().enumerate() {
+            let (id, emoji, mine) = (message.id, reaction.emoji.clone(), reaction.me);
+
+            let glyph = match reaction.emoji.id {
+                Some(emoji_id) => {
+                    let url = cdn::emoji(emoji_id, 32);
+                    match self.media.update(cx, |media, _| media.get(&url)) {
+                        Some(image) => gpui_kit::img(gpui_kit::ImageSource::Image(image))
+                            .size(px(18.))
+                            .into_any_element(),
+                        None => div().size(px(18.)).into_any_element(),
+                    }
+                }
+                None => div()
+                    .text_size(px(16.))
+                    .child(reaction.emoji.name.clone().unwrap_or_default())
+                    .into_any_element(),
+            };
+
+            let mut pill = div()
+                .id(SharedString::from(format!("reaction-{}-{ix}", message.id)))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .h(px(24.))
+                .px(px(8.))
+                .rounded(px(8.))
+                .border_1()
+                .border_color(rgb(if mine { theme::ACCENT } else { theme::BG_HOVER }))
+                .bg(rgb(if mine { 0x2f3252 } else { theme::BG_HOVER }))
+                .text_size(px(13.))
+                .text_color(rgb(if mine { 0xdee0fc } else { theme::TEXT_MUTED }))
+                .child(glyph)
+                .child(reaction.count.to_string());
+
+            if can_react {
+                pill = pill.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+                    this.react(id, emoji.clone(), !mine, cx);
+                }));
+            }
+            row = row.child(pill);
+        }
+        Some(row.into_any_element())
+    }
+
+    /// A row of common emoji to react with.
+    fn render_picker(&mut self, message: Snowflake, cx: &mut Context<Self>) -> AnyElement {
+        const QUICK: [&str; 10] = ["👍", "👎", "❤️", "😂", "😮", "😢", "🎉", "🔥", "👀", "🙏"];
+
+        let mut row = div()
+            .flex()
+            .flex_wrap()
+            .gap_1()
+            .mt_1()
+            .p_1()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .bg(rgb(theme::BG_SIDEBAR))
+            .w(px(340.));
+
+        for (ix, glyph) in QUICK.into_iter().enumerate() {
+            let emoji = Emoji {
+                name: Some(glyph.to_owned()),
+                ..Emoji::default()
+            };
+            row = row.child(
+                div()
+                    .id(SharedString::from(format!("quick-{message}-{ix}")))
+                    .size(px(30.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .text_size(px(18.))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.react(message, emoji.clone(), true, cx);
+                    }))
+                    .child(glyph),
+            );
+        }
+        row.into_any_element()
+    }
+
     fn toggle_spoiler(&mut self, message: Snowflake, index: usize, cx: &mut Context<Self>) {
         self.revealed.insert((message, index));
         cx.notify();
@@ -522,6 +638,7 @@ impl ChatView {
         };
         let can_reply = perms.contains(Permissions::SEND_MESSAGES);
         let can_delete = is_mine || perms.contains(Permissions::MANAGE_MESSAGES);
+        let can_react = perms.contains(Permissions::ADD_REACTIONS);
 
         let author = message.author.display_name().to_owned();
         let url = cdn::user_avatar(message.author.id, message.author.avatar.as_deref(), 64);
@@ -557,9 +674,27 @@ impl ChatView {
             body = body.child(reply);
         }
         body = body.child(self.render_content(&message, window, cx));
+        if let Some(files) = render_attachments(&message, &self.media, cx) {
+            body = body.child(files);
+        }
+        if let Some(embeds) = render_embeds(&message, &self.media, cx) {
+            body = body.child(embeds);
+        }
+        if let Some(reactions) = self.render_reactions(&message, can_react, cx) {
+            body = body.child(reactions);
+        }
+        if self.picker_for == Some(id) {
+            body = body.child(self.render_picker(id, cx));
+        }
 
         let confirming = self.confirm_delete == Some(id);
-        let bar = self.action_bar(id, can_reply, is_mine, can_delete, confirming, cx);
+        let allowed = Allowed {
+            reply: can_reply,
+            react: can_react,
+            edit: is_mine,
+            delete: can_delete,
+        };
+        let bar = self.action_bar(id, allowed, confirming, cx);
 
         div()
             .id(("message", id.0))
@@ -583,9 +718,7 @@ impl ChatView {
     fn action_bar(
         &mut self,
         id: Snowflake,
-        can_reply: bool,
-        can_edit: bool,
-        can_delete: bool,
+        allowed: Allowed,
         confirming: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -630,21 +763,31 @@ impl ChatView {
                 );
         }
 
-        if can_reply {
+        if allowed.reply {
             bar = bar.child(
                 action_button(("reply", id.0), "reply", theme::TEXT_MUTED).on_click(
                     cx.listener(move |this, _, window, cx| this.start_reply(id, window, cx)),
                 ),
             );
         }
-        if can_edit {
+        if allowed.react {
+            bar = bar.child(
+                action_button(("react", id.0), "sticker", theme::TEXT_MUTED).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.picker_for = (this.picker_for != Some(id)).then_some(id);
+                        cx.notify();
+                    }),
+                ),
+            );
+        }
+        if allowed.edit {
             bar = bar.child(
                 action_button(("edit", id.0), "pencil", theme::TEXT_MUTED).on_click(
                     cx.listener(move |this, _, window, cx| this.start_edit(id, window, cx)),
                 ),
             );
         }
-        if can_delete {
+        if allowed.delete {
             bar = bar.child(
                 action_button(("delete", id.0), "trash", theme::DANGER).on_click(cx.listener(
                     move |this, _: &ClickEvent, _, cx| {
@@ -889,6 +1032,15 @@ impl Render for ChatView {
             .child(div().flex_1().min_h_0().child(body))
             .child(composer)
     }
+}
+
+/// What the reader may do to one message.
+#[derive(Clone, Copy)]
+struct Allowed {
+    reply: bool,
+    react: bool,
+    edit: bool,
+    delete: bool,
 }
 
 /// A small square icon button. The caller attaches the click handler.

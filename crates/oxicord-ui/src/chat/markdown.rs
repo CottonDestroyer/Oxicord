@@ -20,7 +20,7 @@ use oxicord_model::Snowflake;
 use super::format;
 use crate::{media::Media, theme};
 
-const LINK: u32 = 0x00a8fc;
+pub const LINK_COLOR: u32 = 0x00a8fc;
 const MENTION_FG: u32 = 0xc9cdfb;
 const MENTION_BG: u32 = 0x3c4270;
 const CODE_BG: u32 = 0x1a1b1f;
@@ -443,7 +443,7 @@ fn text_element(
             run.background_color = Some(rgb(MENTION_BG).into());
         }
         if let Some(url) = style.link {
-            run.color = rgb(LINK).into();
+            run.color = rgb(LINK_COLOR).into();
             ranges.push(start..start + piece.len());
             actions.push(Action::Open(url));
         }

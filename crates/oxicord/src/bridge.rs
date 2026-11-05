@@ -186,6 +186,23 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::React {
+            channel,
+            message,
+            emoji,
+            add,
+        } => {
+            tokio::spawn(async move {
+                let result = if add {
+                    api.add_reaction(channel, message, &emoji).await
+                } else {
+                    api.remove_reaction(channel, message, &emoji).await
+                };
+                if let Err(err) = result {
+                    notify(&events, "change that reaction", &err).await;
+                }
+            });
+        }
         // Handled before it gets here.
         Command::Login(_) | Command::BrowserLogin | Command::Logout | Command::FetchImage(_) => {}
     }
