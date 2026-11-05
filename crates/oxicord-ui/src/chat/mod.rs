@@ -7,4 +7,4 @@ mod rows;
 mod typing;
 mod view;
 
-pub use view::ChatView;
+pub use view::{ChatView, Shortcut};

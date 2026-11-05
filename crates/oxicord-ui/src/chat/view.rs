@@ -14,7 +14,7 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
     SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
     list, px, rgb,
-    component::input::{InputEvent, Textarea, TextareaState},
+    component::input::{Escape, InputEvent, Textarea, TextareaState},
 };
 use oxicord_markdown::Block;
 use oxicord_media::cdn;
@@ -773,6 +773,23 @@ impl ChatView {
             if self.files.len() < Self::MAX_FILES && !self.files.contains(&path) {
                 self.files.push(path);
             }
+        }
+        cx.notify();
+    }
+
+    /// For the keyboard shortcuts. A picker toggles, like its button.
+    pub fn shortcut(&mut self, action: Shortcut, window: &mut Window, cx: &mut Context<Self>) {
+        if self.channel.is_none() || !self.can_send(cx) {
+            return;
+        }
+        match action {
+            Shortcut::Emoji | Shortcut::Gifs | Shortcut::Stickers if self.emoji_for.is_some() => {
+                self.emoji_for = None
+            }
+            Shortcut::Emoji => self.open_emoji(EmojiTarget::Composer, window, cx),
+            Shortcut::Gifs => self.open_gifs(window, cx),
+            Shortcut::Stickers => self.open_stickers(window, cx),
+            Shortcut::Upload => self.pick_files(cx),
         }
         cx.notify();
     }
@@ -1895,6 +1912,18 @@ impl Render for ChatView {
             .flex_col()
             .relative()
             .bg(rgb(theme::BG_CHAT))
+            // Escape closes what is open here first. Only when there is
+            // nothing does it go on up, where it marks the channel read.
+            .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                if this.emoji_for.is_some() {
+                    this.emoji_for = None;
+                    cx.notify();
+                } else if this.reply_to.is_some() || this.editing.is_some() {
+                    this.cancel_compose(window, cx);
+                } else {
+                    cx.propagate();
+                }
+            }))
             .child(header)
             .child(div().flex_1().min_h_0().child(body))
             .child(composer)
@@ -1902,6 +1931,15 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16.)).child(panel)
             }))
     }
+}
+
+/// Composer actions that have a keyboard shortcut.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shortcut {
+    Emoji,
+    Gifs,
+    Stickers,
+    Upload,
 }
 
 /// What the emoji picker is currently choosing for.

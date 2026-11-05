@@ -108,33 +108,11 @@ impl ContextMenu {
     }
 
     fn mark_guild_read(&mut self, guild: Snowflake, cx: &mut Context<Self>) {
-        let unread = self.session.read(cx).store.unread_in_guild(guild);
-        self.ack(unread, cx);
+        mark_guild_read(&self.session, &self.backend, guild, cx);
     }
 
     fn mark_channel_read(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
-        let newest = self
-            .session
-            .read(cx)
-            .store
-            .channel(channel)
-            .and_then(|c| c.last_message_id.map(|m| (channel, m)));
-        self.ack(newest.into_iter().collect(), cx);
-    }
-
-    /// Clears the badges at once and tells the server.
-    fn ack(&mut self, channels: Vec<(Snowflake, Snowflake)>, cx: &mut Context<Self>) {
-        if channels.is_empty() {
-            return;
-        }
-        self.session.update(cx, |session, cx| {
-            for (channel, message) in &channels {
-                let changes = session.store.mark_read(*channel, *message);
-                cx.emit(changes);
-            }
-            cx.notify();
-        });
-        self.backend.send(Command::AckBulk(channels));
+        mark_channel_read(&self.session, &self.backend, channel, cx);
     }
 
     fn item(
@@ -342,4 +320,33 @@ impl Render for ContextMenu {
             .child(menu)
             .into_any_element()
     }
+}
+
+pub(crate) fn mark_guild_read(session: &Entity<Session>, backend: &Backend, guild: Snowflake, cx: &mut gpui_kit::App) {
+    let unread = session.read(cx).store.unread_in_guild(guild);
+    ack(session, backend, unread, cx);
+}
+
+pub(crate) fn mark_channel_read(session: &Entity<Session>, backend: &Backend, channel: Snowflake, cx: &mut gpui_kit::App) {
+    let newest = session
+        .read(cx)
+        .store
+        .channel(channel)
+        .and_then(|c| c.last_message_id.map(|m| (channel, m)));
+    ack(session, backend, newest.into_iter().collect(), cx);
+}
+
+/// Clears the badges at once and tells the server.
+fn ack(session: &Entity<Session>, backend: &Backend, channels: Vec<(Snowflake, Snowflake)>, cx: &mut gpui_kit::App) {
+    if channels.is_empty() {
+        return;
+    }
+    session.update(cx, |session, cx| {
+        for (channel, message) in &channels {
+            let changes = session.store.mark_read(*channel, *message);
+            cx.emit(changes);
+        }
+        cx.notify();
+    });
+    backend.send(Command::AckBulk(channels));
 }

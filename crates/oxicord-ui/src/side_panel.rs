@@ -67,6 +67,10 @@ impl SidePanel {
         }
     }
 
+    pub fn kind(&self) -> PanelKind {
+        self.kind
+    }
+
     pub fn show(
         &mut self,
         kind: PanelKind,

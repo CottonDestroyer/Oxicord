@@ -37,6 +37,7 @@ enum Page {
     Appearance,
     Chat,
     Notifications,
+    Keybinds,
     Advanced,
 }
 
@@ -60,6 +61,7 @@ impl Page {
                 Page::Appearance,
                 Page::Chat,
                 Page::Notifications,
+                Page::Keybinds,
                 Page::Advanced,
             ],
         ),
@@ -77,6 +79,7 @@ impl Page {
             Page::Appearance => "Appearance",
             Page::Chat => "Chat",
             Page::Notifications => "Notifications",
+            Page::Keybinds => "Keybinds",
             Page::Advanced => "Advanced",
         }
     }
@@ -96,6 +99,7 @@ impl Page {
             Page::Appearance => "time format 12 hour 24 hour clock members list layout theme",
             Page::Chat => "embeds link previews images attachments reactions media",
             Page::Notifications => "desktop toast mentions alerts",
+            Page::Keybinds => "keyboard shortcuts hotkeys keys",
             Page::Advanced => "developer mode reset about version",
         }
     }
@@ -172,6 +176,13 @@ impl SettingsView {
         self.reveal_contact = false;
         self.confirm_revoke = None;
         self.load_page(cx);
+    }
+
+    /// Opens straight on the Keybinds page, for its own shortcut.
+    pub fn open_keybinds(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Keybinds;
+        self.opened(cx);
+        cx.notify();
     }
 
     fn select(&mut self, page: Page, cx: &mut Context<Self>) {

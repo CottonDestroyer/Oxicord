@@ -69,6 +69,7 @@ impl SettingsView {
             Page::Appearance => self.appearance_page(cx),
             Page::Chat => self.chat_page(cx),
             Page::Notifications => self.notifications_page(cx),
+            Page::Keybinds => keybinds_page(),
             Page::Advanced => self.advanced_page(cx),
         };
         div().flex().flex_col().gap_2().child(body).into_any_element()
@@ -720,4 +721,55 @@ mod tests {
         assert_eq!(mask_email("a@example.com"), "a**@example.com");
         assert_eq!(mask_phone("+447700900123"), "*********0123");
     }
+}
+
+/// Every shortcut, grouped the way Discord's page groups them.
+fn keybinds_page() -> AnyElement {
+    let mut page = div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(title("Keybinds"))
+        .child(blurb("Discord's default shortcuts, for what this app can do. They can't be changed yet."));
+    let mut groups: Vec<&'static str> = Vec::new();
+    for s in crate::keys::SHORTCUTS {
+        if !groups.contains(&s.group) {
+            groups.push(s.group);
+        }
+    }
+    for heading in groups {
+        let rows = crate::keys::SHORTCUTS
+            .iter()
+            .filter(|s| s.group == heading)
+            .map(|s| {
+                let caps = crate::keys::caps(s.keys).into_iter().map(|cap| {
+                    div()
+                        .min_w(px(24.))
+                        .h(px(24.))
+                        .px_2()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(4.))
+                        .border_1()
+                        .border_b_2()
+                        .border_color(rgb(theme::BORDER))
+                        .bg(rgb(theme::BG_ACTIVE))
+                        .text_size(px(12.))
+                        .text_color(rgb(theme::TEXT_BRIGHT))
+                        .child(cap)
+                });
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .child(div().text_color(rgb(theme::TEXT)).child(s.label))
+                    .child(div().flex().gap_1().children(caps))
+                    .into_any_element()
+            })
+            .collect();
+        page = page.child(group(heading, rows));
+    }
+    page.into_any_element()
 }

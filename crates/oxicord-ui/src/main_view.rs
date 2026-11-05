@@ -4,7 +4,7 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    FocusHandle, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
+    FocusHandle, MouseButton, component::input::Escape, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
@@ -15,8 +15,8 @@ use oxicord_store::Unread;
 use crate::{
     account::Load,
     backend::{Backend, Command},
-    chat::ChatView,
-    context_menu::{CloseMenu, ContextMenu, Target},
+    chat::{ChatView, Shortcut},
+    context_menu::{self, CloseMenu, ContextMenu, Target},
     dm_picker::{ClosePicker, DmPicker, Purpose},
     forum::ForumView,
     join_server::{CloseJoin, JoinServerView},
@@ -25,7 +25,7 @@ use crate::{
     rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
     invite_dialog::{CloseInvite, InviteDialog},
-    keys::QuickSwitch,
+    keys::{self, QuickSwitch},
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
     popup::{ClosePopup, PopupMenu},
@@ -370,6 +370,138 @@ impl MainView {
         }
         self.sync_chat(window, cx);
         cx.notify();
+    }
+
+    /// Channels in sidebar order, for stepping through with the keyboard.
+    fn nav_channels(&self, cx: &App) -> Vec<Snowflake> {
+        let store = &self.session.read(cx).store;
+        match self.guild {
+            Some(guild) => store
+                .channel_groups(guild)
+                .iter()
+                .flat_map(|group| group.channels.iter())
+                .filter(|c| c.kind.has_messages() && !is_voice(c.kind))
+                .map(|c| c.id)
+                .collect(),
+            None => store.dm_channels().into_iter().map(|c| c.id).collect(),
+        }
+    }
+
+    /// Moves to the channel above or below, or the nearest unread one,
+    /// wrapping around the list.
+    fn step_channel(&mut self, forward: bool, unread_only: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let list = self.nav_channels(cx);
+        let n = list.len();
+        if n == 0 {
+            return;
+        }
+        let at = self.channel.and_then(|c| list.iter().position(|&x| x == c));
+        let start = at.unwrap_or(if forward { n - 1 } else { 0 });
+        let target = {
+            let store = &self.session.read(cx).store;
+            (1..=n)
+                .map(|i| list[if forward { (start + i) % n } else { (start + n - i) % n }])
+                .filter(|&c| Some(c) != self.channel)
+                .find(|&c| !unread_only || {
+                    let u = store.unread(c);
+                    u.unread || u.mentions > 0
+                })
+        };
+        if let Some(channel) = target {
+            self.select_channel(channel, window, cx);
+        }
+    }
+
+    /// Moves along the rail, home first, then servers in folder order.
+    fn step_server(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let known: Vec<Snowflake> = self.session.read(cx).store.guilds().map(|g| g.id).collect();
+        let layout = match &self.session.read(cx).account.settings {
+            Load::Ready(settings) => settings.folders().to_vec(),
+            _ => Vec::new(),
+        };
+        let mut order = vec![None];
+        for entry in rail::arrange(&layout, &known) {
+            match entry {
+                Entry::Guild(id) => order.push(Some(id)),
+                Entry::Folder { guilds, .. } => order.extend(guilds.into_iter().map(Some)),
+            }
+        }
+        let n = order.len();
+        let at = order.iter().position(|&g| g == self.guild).unwrap_or(0);
+        let next = if forward { (at + 1) % n } else { (at + n - 1) % n };
+        self.select_guild(order[next], window, cx);
+    }
+
+    fn toggle_panel(&mut self, kind: PanelKind, window: &mut Window, cx: &mut Context<Self>) {
+        if self.panel_open && self.panel.read(cx).kind() == kind {
+            self.panel_open = false;
+            cx.notify();
+        } else if self.channel.is_some() {
+            self.open_panel(kind, window, cx);
+        }
+    }
+
+    fn mark_channel_read(&mut self, cx: &mut Context<Self>) {
+        if let Some(channel) = self.channel {
+            context_menu::mark_channel_read(&self.session, &self.backend, channel, cx);
+        }
+    }
+
+    /// Sends a composer shortcut to the chat, when the chat is what's showing.
+    fn chat_shortcut(&mut self, action: Shortcut, window: &mut Window, cx: &mut Context<Self>) {
+        if self.channel.is_some_and(|c| !self.is_forum(c, cx)) {
+            self.chat.update(cx, |chat, cx| chat.shortcut(action, window, cx));
+        }
+    }
+
+    /// Hooks every shortcut in [`keys::SHORTCUTS`] to what it does.
+    fn on_shortcuts(&mut self, root: gpui_kit::Div, cx: &mut Context<Self>) -> gpui_kit::Div {
+        root.on_action(cx.listener(|this, _: &QuickSwitch, window, cx| this.open_switcher(window, cx)))
+            .on_action(cx.listener(|this, _: &keys::PrevChannel, window, cx| this.step_channel(false, false, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::NextChannel, window, cx| this.step_channel(true, false, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::PrevUnread, window, cx| this.step_channel(false, true, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::NextUnread, window, cx| this.step_channel(true, true, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::PrevServer, window, cx| this.step_server(false, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::NextServer, window, cx| this.step_server(true, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::MarkChannelRead, _, cx| this.mark_channel_read(cx)))
+            // A text field hands Escape on when it has nothing to close.
+            .on_action(cx.listener(|this, _: &Escape, _, cx| this.mark_channel_read(cx)))
+            .on_action(cx.listener(|this, _: &keys::MarkServerRead, _, cx| {
+                if let Some(guild) = this.guild {
+                    context_menu::mark_guild_read(&this.session, &this.backend, guild, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &keys::TogglePins, window, cx| this.toggle_panel(PanelKind::Pins, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::Search, window, cx| {
+                if this.channel.is_some() {
+                    this.open_panel(PanelKind::Search, window, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &keys::ToggleInbox, _, cx| {
+                this.inbox_open = !this.inbox_open;
+                if this.inbox_open {
+                    this.inbox.update(cx, |inbox, cx| inbox.opened(cx));
+                }
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &keys::ToggleMembers, _, cx| {
+                let backend = this.backend.clone();
+                this.session.update(cx, |s, cx| s.change_settings(&backend, |s| s.show_members = !s.show_members, cx));
+            }))
+            .on_action(cx.listener(|this, _: &keys::EmojiPicker, window, cx| this.chat_shortcut(Shortcut::Emoji, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::GifPicker, window, cx| this.chat_shortcut(Shortcut::Gifs, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::StickerPicker, window, cx| this.chat_shortcut(Shortcut::Stickers, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::Upload, window, cx| this.chat_shortcut(Shortcut::Upload, window, cx)))
+            .on_action(cx.listener(|this, _: &keys::NewGroupDm, window, cx| {
+                // Where the button for it would drop the picker.
+                let at = point(px(theme::RAIL_WIDTH + 40.), px(130.));
+                this.open_picker(Purpose::Create, at, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &keys::ShowKeybinds, _, cx| {
+                this.settings_open = true;
+                this.settings_view.update(cx, |view, cx| view.open_keybinds(cx));
+                cx.notify();
+            }))
     }
 
     fn open_picker(&mut self, purpose: Purpose, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
@@ -1657,11 +1789,8 @@ impl Render for MainView {
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
 
-        div()
-            .size_full()
-            .relative()
-            .track_focus(&self.focus)
-            .on_action(cx.listener(|this, _: &QuickSwitch, window, cx| this.open_switcher(window, cx)))
+        let root = div().size_full().relative().track_focus(&self.focus);
+        self.on_shortcuts(root, cx)
             // A click on bare background parks focus here, so Ctrl+K still
             // works afterwards.
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
