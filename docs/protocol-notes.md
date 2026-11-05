@@ -75,3 +75,47 @@ works better. Change them together, not one at a time.
   `user_guild_settings`, `private_channels`). Will be checked against real
   captures while writing the gateway crate.
 - `/auth/login` and MFA request shapes, for the later email login work.
+
+## Features added from the official client's behaviour
+
+Facts only, confirmed against the public web client's request code. None of
+that code is reproduced here or in the repository.
+
+- **Account preferences** live in one protobuf blob at
+  `/users/@me/settings-proto/1` (`{ settings: base64 }`, patched with
+  `{ settings, required_data_version }`). Sections used: 6 text and images,
+  8 privacy, 11 status, 13 appearance. Booleans and numbers are wrapped in
+  `BoolValue` or `UInt32Value` messages, enums and a few scalars are bare
+  varints. A patch repeats every field of a section it does not change.
+- **Notification settings** arrive in READY as `user_guild_settings`, either
+  `{ entries, partial }` or a bare list, and as `USER_GUILD_SETTINGS_UPDATE`.
+  `channel_overrides` may be a list or an object keyed by channel id. They are
+  changed with `PATCH /users/@me/guilds/:id/settings`. Resolution order is
+  channel, category, server, then the server default.
+- **Threads** are channels with a parent. READY lists active threads under
+  each guild. `THREAD_LIST_SYNC`, `THREAD_MEMBER_UPDATE` and
+  `THREAD_MEMBERS_UPDATE` track membership. `GET /channels/:id/threads/search`
+  lists threads and forum posts (with first messages), joining is
+  `POST` or `DELETE /channels/:id/thread-members/@me`. A forum post is created
+  with `POST /channels/:id/threads` carrying a nested `message`.
+- **Message components** (types 1 to 14, 17) sit on a message. A click is
+  `POST /interactions` with type 3, the gateway session id and the message id.
+  A slash command run is type 2. The command list is
+  `GET /channels/:id/application-command-index` and may answer 202 while it is
+  built.
+- **Polls**: `poll` on the message, results in `poll.results.answer_counts`,
+  votes with `PUT /channels/:id/polls/:message/answers/@me`, live updates as
+  `MESSAGE_POLL_VOTE_ADD` and `_REMOVE`.
+- **Bulk read**: `POST /read-states/ack-bulk` with up to 100 read states.
+- **Large servers** report channel activity in `PASSIVE_UPDATE_V2` instead of
+  one event per message.
+- **Pins**: `GET /channels/:id/messages/pins`, `PUT` and `DELETE`
+  `/channels/:id/messages/pins/:message`.
+- **Search**: `GET /guilds/:id/messages/search` (or the channel form for DMs),
+  with `author_id`, `channel_id`, `mentions` and `has` filters. It answers
+  with a retry wait while a server is indexing.
+- **GIFs**: `GET /gifs/trending-gifs` and `GET /gifs/search`. The provider is
+  now Klipy. Still previews come as AVIF, which we do not decode, so the
+  animated copy is used for thumbnails.
+- **Invites**: `GET /invites/:code?with_counts=true` to look one up,
+  `POST /invites/:code` with the session id to join.
