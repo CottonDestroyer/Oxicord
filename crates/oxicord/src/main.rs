@@ -6,7 +6,22 @@ use gpui_kit::{
     AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size,
     component::{Theme, ThemeMode},
 };
-use oxicord_ui::AppView;
+use oxicord_ui::{AppView, theme};
+
+/// The component library paints primary buttons white in dark mode. Bring
+/// them in line with the rest of the palette.
+fn apply_accent(cx: &mut gpui_kit::App) {
+    let accent = |value: u32| gpui_kit::Hsla::from(gpui_kit::rgb(value));
+    let colors = &mut Theme::global_mut(cx).colors;
+    colors.primary = accent(theme::ACCENT);
+    colors.primary_hover = accent(0x4752c4);
+    colors.primary_active = accent(0x3c45a5);
+    colors.primary_foreground = accent(theme::TEXT_BRIGHT);
+    colors.button_primary = colors.primary;
+    colors.button_primary_hover = colors.primary_hover;
+    colors.button_primary_active = colors.primary_active;
+    colors.button_primary_foreground = colors.primary_foreground;
+}
 
 fn main() {
     logging::init();
@@ -19,6 +34,7 @@ fn main() {
         .run(move |cx| {
             gpui_kit::init(cx);
             Theme::change(ThemeMode::Dark, None, cx);
+            apply_accent(cx);
 
             // Without this the process lingers after the last window closes.
             cx.on_window_closed(|cx, _| {
