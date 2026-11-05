@@ -5,7 +5,7 @@
 //! of the view code.
 
 use async_channel::{Receiver, Sender};
-use oxicord_gateway::GatewayEvent;
+use oxicord_gateway::{ClientStatus, GatewayEvent};
 use oxicord_model::{Emoji, Message, Snowflake, User};
 
 /// Things the UI asks for.
@@ -16,6 +16,8 @@ pub enum Command {
     /// Open Discord's own login page in a temporary window.
     BrowserLogin,
     Logout,
+    /// Change the status shown to others.
+    SetStatus(ClientStatus),
     /// Download a picture. The answer arrives as [`Event::Image`].
     FetchImage(String),
     /// Load a page of messages, the newest ones when `before` is `None`.

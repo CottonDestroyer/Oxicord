@@ -206,6 +206,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         Command::SubscribeMembers { guild, channel } => {
             live.gateway.subscribe_members(guild, channel);
         }
+        Command::SetStatus(status) => live.gateway.set_status(status),
         // Handled before it gets here.
         Command::Login(_) | Command::BrowserLogin | Command::Logout | Command::FetchImage(_) => {}
     }

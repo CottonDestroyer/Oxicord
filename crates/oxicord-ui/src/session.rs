@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use gpui_kit::{Context, EventEmitter};
-use oxicord_gateway::{ConnectionState, GatewayEvent};
+use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
 use oxicord_model::{Message, Snowflake};
 use oxicord_store::{Changes, Store};
 
@@ -16,6 +16,8 @@ pub struct Session {
     pub notice: Option<String>,
     /// Whether the member list is showing beside the chat.
     pub show_members: bool,
+    /// The status we last chose, which the server won't echo back to us.
+    pub status: ClientStatus,
 }
 
 impl EventEmitter<Changes> for Session {}
@@ -28,6 +30,7 @@ impl Session {
             history_errors: HashMap::new(),
             notice: None,
             show_members: true,
+            status: ClientStatus::default(),
         }
     }
 

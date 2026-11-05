@@ -6,7 +6,7 @@ use gpui_kit::{
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, img, px, rgb,
 };
-use oxicord_gateway::ConnectionState;
+use oxicord_gateway::{ClientStatus, ConnectionState};
 use oxicord_media::cdn;
 use oxicord_model::{ChannelType, Snowflake, Status};
 use oxicord_store::Unread;
@@ -62,6 +62,7 @@ pub struct MainView {
     /// The channel to return to when switching back to a guild.
     last_channel: HashMap<Snowflake, Snowflake>,
     collapsed: HashSet<Snowflake>,
+    status_menu_open: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -95,6 +96,7 @@ impl MainView {
             channel: None,
             last_channel: HashMap::new(),
             collapsed: HashSet::new(),
+            status_menu_open: false,
             _subscriptions: subscriptions,
         }
     }
@@ -348,6 +350,7 @@ impl MainView {
                     .overflow_y_scroll()
                     .child(list),
             )
+            .children(self.render_status_menu(cx))
             .child(self.render_user_panel(cx))
     }
 
@@ -472,6 +475,63 @@ impl MainView {
             .children(mention_badge(dm.unread.mentions))
     }
 
+    fn set_status(&mut self, status: ClientStatus, cx: &mut Context<Self>) {
+        self.status_menu_open = false;
+        self.session.update(cx, |session, cx| {
+            session.status = status;
+            cx.notify();
+        });
+        self.backend.send(Command::SetStatus(status));
+        cx.notify();
+    }
+
+    /// The list of statuses that pops up above the user panel.
+    fn render_status_menu(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.status_menu_open {
+            return None;
+        }
+        let current = self.session.read(cx).status;
+
+        let mut menu = div()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap(px(1.))
+            .m_2()
+            .p_1()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .bg(rgb(theme::BG_PANEL));
+
+        for status in [
+            ClientStatus::Online,
+            ClientStatus::Idle,
+            ClientStatus::Dnd,
+            ClientStatus::Invisible,
+        ] {
+            let color = status_color(status);
+            menu = menu.child(
+                div()
+                    .id(status.as_str())
+                    .h(px(32.))
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .px_2()
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .text_color(rgb(if status == current { theme::TEXT_BRIGHT } else { theme::TEXT }))
+                    .bg(rgb(if status == current { theme::BG_ACTIVE } else { theme::BG_PANEL }))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_status(status, cx)))
+                    .child(div().size(px(10.)).rounded_full().bg(rgb(color)))
+                    .child(status_label(status)),
+            );
+        }
+        Some(menu.into_any_element())
+    }
+
     fn render_user_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let (name, url) = {
             let store = &self.session.read(cx).store;
@@ -483,7 +543,15 @@ impl MainView {
                 None => (String::new(), String::new()),
             }
         };
-        let status = connection_label(&self.session.read(cx).connection);
+        let (connection, chosen) = {
+            let session = self.session.read(cx);
+            (session.connection.clone(), session.status)
+        };
+        // While connected the useful thing to show is our own status.
+        let status = match connection {
+            ConnectionState::Connected => status_label(chosen),
+            other => connection_label(&other),
+        };
         let backend = self.backend.clone();
 
         div()
@@ -494,7 +562,29 @@ impl MainView {
             .gap_2()
             .px_2()
             .bg(rgb(theme::BG_PANEL))
-            .child(avatar(&self.media, &url, 36., &name, cx))
+            .child(
+                div()
+                    .id("me")
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .p_1()
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.status_menu_open = !this.status_menu_open;
+                        cx.notify();
+                    }))
+                    .child(
+                        div()
+                            .relative()
+                            .flex_none()
+                            .child(avatar(&self.media, &url, 36., &name, cx))
+                            .child(presence_dot(dot_status(chosen))),
+                    )
             .child(
                 div()
                     .flex_1()
@@ -515,6 +605,7 @@ impl MainView {
                             .text_color(rgb(theme::TEXT_MUTED))
                             .child(status),
                     ),
+            ),
             )
             .child(
                 div()
@@ -664,5 +755,61 @@ fn connection_label(state: &ConnectionState) -> &'static str {
         ConnectionState::Reconnecting { .. } => "Reconnecting...",
         ConnectionState::AuthFailed => "Signed out",
         ConnectionState::Closed(_) => "Disconnected",
+    }
+}
+
+fn status_label(status: ClientStatus) -> &'static str {
+    match status {
+        ClientStatus::Online => "Online",
+        ClientStatus::Idle => "Idle",
+        ClientStatus::Dnd => "Do Not Disturb",
+        ClientStatus::Invisible => "Invisible",
+    }
+}
+
+fn status_color(status: ClientStatus) -> u32 {
+    match status {
+        ClientStatus::Online => theme::ONLINE,
+        ClientStatus::Idle => theme::IDLE,
+        ClientStatus::Dnd => theme::DND,
+        ClientStatus::Invisible => theme::OFFLINE,
+    }
+}
+
+/// How a chosen status looks as a dot. Invisible shows as offline, which is
+/// what everyone else sees.
+fn dot_status(status: ClientStatus) -> Status {
+    match status {
+        ClientStatus::Online => Status::Online,
+        ClientStatus::Idle => Status::Idle,
+        ClientStatus::Dnd => Status::Dnd,
+        ClientStatus::Invisible => Status::Offline,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invisible_looks_offline_and_the_rest_look_like_themselves() {
+        assert_eq!(dot_status(ClientStatus::Invisible), Status::Offline);
+        assert_eq!(dot_status(ClientStatus::Online), Status::Online);
+        assert_eq!(dot_status(ClientStatus::Idle), Status::Idle);
+        assert_eq!(dot_status(ClientStatus::Dnd), Status::Dnd);
+    }
+
+    #[test]
+    fn every_status_has_its_own_label_and_color() {
+        let all = [
+            ClientStatus::Online,
+            ClientStatus::Idle,
+            ClientStatus::Dnd,
+            ClientStatus::Invisible,
+        ];
+        let labels: HashSet<_> = all.iter().map(|s| status_label(*s)).collect();
+        let colors: HashSet<_> = all.iter().map(|s| status_color(*s)).collect();
+        assert_eq!(labels.len(), 4);
+        assert_eq!(colors.len(), 4);
     }
 }
