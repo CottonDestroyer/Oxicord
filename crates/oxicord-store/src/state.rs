@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use oxicord_model::{
     Channel, ChannelType, Guild, GuildNotificationSettings, Member, Permissions, ReadState,
-    Relationship, RelationshipKind, Role, Snowflake, Status, User,
+    Relationship, RelationshipKind, Role, Snowflake, Status, User, VoiceState,
 };
 
 use crate::{
@@ -55,6 +55,8 @@ pub struct Store {
     /// Notification settings per server, `None` holding the one for direct
     /// messages.
     pub(crate) notifications: HashMap<Option<Snowflake>, GuildNotificationSettings>,
+    /// Who is in each voice channel, keyed by the channel.
+    pub(crate) voice: HashMap<Snowflake, Vec<VoiceState>>,
 }
 
 impl Store {
@@ -251,6 +253,11 @@ impl Store {
         }
     }
 
+    /// Who is in the voice channel, in the order they joined.
+    pub fn voice_in(&self, channel: Snowflake) -> &[VoiceState] {
+        self.voice.get(&channel).map_or(&[], Vec::as_slice)
+    }
+
     pub fn member_list(&self, guild: Snowflake) -> Option<&MemberListState> {
         self.member_lists.get(&guild)
     }
@@ -349,11 +356,28 @@ impl Store {
             self.ingest_channel(channel);
         }
         guild.members.clear();
+        for state in guild.voice_states.drain(..) {
+            self.put_voice(VoiceState { guild_id: Some(guild.id), ..state });
+        }
 
         if !self.guild_order.contains(&guild.id) {
             self.guild_order.push(guild.id);
         }
         self.guilds.insert(guild.id, guild);
+    }
+
+    /// Records where a person is in voice, moving them from wherever they were.
+    pub(crate) fn put_voice(&mut self, state: VoiceState) {
+        if let Some(user) = state.member.as_ref().and_then(|m| m.user.clone()) {
+            self.users.entry(user.id).or_insert(user);
+        }
+        for list in self.voice.values_mut() {
+            list.retain(|v| v.user_id != state.user_id);
+        }
+        self.voice.retain(|_, list| !list.is_empty());
+        if let Some(channel) = state.channel_id {
+            self.voice.entry(channel).or_default().push(state);
+        }
     }
 
     pub(crate) fn ingest_channel(&mut self, mut channel: Channel) {

@@ -25,6 +25,8 @@ pub struct Guild {
     /// Only the members the server chose to include. For a user account
     /// that is usually just ourselves.
     pub members: Vec<Member>,
+    /// Who sits in each voice channel when the payload arrives.
+    pub voice_states: Vec<crate::VoiceState>,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +56,8 @@ struct RawGuild {
     default_message_notifications: Option<u8>,
     #[serde(default)]
     members: Vec<Member>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    voice_states: Vec<crate::VoiceState>,
 }
 
 #[derive(Default, Deserialize)]
@@ -93,6 +97,7 @@ impl From<RawGuild> for Guild {
                 .or(props.default_message_notifications)
                 .unwrap_or(0),
             members: raw.members,
+            voice_states: raw.voice_states,
         }
     }
 }
@@ -122,6 +127,15 @@ mod tests {
         .unwrap();
         assert_eq!(g.name, "nested");
         assert_eq!(g.owner_id, Some(Snowflake(9)));
+    }
+
+    #[test]
+    fn a_bad_voice_state_does_not_sink_the_guild() {
+        let g: Guild = serde_json::from_str(
+            r#"{"id":"1","voice_states":[{"user_id":"2","channel_id":"3"},{"nonsense":true},{"user_id":"4","member":"odd"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(g.voice_states.len(), 1);
     }
 
     #[test]

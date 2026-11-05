@@ -26,6 +26,7 @@ pub mod role;
 pub mod search;
 pub mod snowflake;
 pub mod user;
+pub mod voice;
 
 pub use account::{AccountDetails, AppInfo, AuthorizedApp, ClientInfo, Connection, LoginSession};
 pub use attachment::Attachment;
@@ -56,3 +57,4 @@ pub use role::Role;
 pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
 pub use user::{Profile, User};
+pub use voice::VoiceState;

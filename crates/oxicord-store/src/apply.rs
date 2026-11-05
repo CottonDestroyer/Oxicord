@@ -37,6 +37,12 @@ impl Store {
                 changes.guild_list = true;
                 changes.channel_lists.insert(id);
             }
+            DispatchEvent::VoiceStateUpdate(state) => {
+                if let Some(guild) = state.guild_id {
+                    changes.channel_lists.insert(guild);
+                }
+                self.put_voice(*state);
+            }
             DispatchEvent::GuildUpdate(g) => self.on_guild_update(*g, &mut changes),
             DispatchEvent::GuildDelete(d) => self.on_guild_delete(d, &mut changes),
             DispatchEvent::GuildMemberUpdate(u) => self.on_member_update(u, &mut changes),
@@ -544,6 +550,7 @@ impl Store {
             self.remove_channel(id);
         }
         self.guild_channels.remove(&delete.id);
+        self.voice.retain(|channel, _| self.channels.contains_key(channel));
         self.guilds.remove(&delete.id);
         self.my_roles.remove(&delete.id);
         self.member_lists.remove(&delete.id);

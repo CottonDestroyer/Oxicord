@@ -1012,3 +1012,36 @@ fn returning_to_the_present_starts_the_timeline_fresh() {
     store.apply(event("MESSAGE_CREATE", window_message("902", "live again")));
     assert!(store.timeline(id(11)).unwrap().get(id(902)).is_some());
 }
+
+#[test]
+fn voice_channels_list_who_joined_and_follow_them_around() {
+    let mut store = ready_store();
+    let join = |user: u64, channel: Value| {
+        event(
+            "VOICE_STATE_UPDATE",
+            json!({ "user_id": user.to_string(), "guild_id": "100", "channel_id": channel,
+                    "self_mute": true, "member": { "user": { "id": user.to_string(), "username": "newcomer" } } }),
+        )
+    };
+
+    let changes = store.apply(join(7, json!("13")));
+    assert!(changes.channel_lists.contains(&id(100)), "the channel list redraws");
+    assert_eq!(store.voice_in(id(13)).len(), 1);
+    assert!(store.voice_in(id(13))[0].muted());
+    assert_eq!(store.user(id(7)).map(|u| u.username.as_str()), Some("newcomer"));
+
+    // Moving to another channel, then leaving, empties the first.
+    store.apply(join(7, json!("12")));
+    assert!(store.voice_in(id(13)).is_empty() && store.voice_in(id(12)).len() == 1);
+    store.apply(join(7, Value::Null));
+    assert!(store.voice_in(id(12)).is_empty());
+}
+
+#[test]
+fn a_guild_payload_seeds_the_voice_lists() {
+    let mut data = ready_json();
+    data["guilds"][0]["voice_states"] = json!([{ "user_id": "2", "channel_id": "13" }]);
+    let mut store = Store::new();
+    store.apply(event("READY", data));
+    assert_eq!(store.voice_in(id(13)).len(), 1);
+}

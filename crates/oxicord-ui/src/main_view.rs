@@ -44,6 +44,17 @@ struct GuildItem {
     unread: Unread,
 }
 
+/// Someone sitting in a voice channel.
+struct VoiceItem {
+    user: Snowflake,
+    name: String,
+    avatar: String,
+    muted: bool,
+    deafened: bool,
+    video: bool,
+    streaming: bool,
+}
+
 struct ChannelItem {
     id: Snowflake,
     name: String,
@@ -51,6 +62,8 @@ struct ChannelItem {
     unread: Unread,
     /// Whether we may make an invite through it, which adds a shortcut on hover.
     can_invite: bool,
+    /// Who is in it, for voice channels.
+    voice: Vec<VoiceItem>,
     muted: bool,
     /// Threads shown beneath this channel.
     threads: Vec<ChannelItem>,
@@ -1055,6 +1068,52 @@ impl MainView {
         column.into_any_element()
     }
 
+    /// The people sitting in a voice channel, listed under it.
+    fn render_voice_members(&mut self, members: &[VoiceItem], cx: &mut Context<Self>) -> Vec<AnyElement> {
+        members
+            .iter()
+            .map(|m| {
+                let mut row = div()
+                    .id(("voice-member", m.user.0))
+                    .h(px(28.))
+                    .ml(px(30.))
+                    .px_2()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .text_size(px(14.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT)))
+                    .child(avatar(&self.media, &m.avatar, 20., &m.name, cx))
+                    .child(div().flex_1().min_w_0().truncate().child(m.name.clone()));
+                let user = m.user;
+                row = row.on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, this.guild, cx)));
+                if m.streaming {
+                    row = row.child(
+                        div()
+                            .px(px(5.))
+                            .rounded(px(3.))
+                            .bg(rgb(theme::BADGE))
+                            .text_size(px(10.))
+                            .font_weight(gpui_kit::FontWeight::BOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child("LIVE"),
+                    );
+                } else if m.video {
+                    row = row.child(icon("video", 14., theme::TEXT_MUTED));
+                }
+                if m.deafened {
+                    row = row.child(icon("headphone-off", 14., theme::DANGER));
+                } else if m.muted {
+                    row = row.child(icon("mic-off", 14., theme::DANGER));
+                }
+                row.into_any_element()
+            })
+            .collect()
+    }
+
     fn render_channel(
         &mut self,
         channel: ChannelItem,
@@ -1079,8 +1138,9 @@ impl MainView {
         };
 
         let indent = if channel.kind.is_thread() { 18. } else { 0. };
+        let participants = self.render_voice_members(&channel.voice, cx);
 
-        div()
+        let row = div()
             .id(("channel", id.0))
             .group("channel-row")
             .on_mouse_down(
@@ -1129,7 +1189,9 @@ impl MainView {
                     }))
                     .child(icon("user-plus", 15., theme::TEXT_MUTED))
             }))
-            .children(mention_badge(channel.unread.mentions))
+            .children(mention_badge(channel.unread.mentions));
+
+        div().flex().flex_col().child(row).children(participants)
     }
 
     /// The row above the DM list that opens the friends page.
@@ -1644,6 +1706,22 @@ fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> Cha
         muted: store.is_muted(c),
         can_invite: !c.kind.is_thread()
             && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE),
+        voice: store
+            .voice_in(c.id)
+            .iter()
+            .map(|v| {
+                let user = store.user(v.user_id);
+                VoiceItem {
+                    user: v.user_id,
+                    name: user.map_or_else(|| "Unknown".to_owned(), |u| u.display_name().to_owned()),
+                    avatar: cdn::user_avatar(v.user_id, user.and_then(|u| u.avatar.as_deref()), 64),
+                    muted: v.muted(),
+                    deafened: v.deafened(),
+                    video: v.self_video,
+                    streaming: v.self_stream,
+                }
+            })
+            .collect(),
         threads: Vec::new(),
     }
 }
