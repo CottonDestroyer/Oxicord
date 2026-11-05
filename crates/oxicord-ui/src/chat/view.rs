@@ -36,7 +36,7 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{OpenMenu, OpenPicker, PanelKind, Session},
+    session::{OpenInbox, OpenMenu, OpenPicker, PanelKind, Session},
     theme,
 };
 
@@ -1489,6 +1489,11 @@ impl ChatView {
                     }))
                     .child("Search")
                     .child(icon("search", 14., theme::TEXT_MUTED)),
+            )
+            .child(
+                action_button("open-inbox", "inbox", theme::TEXT_MUTED).on_click(cx.listener(|this, _, _, cx| {
+                    this.session.update(cx, |_, cx| cx.emit(OpenInbox));
+                })),
             )
             .child(
                 action_button("open-help", "circle-question-mark", theme::TEXT_MUTED)

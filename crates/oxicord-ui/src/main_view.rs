@@ -21,11 +21,12 @@ use crate::{
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
+    inbox::{CloseInbox, Inbox},
     keys::QuickSwitch,
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
     profile,
-    session::{DmOpened, JumpTo, OpenMenu, OpenPanel, OpenPicker, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, OpenInbox, OpenMenu, OpenPanel, OpenPicker, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     side_panel::{ClosePanel, SidePanel},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
@@ -97,6 +98,8 @@ pub struct MainView {
     switcher_open: bool,
     picker: Entity<DmPicker>,
     picker_open: bool,
+    inbox: Entity<Inbox>,
+    inbox_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
     focus: FocusHandle,
     /// Whether the member list was showing at the last redraw, so turning it
@@ -138,10 +141,23 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| DmPicker::new(session, media, backend, window, cx))
         };
+        let inbox = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| Inbox::new(session, media, backend, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let subscriptions = vec![
+            cx.subscribe(&inbox, |this, _, _: &CloseInbox, cx| {
+                this.inbox_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, _: &OpenInbox, cx| {
+                this.inbox_open = true;
+                this.inbox.update(cx, |inbox, cx| inbox.opened(cx));
+                cx.notify();
+            }),
             cx.subscribe(&picker, |this, _, _: &ClosePicker, cx| {
                 this.picker_open = false;
                 cx.notify();
@@ -245,6 +261,8 @@ impl MainView {
             switcher_open: false,
             picker,
             picker_open: false,
+            inbox,
+            inbox_open: false,
             focus,
             _subscriptions: subscriptions,
         }
@@ -1241,6 +1259,7 @@ impl Render for MainView {
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
+        let inbox = self.inbox_open.then(|| self.inbox.clone());
 
         div()
             .size_full()
@@ -1279,6 +1298,7 @@ impl Render for MainView {
             .children(join)
             .children(switcher)
             .children(picker)
+            .children(inbox)
             .children(settings)
     }
 }

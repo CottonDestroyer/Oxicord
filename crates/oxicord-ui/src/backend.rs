@@ -57,6 +57,8 @@ pub enum Command {
     SaveSettings(Settings),
     /// The pinned messages of a channel. The answer arrives as [`Event::Pins`].
     LoadPins(Snowflake),
+    /// Recent messages that mention us. The answer arrives as [`Event::Mentions`].
+    LoadMentions,
     /// Pin or unpin a message. The refreshed pins arrive as [`Event::Pins`].
     SetPinned {
         channel: Snowflake,
@@ -232,6 +234,7 @@ pub enum Event {
         channel: Snowflake,
         result: Result<Vec<Message>, String>,
     },
+    Mentions(Result<Vec<Message>, String>),
     Search {
         raw: String,
         offset: u32,

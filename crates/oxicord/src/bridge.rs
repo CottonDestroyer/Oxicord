@@ -395,6 +395,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::ThreadCreated(result)).await;
             });
         }
+        Command::LoadMentions => {
+            tokio::spawn(async move {
+                let result = api.mentions().await.map_err(|err| {
+                    tracing::warn!(?err, "could not load mentions");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::Mentions(result)).await;
+            });
+        }
         Command::LoadPins(channel) => {
             tokio::spawn(async move { send_pins(&api, channel, &events).await });
         }

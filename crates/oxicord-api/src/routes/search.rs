@@ -48,6 +48,17 @@ impl ApiClient {
         parse_search(&body)
     }
 
+    /// Messages that mention us, newest first, for the inbox.
+    pub async fn mentions(&self) -> Result<Vec<Message>, ApiError> {
+        self.json(
+            Method::GET,
+            "/users/@me/mentions?limit=25&roles=true&everyone=true",
+            "GET /users/@me/mentions",
+            None,
+        )
+        .await
+    }
+
     /// The pinned messages of a channel, newest pin first.
     pub async fn pins(&self, channel: Snowflake) -> Result<Vec<Message>, ApiError> {
         let body: Value = self

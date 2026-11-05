@@ -24,6 +24,8 @@ pub struct Session {
     pub account: AccountState,
     /// Pinned messages per channel, loaded when the panel asks.
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
+    /// Recent mentions for the inbox.
+    pub mentions: Load<Vec<Message>>,
     /// The latest search: what was asked and how it went.
     pub search: Option<(String, Load<SearchPage>)>,
     /// The thread list last asked for per channel: open threads and, once
@@ -80,6 +82,11 @@ pub struct OpenMenu {
 
 impl EventEmitter<OpenMenu> for Session {}
 
+/// The inbox button was pressed.
+pub struct OpenInbox;
+
+impl EventEmitter<OpenInbox> for Session {}
+
 /// A view wants the friend picker for starting or growing a conversation.
 pub struct OpenPicker {
     pub purpose: crate::dm_picker::Purpose,
@@ -126,6 +133,7 @@ impl Session {
             friend_request: None,
             invite: Load::Idle,
             commands: HashMap::new(),
+            mentions: Load::Idle,
             invite_joined: None,
             previews: HashMap::new(),
             jump_target: None,
@@ -169,6 +177,20 @@ impl Session {
             }
             Err(error) => self.set_notice(Some(format!("Could not load that message. {error}")), cx),
         }
+    }
+
+    pub fn request_mentions(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.mentions = Load::Loading;
+        backend.send(Command::LoadMentions);
+        cx.notify();
+    }
+
+    pub fn apply_mentions(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
+        self.mentions = match result {
+            Ok(list) => Load::Ready(list),
+            Err(error) => Load::Failed(error),
+        };
+        cx.notify();
     }
 
     pub fn request_pins(&mut self, backend: &Backend, channel: Snowflake, cx: &mut Context<Self>) {

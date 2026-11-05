@@ -171,9 +171,10 @@ impl SidePanel {
                 n => format!("{n} attachments"),
             }
         } else {
-            match message.content.char_indices().nth(PREVIEW_CHARS) {
-                Some((end, _)) => format!("{}...", &message.content[..end]),
-                None => message.content.clone(),
+            let full = crate::plain::plain_text(message, &self.session.read(cx).store);
+            match full.char_indices().nth(PREVIEW_CHARS) {
+                Some((end, _)) => format!("{}...", &full[..end]),
+                None => full,
             }
         };
 

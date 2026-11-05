@@ -150,6 +150,9 @@ impl AppView {
             Event::ThreadCreated(result) => {
                 self.session.update(cx, |session, cx| session.apply_new_thread(result, cx));
             }
+            Event::Mentions(result) => {
+                self.session.update(cx, |session, cx| session.apply_mentions(result, cx));
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }
