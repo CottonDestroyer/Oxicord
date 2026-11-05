@@ -186,6 +186,12 @@ pub enum Command {
     /// Open a conversation with `user`, or find the one that exists. The
     /// answer arrives as [`Event::DmOpened`].
     OpenDm(Snowflake),
+    /// Start a group conversation with these people. Answers like `OpenDm`.
+    OpenGroupDm(Vec<Snowflake>),
+    /// Add friends to a group conversation.
+    AddRecipients { channel: Snowflake, users: Vec<Snowflake> },
+    /// Remove a conversation from the list, or leave the group.
+    CloseDm(Snowflake),
     /// Accept a friend request. The new state arrives through the gateway.
     AcceptFriend(Snowflake),
     /// Unfriend, decline or cancel, depending on what the tie is now.

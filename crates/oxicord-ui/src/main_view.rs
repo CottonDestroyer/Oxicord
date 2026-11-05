@@ -16,6 +16,7 @@ use crate::{
     backend::{Backend, Command},
     chat::ChatView,
     context_menu::{CloseMenu, ContextMenu, Target},
+    dm_picker::{ClosePicker, DmPicker, Purpose},
     forum::ForumView,
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
@@ -24,7 +25,7 @@ use crate::{
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
     profile,
-    session::{DmOpened, JumpTo, OpenMenu, OpenPanel, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, OpenMenu, OpenPanel, OpenPicker, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     side_panel::{ClosePanel, SidePanel},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
@@ -54,6 +55,8 @@ struct GroupItem {
 }
 
 struct DmItem {
+    /// People in a group conversation, us included.
+    members: Option<usize>,
     id: Snowflake,
     name: String,
     avatar: String,
@@ -92,6 +95,8 @@ pub struct MainView {
     join_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
+    picker: Entity<DmPicker>,
+    picker_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
     focus: FocusHandle,
     /// Whether the member list was showing at the last redraw, so turning it
@@ -129,10 +134,21 @@ impl MainView {
             let (session, media) = (session.clone(), media.clone());
             cx.new(|cx| QuickSwitcher::new(session, media, window, cx))
         };
+        let picker = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| DmPicker::new(session, media, backend, window, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let subscriptions = vec![
+            cx.subscribe(&picker, |this, _, _: &ClosePicker, cx| {
+                this.picker_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenPicker, window, cx| {
+                this.open_picker(open.purpose, open.at, window, cx);
+            }),
             cx.subscribe(&switcher, |this, _, _: &CloseSwitcher, cx| {
                 this.switcher_open = false;
                 cx.notify();
@@ -227,6 +243,8 @@ impl MainView {
             join_open: false,
             switcher,
             switcher_open: false,
+            picker,
+            picker_open: false,
             focus,
             _subscriptions: subscriptions,
         }
@@ -261,6 +279,21 @@ impl MainView {
         }
         self.sync_chat(window, cx);
         cx.notify();
+    }
+
+    fn open_picker(&mut self, purpose: Purpose, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        self.picker_open = true;
+        self.picker.update(cx, |p, cx| p.show(purpose, at, window, cx));
+        cx.notify();
+    }
+
+    /// Hides a conversation. When it is the one on screen, falls back to the
+    /// friends page.
+    fn close_dm(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        self.backend.send(Command::CloseDm(channel));
+        if self.channel == Some(channel) {
+            self.show_friends(window, cx);
+        }
     }
 
     fn open_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -575,6 +608,7 @@ impl MainView {
                     _ => None,
                 };
                 DmItem {
+                    members: (c.kind == ChannelType::GroupDm).then(|| c.recipients.len() + 1),
                     id: c.id,
                     name: store.dm_name(c),
                     avatar,
@@ -718,6 +752,7 @@ impl MainView {
             }
             None => {
                 list = list.child(self.render_friends_entry(cx));
+                list = list.child(self.render_dm_heading(cx));
                 for dm in self.dm_items(cx) {
                     list = list.child(self.render_dm(dm, cx));
                 }
@@ -920,6 +955,41 @@ impl MainView {
             .children(mention_badge(u32::try_from(pending).unwrap_or(u32::MAX)))
     }
 
+    /// "Direct Messages" with the button that starts a new conversation.
+    fn render_dm_heading(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .h(px(32.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_between()
+            .pl_2()
+            .pr_1()
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child("DIRECT MESSAGES"),
+            )
+            .child(
+                div()
+                    .id("new-dm")
+                    .size(px(20.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .rounded(px(4.))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
+                        let at = point(event.position().x - px(40.), event.position().y + px(14.));
+                        this.open_picker(Purpose::Create, at, window, cx);
+                    }))
+                    .child(icon("plus", 14., theme::TEXT_MUTED)),
+            )
+    }
+
     fn render_dm(&mut self, dm: DmItem, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let id = dm.id;
         let selected = self.channel == Some(id);
@@ -931,6 +1001,7 @@ impl MainView {
 
         div()
             .id(("dm", id.0))
+            .group("dm-row")
             .h(px(44.))
             .flex()
             .items_center()
@@ -949,8 +1020,35 @@ impl MainView {
                     .child(avatar(&self.media, &dm.avatar, 32., &dm.name, cx))
                     .children(dm.status.map(presence_dot)),
             )
-            .child(div().flex_1().truncate().child(dm.name))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(div().truncate().child(dm.name))
+                    .children(dm.members.map(|n| {
+                        div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{n} Members"))
+                    })),
+            )
             .children(mention_badge(dm.unread.mentions))
+            .child(
+                div()
+                    .id(("close-dm", id.0))
+                    .size(px(18.))
+                    .flex_none()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(4.))
+                    .hidden()
+                    .group_hover("dm-row", |s| s.flex())
+                    .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.close_dm(id, window, cx);
+                    }))
+                    .child(icon("x", 14., theme::TEXT_MUTED)),
+            )
     }
 
     fn set_status(&mut self, status: ClientStatus, cx: &mut Context<Self>) {
@@ -1142,6 +1240,7 @@ impl Render for MainView {
         let viewer = self.render_viewer(cx);
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
+        let picker = self.picker_open.then(|| self.picker.clone());
 
         div()
             .size_full()
@@ -1179,6 +1278,7 @@ impl Render for MainView {
             .children(viewer)
             .children(join)
             .children(switcher)
+            .children(picker)
             .children(settings)
     }
 }

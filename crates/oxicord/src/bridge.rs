@@ -425,6 +425,32 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::DmOpened(result)).await;
             });
         }
+        Command::OpenGroupDm(users) => {
+            tokio::spawn(async move {
+                let result = api.open_conversation(&users).await.map_err(|err| {
+                    tracing::warn!(?err, "could not start a group conversation");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::DmOpened(result)).await;
+            });
+        }
+        Command::AddRecipients { channel, users } => {
+            tokio::spawn(async move {
+                for user in users {
+                    if let Err(err) = api.add_recipient(channel, user).await {
+                        notify(&events, "add that person", &err).await;
+                        break;
+                    }
+                }
+            });
+        }
+        Command::CloseDm(channel) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.close_channel(channel).await {
+                    notify(&events, "close that conversation", &err).await;
+                }
+            });
+        }
         Command::LoadProfile { user, guild } => {
             tokio::spawn(async move {
                 let result = api.profile(user, guild).await.map_err(|err| {

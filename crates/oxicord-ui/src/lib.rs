@@ -5,6 +5,7 @@ mod chat;
 mod emoji_panel;
 mod forum;
 mod context_menu;
+mod dm_picker;
 mod friends;
 mod icons;
 mod join_server;

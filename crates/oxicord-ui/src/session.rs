@@ -80,6 +80,14 @@ pub struct OpenMenu {
 
 impl EventEmitter<OpenMenu> for Session {}
 
+/// A view wants the friend picker for starting or growing a conversation.
+pub struct OpenPicker {
+    pub purpose: crate::dm_picker::Purpose,
+    pub at: gpui_kit::Point<gpui_kit::Pixels>,
+}
+
+impl EventEmitter<OpenPicker> for Session {}
+
 /// Someone picked a message in a list and wants to go to its channel, and
 /// to the message itself when one is named.
 pub struct JumpTo {

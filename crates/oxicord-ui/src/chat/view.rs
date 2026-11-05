@@ -35,7 +35,8 @@ use crate::{
     icons::icon,
     media::{Media, avatar},
     context_menu::Target,
-    session::{OpenMenu, PanelKind, Session},
+    dm_picker::Purpose,
+    session::{OpenMenu, OpenPicker, PanelKind, Session},
     theme,
 };
 
@@ -1364,6 +1365,7 @@ impl ChatView {
             .unwrap_or(("hash", String::new(), None));
         // Threads only make sense inside a server.
         let has_threads = self.guild(cx).is_some();
+        let in_dm = self.channel.and_then(|id| self.session.read(cx).store.channel(id)).is_some_and(|c| c.kind.is_dm());
         let thread_state = self.channel.and_then(|id| {
             let c = self.session.read(cx).store.channel(id)?.clone();
             c.kind.is_thread().then(|| (id, c.joined(), c.archived()))
@@ -1451,6 +1453,17 @@ impl ChatView {
                     |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Pins, cx)),
                 )),
             )
+            .children(in_dm.then(|| {
+                action_button("add-to-dm", "user-plus", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, event: &ClickEvent, _, cx| {
+                        let Some(channel) = this.channel else { return };
+                        let at = gpui_kit::point(event.position().x - px(300.), event.position().y + px(18.));
+                        this.session.update(cx, |_, cx| {
+                            cx.emit(OpenPicker { purpose: Purpose::AddTo(channel), at });
+                        });
+                    },
+                ))
+            }))
             .children(has_members.then(|| {
                 let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
                 action_button("toggle-members", "users", color)
