@@ -1,4 +1,5 @@
 mod attachments;
+mod autocomplete;
 mod format;
 mod markdown;
 mod rows;

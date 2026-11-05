@@ -8,6 +8,7 @@ use std::{
 use chrono::{Local, NaiveDate, Utc};
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ExternalPaths, FollowMode, FontWeight,
+    KeyDownEvent,
     PathPromptOptions,
     Focusable as _,
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
@@ -42,6 +43,7 @@ use crate::{
 const GUTTER: f32 = 40.;
 
 mod components;
+use super::autocomplete::{self, Suggestion};
 
 /// The message area for whichever channel is open: header, list, composer.
 pub struct ChatView {
@@ -68,6 +70,10 @@ pub struct ChatView {
     revealed: HashSet<(Snowflake, usize)>,
     /// The message whose quick-reaction row is open.
     picker_for: Option<Snowflake>,
+    /// What the word being typed could become, and which one is highlighted.
+    suggestions: Vec<Suggestion>,
+    suggest_start: usize,
+    suggest_selected: usize,
     /// The emoji picker, and what a pick from it is for.
     emoji: Entity<EmojiPanel>,
     emoji_for: Option<EmojiTarget>,
@@ -135,8 +141,15 @@ impl ChatView {
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
+                // With suggestions showing, Enter picks one instead of sending.
+                InputEvent::PressEnter { shift: false, .. } if !this.suggestions.is_empty() => {
+                    this.apply_suggestion(window, cx);
+                }
                 InputEvent::PressEnter { shift: false, .. } => this.submit(window, cx),
-                InputEvent::Change => this.note_typing(window, cx),
+                InputEvent::Change => {
+                    this.note_typing(window, cx);
+                    this.refresh_suggestions(cx);
+                }
                 _ => {}
             }),
         ];
@@ -175,6 +188,9 @@ impl ChatView {
             revealed: HashSet::new(),
             picker_for: None,
             open_menu: None,
+            suggestions: Vec::new(),
+            suggest_start: 0,
+            suggest_selected: 0,
             emoji,
             emoji_for: None,
             picked: HashMap::new(),
@@ -264,6 +280,94 @@ impl ChatView {
             cx.emit(changes);
             cx.notify();
         });
+    }
+
+    /// Rebuilds the suggestion list for the word at the end of the text.
+    /// Only offered when the cursor is at the end, because accepting one
+    /// rewrites the whole text.
+    fn refresh_suggestions(&mut self, cx: &mut Context<Self>) {
+        let (text, at_end) = {
+            let input = self.input.read(cx);
+            let text = input.value().to_string();
+            let at_end = input.cursor() >= text.len();
+            (text, at_end)
+        };
+        self.suggestions.clear();
+        self.suggest_selected = 0;
+        if let (true, Some(channel), Some(trigger)) = (at_end, self.channel, autocomplete::trigger(&text)) {
+            let guild = self.guild(cx);
+            self.suggestions = autocomplete::suggest(&self.session.read(cx).store, guild, channel, &trigger);
+            self.suggest_start = trigger.start;
+        }
+        cx.notify();
+    }
+
+    fn apply_suggestion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(pick) = self.suggestions.get(self.suggest_selected).cloned() else { return };
+        let mut text = self.input.read(cx).value().to_string();
+        text.truncate(self.suggest_start.min(text.len()));
+        text.push_str(&pick.insert);
+        text.push(' ');
+        self.suggestions.clear();
+        self.input.update(cx, |input, cx| input.set_value(text, window, cx));
+        cx.notify();
+    }
+
+    /// Arrow keys, Tab and Escape while suggestions are showing. Returns
+    /// whether the key was used.
+    fn suggestion_key(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.suggestions.is_empty() {
+            return false;
+        }
+        let last = self.suggestions.len() - 1;
+        match key {
+            "down" => self.suggest_selected = (self.suggest_selected + 1).min(last),
+            "up" => self.suggest_selected = self.suggest_selected.saturating_sub(1),
+            "tab" => self.apply_suggestion(window, cx),
+            "escape" => self.suggestions.clear(),
+            _ => return false,
+        }
+        cx.notify();
+        true
+    }
+
+    /// The list above the composer.
+    fn render_suggestions(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.suggestions.is_empty() {
+            return None;
+        }
+        let mut list = div()
+            .mb_1()
+            .p_1()
+            .flex()
+            .flex_col()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .bg(rgb(theme::BG_PANEL));
+        for (i, item) in self.suggestions.iter().enumerate() {
+            let selected = i == self.suggest_selected;
+            list = list.child(
+                div()
+                    .id(("suggestion", i as u64))
+                    .px_2()
+                    .h(px(30.))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_PANEL }))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.suggest_selected = i;
+                        this.apply_suggestion(window, cx);
+                    }))
+                    .child(div().text_color(rgb(theme::TEXT_BRIGHT)).child(item.label.clone()))
+                    .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(item.detail.clone())),
+            );
+        }
+        Some(list.into_any_element())
     }
 
     /// Tells the channel we are typing, at most once every few seconds and
@@ -1318,6 +1422,9 @@ impl ChatView {
                 .into_any_element();
         }
 
+        if let Some(list) = self.render_suggestions(cx) {
+            column = column.child(list);
+        }
         if let Some(bar) = self.compose_context_bar(cx) {
             column = column.child(bar);
         }
@@ -1346,6 +1453,13 @@ impl ChatView {
                         div()
                             .flex_1()
                             .min_w_0()
+                            // Captured before the text field turns arrows into
+                            // cursor moves, so the list can use them.
+                            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                                if this.suggestion_key(event.keystroke.key.as_str(), window, cx) {
+                                    cx.stop_propagation();
+                                }
+                            }))
                             .child(Textarea::new(&self.input).appearance(false).bordered(false)),
                     )
                     .child(
