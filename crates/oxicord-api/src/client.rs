@@ -2,7 +2,10 @@ use std::{sync::Arc, time::Duration};
 
 use reqwest::{
     Method, Response,
-    header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue, USER_AGENT},
+    header::{
+        ACCEPT_LANGUAGE, AUTHORIZATION, HeaderMap, HeaderName, HeaderValue, ORIGIN, REFERER,
+        USER_AGENT,
+    },
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -13,7 +16,7 @@ use crate::{
     super_props::SuperProperties,
 };
 
-const BASE_URL: &str = "https://discord.com/api/v9";
+const BASE_URL: &str = "https://discord.com/api/v10";
 const MAX_RETRIES: u32 = 3;
 
 #[derive(Clone, Debug)]
@@ -51,8 +54,27 @@ impl ApiClient {
             HeaderValue::from_str(&props.user_agent()).map_err(|_| ApiError::BadToken)?,
         );
 
+        // The rest of what the web client sends on every call. A request
+        // that has the super properties but lacks these looks scripted.
+        headers.insert(
+            HeaderName::from_static("x-discord-timezone"),
+            HeaderValue::from_static("UTC"),
+        );
+        headers.insert(
+            ACCEPT_LANGUAGE,
+            HeaderValue::from_static("en-US,en;q=0.9"),
+        );
+        headers.insert(ORIGIN, HeaderValue::from_static("https://discord.com"));
+        headers.insert(
+            REFERER,
+            HeaderValue::from_static("https://discord.com/channels/@me"),
+        );
+
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            // An API call never legitimately redirects, so treat one as a
+            // failure instead of following it somewhere else with our token.
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(30))
             .build()?;
 

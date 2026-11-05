@@ -14,7 +14,7 @@ use oxicord_api::super_props::SuperProperties;
 use oxicord_model::gateway::DispatchEvent;
 use tokio::sync::mpsc;
 
-pub use protocol::{CAPABILITIES, ClientStatus, DEFAULT_GATEWAY};
+pub use protocol::{ClientStatus, DEFAULT_GATEWAY};
 
 use session::{Command, Runtime};
 

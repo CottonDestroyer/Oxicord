@@ -4,9 +4,9 @@ use crate::{Channel, Emoji, Member, Role, Snowflake};
 
 /// A guild in the shape the rest of the client wants.
 ///
-/// The wire format has two layouts. Bots and the REST API put `name`, `icon`
-/// and friends at the top level. Gateway sessions that opt into the newer
-/// capabilities nest them under `properties`. `RawGuild` reads either one.
+/// The wire format has two layouts. Most payloads put `name`, `icon` and
+/// friends at the top level, but some gateway payloads nest them under
+/// `properties`. `RawGuild` reads either one.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(from = "RawGuild")]
 pub struct Guild {

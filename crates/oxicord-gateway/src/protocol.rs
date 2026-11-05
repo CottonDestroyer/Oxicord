@@ -10,13 +10,9 @@ use oxicord_model::gateway::op;
 
 pub const DEFAULT_GATEWAY: &str = "wss://gateway.discord.gg";
 
-/// Capability bits the web client sends in IDENTIFY. They change what shape
-/// READY and GUILD_CREATE arrive in, so keep them in step with the models.
-pub const CAPABILITIES: u64 = 1_734_653;
-
 pub fn gateway_url(base: &str) -> String {
     format!(
-        "{}/?v=9&encoding=json&compress=zlib-stream",
+        "{}/?v=10&encoding=json&compress=zlib-stream",
         base.trim_end_matches('/')
     )
 }
@@ -43,15 +39,20 @@ impl ClientStatus {
     }
 }
 
+/// The IDENTIFY a normal user session sends.
+///
+/// This deliberately has no `capabilities` and no `client_state`, even though
+/// the official web client sends both. Live testing showed Discord revoking
+/// the token of a session that identified the way the web client does, and
+/// not one that identified like this. Keep it this plain.
 pub fn identify(token: &str, props: &SuperProperties, status: ClientStatus) -> Value {
     json!({
         "op": op::IDENTIFY,
         "d": {
             "token": token,
-            "capabilities": CAPABILITIES,
+            "compress": false,
             "properties": props.to_value(),
             "presence": presence_body(status),
-            "client_state": { "guild_versions": {} },
         }
     })
 }
@@ -173,19 +174,23 @@ mod tests {
     fn url_carries_version_encoding_and_compression() {
         assert_eq!(
             gateway_url("wss://gateway.discord.gg/"),
-            "wss://gateway.discord.gg/?v=9&encoding=json&compress=zlib-stream"
+            "wss://gateway.discord.gg/?v=10&encoding=json&compress=zlib-stream"
         );
     }
 
     #[test]
-    fn identify_has_the_fields_the_web_client_sends() {
+    fn identify_is_exactly_the_plain_user_shape() {
         let v = identify("tok", &SuperProperties::default(), ClientStatus::Idle);
         assert_eq!(v["op"], 2);
+
+        let mut keys: Vec<_> = v["d"].as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["compress", "presence", "properties", "token"]);
+
         assert_eq!(v["d"]["token"], "tok");
-        assert_eq!(v["d"]["capabilities"], CAPABILITIES);
+        assert_eq!(v["d"]["compress"], false);
         assert_eq!(v["d"]["presence"]["status"], "idle");
         assert!(v["d"]["properties"]["client_build_number"].is_number());
-        assert!(v["d"]["client_state"]["guild_versions"].is_object());
     }
 
     #[test]
