@@ -8,6 +8,7 @@ license.workspace = true
 gpui-kit.workspace = true
 oxicord-ui.workspace = true
 oxicord-api.workspace = true
+oxicord-browser-login.workspace = true
 oxicord-gateway.workspace = true
 oxicord-model.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
@@ -15,3 +16,6 @@ async-channel.workspace = true
 keyring.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

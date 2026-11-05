@@ -1,0 +1,13 @@
+[package]
+name = "oxicord-browser-login"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+url = "2"
+
+[target.'cfg(windows)'.dependencies]
+wry = "0.57"
+tao = "0.37"
+getrandom = "0.4"

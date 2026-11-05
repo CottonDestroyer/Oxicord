@@ -33,6 +33,7 @@ keyring = { version = "3", features = ["windows-native", "apple-native", "linux-
 tracing-subscriber = "0.3"
 
 oxicord-api = { path = "crates/oxicord-api" }
+oxicord-browser-login = { path = "crates/oxicord-browser-login" }
 oxicord-gateway = { path = "crates/oxicord-gateway" }
 oxicord-store = { path = "crates/oxicord-store" }
 

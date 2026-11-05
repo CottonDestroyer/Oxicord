@@ -11,7 +11,10 @@ use oxicord_model::User;
 /// Things the UI asks for.
 #[derive(Debug)]
 pub enum Command {
+    /// Sign in with a token the user already has.
     Login(String),
+    /// Open Discord's own login page in a temporary window.
+    BrowserLogin,
     Logout,
 }
 
