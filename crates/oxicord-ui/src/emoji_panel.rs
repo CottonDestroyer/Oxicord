@@ -247,6 +247,12 @@ impl EmojiPanel {
         cx.notify();
     }
 
+    /// Opens straight onto the GIF grid, for the composer's GIF button.
+    pub fn show_gifs(&mut self, guild: Option<Snowflake>, window: &mut Window, cx: &mut Context<Self>) {
+        self.show(guild, window, cx);
+        self.set_mode(Mode::Gifs, window, cx);
+    }
+
     fn custom(&self, cx: &gpui_kit::App) -> Vec<Emoji> {
         let Some(guild) = self.guild else { return Vec::new() };
         self.session

@@ -23,7 +23,7 @@ use crate::{
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
     profile,
-    session::{DmOpened, JumpTo, OpenPanel, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, OpenMenu, OpenPanel, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     side_panel::{ClosePanel, SidePanel},
     theme,
@@ -158,6 +158,9 @@ impl MainView {
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&session, window, |this, _, opened: &DmOpened, window, cx| {
                 this.show_dm(opened.0, window, cx);
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenMenu, cx| {
+                this.open_menu(open.target, open.at, cx);
             }),
             cx.subscribe(&session, |this, _, shown: &ShowProfile, cx| {
                 this.open_profile(shown.user, shown.guild, cx);

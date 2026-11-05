@@ -34,7 +34,8 @@ use crate::{
     emoji_panel::{ClosePicker, EmojiPanel, Picked, PickedGif},
     icons::icon,
     media::{Media, avatar},
-    session::{PanelKind, Session},
+    context_menu::Target,
+    session::{OpenMenu, PanelKind, Session},
     theme,
 };
 
@@ -609,6 +610,13 @@ impl ChatView {
             self.emoji_for = Some(target);
             self.emoji.update(cx, |panel, cx| panel.show(guild, window, cx));
         }
+        cx.notify();
+    }
+
+    fn open_gifs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let guild = self.guild(cx);
+        self.emoji_for = Some(EmojiTarget::Composer);
+        self.emoji.update(cx, |panel, cx| panel.show_gifs(guild, window, cx));
         cx.notify();
     }
 
@@ -1427,14 +1435,20 @@ impl ChatView {
                     }),
                 )
             }))
+            .children(has_threads.then(|| {
+                action_button("notification-settings", "bell", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, event: &ClickEvent, _, cx| {
+                        let Some(channel) = this.channel else { return };
+                        let at = gpui_kit::point(event.position().x - px(190.), event.position().y + px(18.));
+                        this.session.update(cx, |_, cx| {
+                            cx.emit(OpenMenu { target: Target::Channel(channel), at });
+                        });
+                    },
+                ))
+            }))
             .child(
                 action_button("open-pins", "pin", theme::TEXT_MUTED).on_click(cx.listener(
                     |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Pins, cx)),
-                )),
-            )
-            .child(
-                action_button("open-search", "search", theme::TEXT_MUTED).on_click(cx.listener(
-                    |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Search, cx)),
                 )),
             )
             .children(has_members.then(|| {
@@ -1442,7 +1456,33 @@ impl ChatView {
                 action_button("toggle-members", "users", color)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_members(cx)))
             }))
+            .child(
+                div()
+                    .id("open-search")
+                    .w(px(144.))
+                    .h(px(26.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px_2()
+                    .rounded(px(4.))
+                    .cursor_text()
+                    .bg(rgb(theme::BG_PANEL))
+                    .text_size(px(13.))
+                    .text_color(rgb(theme::TEXT_FAINT))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.session.update(cx, |s, cx| s.open_panel(PanelKind::Search, cx))
+                    }))
+                    .child("Search")
+                    .child(icon("search", 14., theme::TEXT_MUTED)),
+            )
+            .child(
+                action_button("open-help", "circle-question-mark", theme::TEXT_MUTED)
+                    .on_click(|_, _, cx| cx.open_url("https://support.discord.com")),
+            )
     }
+
 
     /// The small card under a message that started a thread.
     fn thread_chip(&mut self, thread: &oxicord_model::Channel, cx: &mut Context<Self>) -> AnyElement {
@@ -1669,7 +1709,7 @@ impl ChatView {
                         this.add_files(dropped.paths().to_vec(), cx);
                     }))
                     .children((self.editing.is_none()).then(|| {
-                        action_button("attach", "paperclip", theme::TEXT_MUTED)
+                        action_button("attach", "circle-plus", theme::TEXT_MUTED)
                             .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx)))
                     }))
                     .child(
@@ -1686,13 +1726,13 @@ impl ChatView {
                             .child(Textarea::new(&self.input).appearance(false).bordered(false)),
                     )
                     .child(
-                        action_button("emoji", "face-slightly-smiling", theme::TEXT_MUTED).on_click(cx.listener(
-                            |this, _, window, cx| this.open_emoji(EmojiTarget::Composer, window, cx),
+                        action_button("gif", "images", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, window, cx| this.open_gifs(window, cx),
                         )),
                     )
                     .child(
-                        action_button("send", "send", theme::TEXT_MUTED).on_click(cx.listener(
-                            |this, _, window, cx| this.submit(window, cx),
+                        action_button("emoji", "face-slightly-smiling", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, window, cx| this.open_emoji(EmojiTarget::Composer, window, cx),
                         )),
                     ),
             )

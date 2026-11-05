@@ -72,6 +72,14 @@ pub struct OpenPanel(pub PanelKind);
 
 impl EventEmitter<OpenPanel> for Session {}
 
+/// A view wants the server or channel menu at a point on screen.
+pub struct OpenMenu {
+    pub target: crate::context_menu::Target,
+    pub at: gpui_kit::Point<gpui_kit::Pixels>,
+}
+
+impl EventEmitter<OpenMenu> for Session {}
+
 /// Someone picked a message in a list and wants to go to its channel, and
 /// to the message itself when one is named.
 pub struct JumpTo {
