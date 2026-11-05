@@ -371,6 +371,22 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::Profile { user, result }).await;
             });
         }
+        Command::BlockUser(user) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.block_user(user).await {
+                    notify(&events, "block that person", &err).await;
+                }
+            });
+        }
+        Command::AddFriendByName(username) => {
+            tokio::spawn(async move {
+                let result = api.add_friend_by_name(&username).await.map_err(|err| {
+                    tracing::warn!(?err, "friend request failed");
+                    friend_request_failure(&err)
+                });
+                let _ = events.send(Event::FriendRequest { username, result }).await;
+            });
+        }
         Command::AcceptFriend(user) => {
             tokio::spawn(async move {
                 if let Err(err) = api.accept_friend(user).await {
@@ -548,6 +564,18 @@ async fn load_history(
         tracing::warn!(?err, %channel, "could not load history");
         describe_request(&err)
     })
+}
+
+/// Says why a friend request by name didn't go through.
+fn friend_request_failure(err: &ApiError) -> String {
+    match err {
+        ApiError::Status { status: 400, message, .. } if message.to_lowercase().contains("captcha") => {
+            "Discord wants a captcha for this request, which this app can't show. Send it from Discord's own app."
+                .into()
+        }
+        ApiError::Status { message, .. } if !message.is_empty() => message.clone(),
+        other => describe_request(other),
+    }
 }
 
 fn describe_request(err: &ApiError) -> String {

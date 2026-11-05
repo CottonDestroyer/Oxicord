@@ -162,7 +162,7 @@ impl MainView {
         };
         let friends = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
-            cx.new(|cx| FriendsView::new(session, media, backend, cx))
+            cx.new(|cx| FriendsView::new(session, media, backend, window, cx))
         };
         let forum = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -366,8 +366,14 @@ impl MainView {
                     })
                     .unwrap_or_default(),
                 is_me: store.me().is_some_and(|me| me.id == user),
+                actions: Vec::new(),
             }
         };
+        let mut card = card;
+        if !card.is_me {
+            let kind = self.session.read(cx).store.relationship(user);
+            card.actions = self.relationship_actions(user, kind);
+        }
 
         let on_message =
             cx.listener(move |this, _: &ClickEvent, _, cx| this.message_from_card(user, cx));
@@ -382,6 +388,34 @@ impl MainView {
             Box::new(on_close),
             cx,
         ))
+    }
+
+    /// The relationship buttons for someone's card, by how we know them.
+    fn relationship_actions(
+        &self,
+        user: Snowflake,
+        kind: Option<RelationshipKind>,
+    ) -> Vec<profile::CardAction> {
+        let send = |command: fn(Snowflake) -> Command| {
+            let backend = self.backend.clone();
+            Box::new(move |_: &ClickEvent, _: &mut Window, _: &mut App| backend.send(command(user)))
+                as Box<profile::Handler>
+        };
+        let add = |label| profile::CardAction { label, danger: false, handler: send(Command::AcceptFriend) };
+        let remove = |label| profile::CardAction { label, danger: true, handler: send(Command::RemoveRelationship) };
+        let block = profile::CardAction { label: "Block", danger: true, handler: send(Command::BlockUser) };
+
+        match kind {
+            Some(RelationshipKind::Friend) => vec![remove("Remove Friend"), block],
+            Some(RelationshipKind::IncomingRequest) => vec![add("Accept"), remove("Ignore"), block],
+            Some(RelationshipKind::OutgoingRequest) => vec![remove("Cancel Request"), block],
+            Some(RelationshipKind::Blocked) => vec![profile::CardAction {
+                label: "Unblock",
+                danger: false,
+                handler: send(Command::RemoveRelationship),
+            }],
+            _ => vec![add("Add Friend"), block],
+        }
     }
 
     /// Opens the conversation with the person on the card.

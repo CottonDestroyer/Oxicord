@@ -157,6 +157,10 @@ pub enum Command {
     AcceptFriend(Snowflake),
     /// Unfriend, decline or cancel, depending on what the tie is now.
     RemoveRelationship(Snowflake),
+    BlockUser(Snowflake),
+    /// Send a friend request to this username. The outcome arrives as
+    /// [`Event::FriendRequest`].
+    AddFriendByName(String),
     /// Fetch the details behind a profile card. The answer arrives as
     /// [`Event::Profile`].
     LoadProfile {
@@ -201,6 +205,8 @@ pub enum Event {
         result: Result<ThreadPage, String>,
     },
     ThreadCreated(Result<Channel, String>),
+    /// Whether a friend request sent by name went through.
+    FriendRequest { username: String, result: Result<(), String> },
     ForumPreviews(Vec<Message>),
     Profile {
         user: Snowflake,

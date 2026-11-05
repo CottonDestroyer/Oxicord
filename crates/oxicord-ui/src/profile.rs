@@ -26,6 +26,15 @@ pub struct Card {
     pub roles: Vec<(String, Option<u32>)>,
     /// Hide the message button on our own card.
     pub is_me: bool,
+    /// Buttons for the person's relationship to us: add, remove, block.
+    pub actions: Vec<CardAction>,
+}
+
+/// A small button under the person's name.
+pub struct CardAction {
+    pub label: &'static str,
+    pub danger: bool,
+    pub handler: Box<Handler>,
 }
 
 pub type Handler = dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static;
@@ -182,6 +191,29 @@ fn body(card: Card, media: &Entity<Media>, on_message: Box<Handler>, cx: &mut Ap
                                 .child(status),
                         ),
                 )
+                .children((!card.actions.is_empty()).then(|| {
+                    let mut row = div().flex().flex_wrap().gap_2();
+                    for (i, action) in card.actions.into_iter().enumerate() {
+                        row = row.child(
+                            div()
+                                .id(("card-action", i as u64))
+                                .h(px(28.))
+                                .px_3()
+                                .flex()
+                                .items_center()
+                                .rounded(px(6.))
+                                .cursor_pointer()
+                                .text_size(px(13.))
+                                .border_1()
+                                .border_color(rgb(if action.danger { theme::DANGER } else { theme::BORDER }))
+                                .text_color(rgb(if action.danger { theme::DANGER } else { theme::TEXT }))
+                                .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                .on_click(action.handler)
+                                .child(action.label),
+                        );
+                    }
+                    row
+                }))
                 .child(sections),
         )
         .into_any_element()

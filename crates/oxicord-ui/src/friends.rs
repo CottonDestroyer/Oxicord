@@ -1,7 +1,8 @@
 use gpui_kit::{
-    AnyElement, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    AnyElement, AppContext as _, ClickEvent, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, px, rgb,
+    component::input::{Input, InputState},
 };
 use oxicord_media::cdn;
 use oxicord_model::{RelationshipKind, Snowflake, Status};
@@ -22,10 +23,12 @@ enum Tab {
     All,
     Pending,
     Blocked,
+    /// The form for sending a request by username.
+    Add,
 }
 
 impl Tab {
-    const ALL: [Tab; 4] = [Tab::Online, Tab::All, Tab::Pending, Tab::Blocked];
+    const ALL: [Tab; 5] = [Tab::Online, Tab::All, Tab::Pending, Tab::Blocked, Tab::Add];
 
     fn label(self) -> &'static str {
         match self {
@@ -33,6 +36,7 @@ impl Tab {
             Tab::All => "All",
             Tab::Pending => "Pending",
             Tab::Blocked => "Blocked",
+            Tab::Add => "Add Friend",
         }
     }
 }
@@ -59,6 +63,7 @@ pub struct FriendsView {
     tab: Tab,
     /// The person whose remove button was pressed once already.
     confirm_remove: Option<Snowflake>,
+    add_name: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -67,9 +72,12 @@ impl FriendsView {
         session: Entity<Session>,
         media: Entity<Media>,
         backend: Backend,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let add_name = cx.new(|cx| InputState::new(window, cx).placeholder("Enter a username"));
         let subscriptions = vec![
+            cx.observe(&session, |_, _, cx| cx.notify()),
             cx.subscribe(&session, |_, _, changes: &Changes, cx| {
                 if changes.full || changes.relationships || changes.presences {
                     cx.notify();
@@ -83,6 +91,7 @@ impl FriendsView {
             backend,
             tab: Tab::Online,
             confirm_remove: None,
+            add_name,
             _subscriptions: subscriptions,
         }
     }
@@ -132,6 +141,7 @@ impl FriendsView {
             Tab::Blocked => section("Blocked", self.people(RelationshipKind::Blocked, cx))
                 .into_iter()
                 .collect(),
+            Tab::Add => Vec::new(),
         }
     }
 
@@ -158,6 +168,68 @@ impl FriendsView {
         self.confirm_remove = None;
         self.backend.send(Command::RemoveRelationship(user));
         cx.notify();
+    }
+
+    /// The Add Friend page: a username box and what happened last time.
+    fn render_add_form(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let outcome = self.session.read(cx).friend_request.clone();
+        let send = cx.listener(|this, _: &ClickEvent, window, cx| {
+            let name = this.add_name.read(cx).value().trim().to_owned();
+            if name.is_empty() {
+                return;
+            }
+            this.backend.send(Command::AddFriendByName(name));
+            this.add_name.update(cx, |input, cx| input.set_value("", window, cx));
+        });
+
+        div()
+            .p_6()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .text_size(px(18.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("Add Friend"),
+            )
+            .child(
+                div()
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child("You can add friends with their Discord username."),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .max_w(px(560.))
+                    .child(div().flex_1().child(Input::new(&self.add_name)))
+                    .child(
+                        div()
+                            .id("send-request")
+                            .h(px(36.))
+                            .px_4()
+                            .flex()
+                            .items_center()
+                            .rounded(px(6.))
+                            .cursor_pointer()
+                            .bg(rgb(theme::ACCENT))
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .hover(|s| s.opacity(0.85))
+                            .on_click(send)
+                            .child("Send Friend Request"),
+                    ),
+            )
+            .children(outcome.map(|(name, result)| {
+                let (text, color) = match result {
+                    Ok(()) => (format!("Your friend request to {name} was sent."), theme::ONLINE),
+                    Err(error) => (error, theme::DANGER),
+                };
+                div().text_color(rgb(color)).child(text)
+            }))
+            .into_any_element()
     }
 
     fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -362,6 +434,18 @@ impl Render for FriendsView {
         let sections = self.sections(cx);
 
         let mut body = div().id("friends-body").flex_1().min_h_0().overflow_y_scroll().pb_4();
+        if self.tab == Tab::Add {
+            return div()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .flex()
+                .flex_col()
+                .bg(rgb(theme::BG_CHAT))
+                .child(header)
+                .child(self.render_add_form(cx))
+                .into_any_element();
+        }
         if sections.is_empty() {
             body = body.child(
                 div()
@@ -378,6 +462,7 @@ impl Render for FriendsView {
                         Tab::All => "You have no friends here yet.",
                         Tab::Pending => "There are no pending requests.",
                         Tab::Blocked => "You haven't blocked anyone.",
+                        Tab::Add => "",
                     }),
             );
         }
@@ -410,6 +495,7 @@ impl Render for FriendsView {
             .bg(rgb(theme::BG_CHAT))
             .child(header)
             .child(body)
+            .into_any_element()
     }
 }
 

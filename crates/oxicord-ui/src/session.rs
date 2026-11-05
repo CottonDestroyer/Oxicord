@@ -29,6 +29,8 @@ pub struct Session {
     /// The thread list last asked for per channel: open threads and, once
     /// loaded, archived ones.
     pub archived_threads: HashMap<Snowflake, Load<ThreadPage>>,
+    /// How the last friend request sent by name went, with who it was for.
+    pub friend_request: Option<(String, Result<(), String>)>,
     /// Opening message of each forum post we have seen, by post id.
     pub previews: HashMap<Snowflake, Message>,
     /// Posts whose preview was already asked for.
@@ -87,6 +89,7 @@ impl Session {
             pins: HashMap::new(),
             search: None,
             archived_threads: HashMap::new(),
+            friend_request: None,
             previews: HashMap::new(),
             preview_requested: HashSet::new(),
             status: ClientStatus::default(),
@@ -152,6 +155,11 @@ impl Session {
             self.search = Some((query, state));
             cx.notify();
         }
+    }
+
+    pub fn apply_friend_request(&mut self, username: String, result: Result<(), String>, cx: &mut Context<Self>) {
+        self.friend_request = Some((username, result));
+        cx.notify();
     }
 
     pub fn request_threads(&mut self, backend: &Backend, channel: Snowflake, cx: &mut Context<Self>) {
