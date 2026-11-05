@@ -8,7 +8,7 @@ use gpui_kit::{
     component::input::{Input, InputEvent, InputState},
 };
 use oxicord_media::cdn;
-use oxicord_model::{Message, Permissions, Snowflake};
+use oxicord_model::{Channel, Message, Permissions, Snowflake};
 
 use crate::{
     account::Load,
@@ -80,6 +80,7 @@ impl SidePanel {
         self.channel = channel;
         match kind {
             PanelKind::Pins => self.load_pins(cx),
+            PanelKind::Threads => self.load_threads(cx),
             PanelKind::Search => self.query.update(cx, |input, cx| input.focus(window, cx)),
         }
         cx.notify();
@@ -93,8 +94,28 @@ impl SidePanel {
             self.channel = channel;
             if self.kind == PanelKind::Pins {
                 self.load_pins(cx);
+            } else if self.kind == PanelKind::Threads {
+                self.load_threads(cx);
             }
         }
+    }
+
+    /// The channel whose threads we list: the open one, or the parent when a
+    /// thread is open.
+    fn thread_parent(&self, cx: &gpui_kit::App) -> Option<Snowflake> {
+        let channel = self.channel?;
+        let store = &self.session.read(cx).store;
+        match store.channel(channel) {
+            Some(c) if c.kind.is_thread() => c.parent_id,
+            _ => Some(channel),
+        }
+    }
+
+    fn load_threads(&mut self, cx: &mut Context<Self>) {
+        let Some(parent) = self.thread_parent(cx) else { return };
+        let backend = self.backend.clone();
+        self.session
+            .update(cx, |session, cx| session.request_threads(&backend, parent, cx));
     }
 
     fn load_pins(&mut self, cx: &mut Context<Self>) {
@@ -237,6 +258,70 @@ impl SidePanel {
             .into_any_element()
     }
 
+    fn heading(text: &str) -> AnyElement {
+        div()
+            .px_4()
+            .pt_1()
+            .text_size(px(11.))
+            .font_weight(FontWeight::BOLD)
+            .text_color(rgb(theme::TEXT_MUTED))
+            .child(text.to_uppercase())
+            .into_any_element()
+    }
+
+    /// One thread in the list: its name, how busy it is, and when it last
+    /// saw a message.
+    fn thread_card(&mut self, thread: &Channel, cx: &mut Context<Self>) -> AnyElement {
+        let id = thread.id;
+        let busy = thread.message_count.map_or(String::new(), |n| {
+            format!("{n} message{}", if n == 1 { "" } else { "s" })
+        });
+        let last = thread
+            .last_message_id
+            .map(|m| m.datetime().with_timezone(&Local).format("%d/%m/%Y %H:%M").to_string())
+            .unwrap_or_default();
+
+        div()
+            .id(("thread", id.0))
+            .mx_2()
+            .p_2()
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .rounded(px(8.))
+            .bg(rgb(theme::BG_CHAT))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.session.update(cx, |s, cx| s.jump_to(id, cx));
+            }))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(icon("messages-square", 14., theme::TEXT_MUTED))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(thread.name.clone().unwrap_or_default()),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(format!("{busy}  {last}").trim().to_owned()),
+            )
+            .into_any_element()
+    }
+
     fn note(text: impl Into<String>) -> AnyElement {
         div()
             .p_4()
@@ -260,6 +345,43 @@ impl SidePanel {
                     }
                     Some(Load::Ready(pins)) => pins.iter().map(|m| self.card(m, false, cx)).collect(),
                 }
+            }
+            PanelKind::Threads => {
+                let Some(parent) = self.thread_parent(cx) else {
+                    return vec![Self::note("Open a channel first.")];
+                };
+                let (open, archived) = {
+                    let session = self.session.read(cx);
+                    let open: Vec<Channel> =
+                        session.store.open_threads(parent).into_iter().cloned().collect();
+                    (open, session.archived_threads.get(&parent).cloned())
+                };
+                let mut rows = Vec::new();
+                if open.is_empty() && !matches!(archived, Some(Load::Ready(_))) {
+                    rows.push(Self::note("Loading threads..."));
+                }
+                if !open.is_empty() {
+                    rows.push(Self::heading("Active"));
+                    rows.extend(open.iter().map(|t| self.thread_card(t, cx)));
+                }
+                match archived {
+                    Some(Load::Ready(page)) => {
+                        let old: Vec<&Channel> =
+                            page.threads.iter().filter(|t| t.archived()).collect();
+                        if !old.is_empty() {
+                            rows.push(Self::heading("Archived"));
+                            rows.extend(old.into_iter().map(|t| self.thread_card(t, cx)));
+                        }
+                        if rows.is_empty() {
+                            rows.push(Self::note("No threads here yet."));
+                        }
+                    }
+                    Some(Load::Failed(error)) => {
+                        rows.push(Self::note(format!("Couldn't load archived threads. {error}")));
+                    }
+                    _ => {}
+                }
+                rows
             }
             PanelKind::Search => {
                 let state = self.session.read(cx).search.clone();
@@ -294,6 +416,7 @@ impl Render for SidePanel {
         let title = match self.kind {
             PanelKind::Pins => "Pinned Messages",
             PanelKind::Search => "Search",
+            PanelKind::Threads => "Threads",
         };
         let rows = self.body(cx);
 

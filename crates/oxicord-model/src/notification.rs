@@ -61,8 +61,32 @@ pub struct GuildNotificationSettings {
     pub suppress_roles: bool,
     #[serde(default)]
     pub hide_muted_channels: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "overrides")]
     pub channel_overrides: Vec<ChannelOverride>,
+}
+
+/// The server sends overrides as a list in some payloads and as an object
+/// keyed by channel id in others, so accept both.
+fn overrides<'de, D>(deserializer: D) -> Result<Vec<ChannelOverride>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    use serde_json::Value;
+
+    let entry = |key: Option<String>, mut value: Value| -> Result<ChannelOverride, serde_json::Error> {
+        if let (Some(key), Value::Object(map)) = (key, &mut value) {
+            map.entry("channel_id").or_insert(Value::String(key));
+        }
+        serde_json::from_value(value)
+    };
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(list)) => list.into_iter().map(|v| entry(None, v)).collect(),
+        Some(Value::Object(map)) => map.into_iter().map(|(k, v)| entry(Some(k), v)).collect(),
+        Some(_) => return Err(D::Error::custom("expected channel overrides")),
+    }
+    .map_err(D::Error::custom)
 }
 
 /// Whether a mute is in force at `now`: switched on and either open ended
@@ -96,6 +120,23 @@ mod tests {
         assert!(!mute_active(true, Some(&config), at("2024-05-10T12:00:01Z")));
         assert!(mute_active(true, None, at("2030-01-01T00:00:00Z")));
         assert!(!mute_active(false, None, at("2024-05-10T11:00:00Z")));
+    }
+
+    #[test]
+    fn overrides_may_be_a_list_or_a_map_keyed_by_channel() {
+        let list: GuildNotificationSettings = serde_json::from_str(
+            r#"{"guild_id":"1","channel_overrides":[{"channel_id":"5","muted":true}]}"#,
+        )
+        .unwrap();
+        let map: GuildNotificationSettings = serde_json::from_str(
+            r#"{"guild_id":"1","channel_overrides":{"5":{"channel_id":"5","muted":true},"6":{"muted":false}}}"#,
+        )
+        .unwrap();
+        assert_eq!(list.channel_overrides.len(), 1);
+        assert_eq!(map.channel_overrides.len(), 2);
+        assert!(map.channel_overrides.iter().any(|o| o.channel_id == Snowflake(6)));
+        let none: GuildNotificationSettings = serde_json::from_str(r#"{"channel_overrides":null}"#).unwrap();
+        assert!(none.channel_overrides.is_empty());
     }
 
     #[test]

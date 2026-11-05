@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
 use crate::{AccountEvent, AccountRequest, Settings};
-use oxicord_model::{Channel, Emoji, Message, Profile, SearchPage, Snowflake, User};
+use oxicord_model::{Channel, Emoji, Message, Profile, SearchPage, Snowflake, ThreadPage, User};
 
 /// Things the UI asks for.
 #[derive(Debug)]
@@ -70,6 +70,22 @@ pub enum Command {
         channel: Snowflake,
         query: String,
         offset: u32,
+    },
+    /// Load a page of a channel's threads. The answer arrives as
+    /// [`Event::Threads`].
+    LoadThreads {
+        channel: Snowflake,
+        archived: bool,
+        offset: u32,
+    },
+    JoinThread(Snowflake),
+    LeaveThread(Snowflake),
+    /// Start a thread on a message. The answer arrives as
+    /// [`Event::ThreadCreated`].
+    CreateThread {
+        channel: Snowflake,
+        message: Snowflake,
+        name: String,
     },
     /// Anything about the account: details, preferences, linked apps.
     Account(AccountRequest),
@@ -138,6 +154,13 @@ pub enum Event {
         offset: u32,
         result: Result<SearchPage, String>,
     },
+    Threads {
+        channel: Snowflake,
+        archived: bool,
+        offset: u32,
+        result: Result<ThreadPage, String>,
+    },
+    ThreadCreated(Result<Channel, String>),
     Profile {
         user: Snowflake,
         result: Result<Profile, String>,

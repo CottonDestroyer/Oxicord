@@ -82,6 +82,9 @@ pub struct Message {
     pub pinned: bool,
     #[serde(rename = "type", default)]
     pub kind: MessageType,
+    /// The thread started from this message, if any.
+    #[serde(default)]
+    pub thread: Option<Box<crate::Channel>>,
     #[serde(default)]
     pub message_reference: Option<MessageReference>,
     #[serde(default)]

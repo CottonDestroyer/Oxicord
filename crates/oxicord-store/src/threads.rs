@@ -42,6 +42,19 @@ impl Store {
             .unwrap_or_default()
     }
 
+    /// Marks a thread joined or left ahead of the server's echo.
+    pub fn set_thread_joined(&mut self, thread: Snowflake, joined: bool) -> Changes {
+        let mut changes = Changes::default();
+        if let Some(channel) = self.channels.get_mut(&thread) {
+            channel.member = joined.then(ThreadMember::default);
+            if let Some(guild) = channel.guild_id {
+                changes.channel_lists.insert(guild);
+            }
+            changes.messages.insert(thread);
+        }
+        changes
+    }
+
     /// Takes in a thread we learned about outside the gateway, such as a
     /// search result.
     pub fn add_thread(&mut self, thread: Channel, joined_as_me: bool) {

@@ -62,8 +62,22 @@ pub struct Ready {
     pub merged_members: Vec<MemberList>,
     #[serde(default)]
     pub relationships: Vec<Relationship>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_settings")]
     pub user_guild_settings: Option<NotificationSettingsList>,
+}
+
+/// READY has carried the notification settings both as `{ entries, .. }` and
+/// as a bare list. They only refine what we show, so anything we can't read
+/// is dropped instead of failing the whole login.
+fn lenient_settings<'de, D>(deserializer: D) -> Result<Option<NotificationSettingsList>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|v| match v {
+        Value::Array(entries) => serde_json::from_value(serde_json::json!({ "entries": entries })).ok(),
+        other => serde_json::from_value(other).ok(),
+    }))
 }
 
 /// Follows READY with data that didn't fit in it. All we use is
@@ -628,4 +642,31 @@ mod tests {
         assert!(matches!(event, DispatchEvent::Unknown { .. }));
     }
 
+}
+
+#[cfg(test)]
+mod ready_tolerance {
+    use serde_json::json;
+
+    use super::*;
+
+    fn ready(settings: serde_json::Value) -> Result<Ready, serde_json::Error> {
+        serde_json::from_value(json!({
+            "user": { "id": "1", "username": "me" }, "session_id": "s",
+            "user_guild_settings": settings
+        }))
+    }
+
+    #[test]
+    fn notification_settings_never_break_ready() {
+        let object = ready(json!({ "entries": [{ "guild_id": "5", "muted": true }], "partial": false })).unwrap();
+        assert_eq!(object.user_guild_settings.unwrap().entries.len(), 1);
+
+        let list = ready(json!([{ "guild_id": "5", "muted": true }])).unwrap();
+        assert_eq!(list.user_guild_settings.unwrap().entries.len(), 1);
+
+        // Nonsense is ignored rather than rejected.
+        assert!(ready(json!("surprise")).unwrap().user_guild_settings.is_none());
+        assert!(ready(json!({ "entries": { "unexpected": true } })).unwrap().user_guild_settings.is_none());
+    }
 }

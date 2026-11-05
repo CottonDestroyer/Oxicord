@@ -221,6 +221,38 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::LoadThreads { channel, archived, offset } => {
+            tokio::spawn(async move {
+                let result = api.threads(channel, archived, offset).await.map_err(|err| {
+                    tracing::warn!(?err, "could not load threads");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::Threads { channel, archived, offset, result }).await;
+            });
+        }
+        Command::JoinThread(thread) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.join_thread(thread).await {
+                    notify(&events, "join that thread", &err).await;
+                }
+            });
+        }
+        Command::LeaveThread(thread) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.leave_thread(thread).await {
+                    notify(&events, "leave that thread", &err).await;
+                }
+            });
+        }
+        Command::CreateThread { channel, message, name } => {
+            tokio::spawn(async move {
+                let result = api.create_thread(channel, message, &name).await.map_err(|err| {
+                    tracing::warn!(?err, "could not create a thread");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::ThreadCreated(result)).await;
+            });
+        }
         Command::LoadPins(channel) => {
             tokio::spawn(async move { send_pins(&api, channel, &events).await });
         }

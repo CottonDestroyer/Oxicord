@@ -118,6 +118,12 @@ impl AppView {
                     session.apply_history(channel, result, requested, cx)
                 });
             }
+            Event::Threads { channel, result, .. } => {
+                self.session.update(cx, |session, cx| session.apply_threads(channel, result, cx));
+            }
+            Event::ThreadCreated(result) => {
+                self.session.update(cx, |session, cx| session.apply_new_thread(result, cx));
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }

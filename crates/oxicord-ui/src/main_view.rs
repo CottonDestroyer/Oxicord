@@ -38,6 +38,8 @@ struct ChannelItem {
     kind: ChannelType,
     unread: Unread,
     muted: bool,
+    /// Threads shown beneath this channel.
+    threads: Vec<ChannelItem>,
 }
 
 struct GroupItem {
@@ -385,11 +387,8 @@ impl MainView {
                     .channels
                     .into_iter()
                     .map(|c| ChannelItem {
-                        id: c.id,
-                        name: c.name.clone().unwrap_or_default(),
-                        kind: c.kind,
-                        unread: store.unread(c.id),
-                        muted: store.is_muted(c),
+                        threads: thread_items(store, c.id, self.channel),
+                        ..channel_item(store, c)
                     })
                     .collect(),
             })
@@ -555,14 +554,19 @@ impl MainView {
             );
         }
 
-        for channel in group.channels {
+        for mut channel in group.channels {
             // A collapsed category still shows the channel you are in and
             // any with unread messages, as the official client does.
             let selected = self.channel == Some(channel.id);
             if hidden && !selected && !channel.unread.unread {
                 continue;
             }
+            let threads = std::mem::take(&mut channel.threads);
             column = column.child(self.render_channel(channel, selected, cx));
+            for thread in threads {
+                let open = self.channel == Some(thread.id);
+                column = column.child(self.render_channel(thread, open, cx));
+            }
         }
         column.into_any_element()
     }
@@ -579,6 +583,7 @@ impl MainView {
             ChannelType::GuildAnnouncement => "megaphone",
             ChannelType::GuildForum => "messages-square",
             ChannelType::GuildMedia => "image",
+            k if k.is_thread() => "corner-down-right",
             _ => "hash",
         };
         let color = if selected || channel.unread.unread {
@@ -589,9 +594,12 @@ impl MainView {
             theme::TEXT_MUTED
         };
 
+        let indent = if channel.kind.is_thread() { 18. } else { 0. };
+
         div()
             .id(("channel", id.0))
             .h(px(32.))
+            .ml(px(indent))
             .flex()
             .items_center()
             .gap_2()
@@ -1018,6 +1026,39 @@ fn dot_status(status: ClientStatus) -> Status {
         ClientStatus::Dnd => Status::Dnd,
         ClientStatus::Invisible => Status::Offline,
     }
+}
+
+fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> ChannelItem {
+    ChannelItem {
+        id: c.id,
+        name: c.name.clone().unwrap_or_default(),
+        kind: c.kind,
+        unread: store.unread(c.id),
+        muted: store.is_muted(c),
+        threads: Vec::new(),
+    }
+}
+
+/// The threads listed under a channel: the ones we joined, plus the one on
+/// screen so you can always see where you are.
+fn thread_items(
+    store: &oxicord_store::Store,
+    parent: Snowflake,
+    open: Option<Snowflake>,
+) -> Vec<ChannelItem> {
+    let mut items: Vec<_> = store
+        .joined_threads(parent)
+        .into_iter()
+        .map(|t| channel_item(store, t))
+        .collect();
+    if let Some(current) = open.and_then(|id| store.channel(id))
+        && current.parent_id == Some(parent)
+        && current.kind.is_thread()
+        && !items.iter().any(|i| i.id == current.id)
+    {
+        items.push(channel_item(store, current));
+    }
+    items
 }
 
 #[cfg(test)]

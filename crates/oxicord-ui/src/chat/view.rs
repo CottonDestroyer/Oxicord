@@ -360,6 +360,20 @@ impl ChatView {
             .unwrap_or_default()
     }
 
+    /// Whether we may post here. Threads have their own permission.
+    fn can_send(&self, cx: &App) -> bool {
+        let in_thread = self
+            .channel
+            .and_then(|c| self.session.read(cx).store.channel(c))
+            .is_some_and(|c| c.kind.is_thread());
+        let needed = if in_thread {
+            Permissions::SEND_MESSAGES_IN_THREADS
+        } else {
+            Permissions::SEND_MESSAGES
+        };
+        self.permissions(cx).contains(needed)
+    }
+
     fn guild(&self, cx: &App) -> Option<Snowflake> {
         let store = &self.session.read(cx).store;
         self.channel.and_then(|c| store.channel(c)).and_then(|c| c.guild_id)
@@ -367,7 +381,7 @@ impl ChatView {
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(channel) = self.channel else { return };
-        if !self.permissions(cx).contains(Permissions::SEND_MESSAGES) {
+        if !self.can_send(cx) {
             return;
         }
         let text = self.input.read(cx).value().trim().to_owned();
@@ -704,11 +718,17 @@ impl ChatView {
             let me = self.session.read(cx).store.me().map(|u| u.id);
             (me == Some(message.author.id), self.permissions(cx))
         };
-        let can_reply = perms.contains(Permissions::SEND_MESSAGES);
+        let can_reply = self.can_send(cx);
         let can_delete = is_mine || perms.contains(Permissions::MANAGE_MESSAGES);
         let can_react = perms.contains(Permissions::ADD_REACTIONS);
         let can_delete_others = perms.contains(Permissions::MANAGE_MESSAGES);
         let in_dm = message.guild_id.is_none() && self.guild(cx).is_none();
+        let can_start_thread = !in_dm
+            && perms.contains(Permissions::CREATE_PUBLIC_THREADS)
+            && self
+                .channel
+                .and_then(|c| self.session.read(cx).store.channel(c))
+                .is_some_and(|c| !c.kind.is_thread());
 
         let prefs = self.view_prefs(cx);
         let author = message.author.display_name().to_owned();
@@ -771,6 +791,9 @@ impl ChatView {
         {
             body = body.child(reactions);
         }
+        if let Some(thread) = &message.thread {
+            body = body.child(self.thread_chip(thread, cx));
+        }
         if self.picker_for == Some(id) {
             body = body.child(self.render_picker(id, cx));
         }
@@ -782,6 +805,7 @@ impl ChatView {
             edit: is_mine,
             delete: can_delete,
             pin: (can_delete_others || in_dm).then_some(message.pinned),
+            thread: can_start_thread && message.thread.is_none(),
         };
         let bar = self.action_bar(id, allowed, confirming, cx);
 
@@ -869,6 +893,12 @@ impl ChatView {
                 ),
             );
         }
+        if allowed.thread {
+            bar = bar.child(
+                action_button(("thread", id.0), "messages-square", theme::TEXT_MUTED)
+                    .on_click(cx.listener(move |this, _, _, cx| this.start_thread(id, cx))),
+            );
+        }
         if let Some(pinned) = allowed.pin {
             bar = bar.child(
                 action_button(
@@ -909,11 +939,24 @@ impl ChatView {
                 let channel = store.channel(id)?;
                 Some(if channel.kind.is_dm() {
                     ("at-sign", store.dm_name(channel), None)
+                } else if channel.kind.is_thread() {
+                    let parent = channel
+                        .parent_id
+                        .and_then(|p| store.channel(p))
+                        .and_then(|p| p.name.clone())
+                        .map(|n| format!("in #{n}"));
+                    ("messages-square", channel.name.clone().unwrap_or_default(), parent)
                 } else {
                     ("hash", channel.name.clone().unwrap_or_default(), channel.topic.clone())
                 })
             })
             .unwrap_or(("hash", String::new(), None));
+        // Threads only make sense inside a server.
+        let has_threads = self.guild(cx).is_some();
+        let thread_state = self.channel.and_then(|id| {
+            let c = self.session.read(cx).store.channel(id)?.clone();
+            c.kind.is_thread().then(|| (id, c.joined(), c.archived()))
+        });
 
         div()
             .h(px(48.))
@@ -945,6 +988,42 @@ impl ChatView {
                     .child(topic)
             }))
             .child(div().flex_1())
+            .children(thread_state.map(|(thread, joined, archived)| {
+                let label = if joined { "Leave" } else { "Join thread" };
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .children(archived.then(|| {
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child("Archived")
+                    }))
+                    .child(
+                        div()
+                            .id("thread-membership")
+                            .h(px(26.))
+                            .px_3()
+                            .flex()
+                            .items_center()
+                            .rounded(px(6.))
+                            .cursor_pointer()
+                            .bg(rgb(if joined { theme::BG_ACTIVE } else { theme::ACCENT }))
+                            .text_size(px(13.))
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .hover(|s| s.opacity(0.85))
+                            .on_click(cx.listener(move |this, _, _, cx| this.set_membership(thread, !joined, cx)))
+                            .child(label),
+                    )
+            }))
+            .children(has_threads.then(|| {
+                action_button("open-threads", "messages-square", theme::TEXT_MUTED).on_click(
+                    cx.listener(|this, _, _, cx| {
+                        this.session.update(cx, |s, cx| s.open_panel(PanelKind::Threads, cx));
+                    }),
+                )
+            }))
             .child(
                 action_button("open-pins", "pin", theme::TEXT_MUTED).on_click(cx.listener(
                     |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Pins, cx)),
@@ -960,6 +1039,78 @@ impl ChatView {
                 action_button("toggle-members", "users", color)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_members(cx)))
             }))
+    }
+
+    /// The small card under a message that started a thread.
+    fn thread_chip(&mut self, thread: &oxicord_model::Channel, cx: &mut Context<Self>) -> AnyElement {
+        let id = thread.id;
+        let known = thread.clone();
+        let count = thread.message_count.map_or(String::new(), |n| {
+            format!("{n} message{}", if n == 1 { "" } else { "s" })
+        });
+        div()
+            .id(("thread-chip", id.0))
+            .mt_1()
+            .max_w(px(420.))
+            .px_3()
+            .py(px(6.))
+            .flex()
+            .items_center()
+            .gap_2()
+            .rounded(px(6.))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .bg(rgb(theme::BG_SIDEBAR))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.session.update(cx, |s, cx| {
+                    s.store.add_thread(known.clone(), false);
+                    s.jump_to(id, cx);
+                });
+            }))
+            .child(icon("messages-square", 14., theme::TEXT_MUTED))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(rgb(markdown::LINK_COLOR))
+                    .child(thread.name.clone().unwrap_or_default()),
+            )
+            .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(count))
+            .into_any_element()
+    }
+
+    /// Starts a thread on `message`, named after what it says.
+    fn start_thread(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        let (Some(channel), Some(original)) = (self.channel, self.message(message, cx)) else {
+            return;
+        };
+        let name: String = original
+            .content
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(60)
+            .collect();
+        let name = if name.is_empty() { "New thread".to_owned() } else { name };
+        self.backend.send(Command::CreateThread { channel, message, name });
+    }
+
+    /// Joins or leaves a thread, shown at once and confirmed by the gateway.
+    fn set_membership(&mut self, thread: Snowflake, join: bool, cx: &mut Context<Self>) {
+        self.session.update(cx, |s, cx| {
+            let changes = s.store.set_thread_joined(thread, join);
+            cx.emit(changes);
+            cx.notify();
+        });
+        self.backend.send(if join {
+            Command::JoinThread(thread)
+        } else {
+            Command::LeaveThread(thread)
+        });
     }
 
     fn set_pinned(&mut self, message: Snowflake, pinned: bool, cx: &mut Context<Self>) {
@@ -1017,7 +1168,7 @@ impl ChatView {
         }
 
         let notice = self.session.read(cx).notice.clone();
-        let can_send = self.permissions(cx).contains(Permissions::SEND_MESSAGES);
+        let can_send = self.can_send(cx);
         let typing = self.typing_line(cx);
         self.typing_shown = typing.is_some();
 
@@ -1234,6 +1385,8 @@ struct Allowed {
     delete: bool,
     /// May pin or unpin, and whether the message is pinned now.
     pin: Option<bool>,
+    /// May start a thread on this message.
+    thread: bool,
 }
 
 /// A small square icon button. The caller attaches the click handler.

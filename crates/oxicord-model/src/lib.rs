@@ -41,6 +41,6 @@ pub use presence::{Activity, Status};
 pub use read_state::ReadState;
 pub use relationship::{Relationship, RelationshipKind, RelationshipRemove};
 pub use role::Role;
-pub use search::SearchPage;
+pub use search::{SearchPage, ThreadPage};
 pub use snowflake::Snowflake;
 pub use user::{Profile, User};

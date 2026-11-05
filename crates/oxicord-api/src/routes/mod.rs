@@ -5,6 +5,7 @@ mod channels;
 mod messages;
 mod reactions;
 mod search;
+mod threads;
 mod relationships;
 mod users;
 

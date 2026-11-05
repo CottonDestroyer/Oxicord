@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{Context, EventEmitter};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Channel, Message, Profile, SearchPage, Snowflake, gateway::DispatchEvent};
+use oxicord_model::{Channel, Message, Profile, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 use crate::{
@@ -26,6 +26,9 @@ pub struct Session {
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// The latest search: what was asked and how it went.
     pub search: Option<(String, Load<SearchPage>)>,
+    /// The thread list last asked for per channel: open threads and, once
+    /// loaded, archived ones.
+    pub archived_threads: HashMap<Snowflake, Load<ThreadPage>>,
     /// The status we last chose, which the server won't echo back to us.
     pub status: ClientStatus,
     /// Profiles fetched so far, so reopening a card is instant.
@@ -41,6 +44,7 @@ impl EventEmitter<Changes> for Session {}
 pub enum PanelKind {
     Pins,
     Search,
+    Threads,
 }
 
 /// Someone asked to open the side panel.
@@ -78,6 +82,7 @@ impl Session {
             account: AccountState::default(),
             pins: HashMap::new(),
             search: None,
+            archived_threads: HashMap::new(),
             status: ClientStatus::default(),
             profiles: HashMap::new(),
             profile_requested: HashSet::new(),
@@ -140,6 +145,48 @@ impl Session {
             };
             self.search = Some((query, state));
             cx.notify();
+        }
+    }
+
+    pub fn request_threads(&mut self, backend: &Backend, channel: Snowflake, cx: &mut Context<Self>) {
+        self.archived_threads.insert(channel, Load::Loading);
+        backend.send(Command::LoadThreads { channel, archived: true, offset: 0 });
+        cx.notify();
+    }
+
+    /// Remembers a page of threads, and teaches the store about them so
+    /// picking one can open it.
+    pub fn apply_threads(
+        &mut self,
+        channel: Snowflake,
+        result: Result<ThreadPage, String>,
+        cx: &mut Context<Self>,
+    ) {
+        let state = match result {
+            Ok(page) => {
+                for thread in &page.threads {
+                    let joined = page.joined.contains(&thread.id);
+                    self.store.add_thread(thread.clone(), joined);
+                }
+                Load::Ready(page)
+            }
+            Err(error) => Load::Failed(error),
+        };
+        self.archived_threads.insert(channel, state);
+        cx.notify();
+    }
+
+    /// A thread we just created: add it and go there.
+    pub fn apply_new_thread(&mut self, result: Result<Channel, String>, cx: &mut Context<Self>) {
+        match result {
+            Ok(thread) => {
+                let id = thread.id;
+                self.store.add_thread(thread, true);
+                cx.emit(Changes::full());
+                cx.emit(JumpTo(id));
+                cx.notify();
+            }
+            Err(error) => self.set_notice(Some(format!("Couldn't start a thread. {error}")), cx),
         }
     }
 
