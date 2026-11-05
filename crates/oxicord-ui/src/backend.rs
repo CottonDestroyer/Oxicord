@@ -110,6 +110,14 @@ pub enum Command {
         message: Snowflake,
         answers: Vec<u32>,
     },
+    /// Change notification settings for a server (see `menus::settings_body`).
+    PatchGuildSettings {
+        guild: Snowflake,
+        body: serde_json::Value,
+    },
+    /// Mark channels read, each up to its newest message.
+    AckBulk(Vec<(Snowflake, Snowflake)>),
+    LeaveGuild(Snowflake),
     JoinThread(Snowflake),
     LeaveThread(Snowflake),
     /// Start a thread on a message. The answer arrives as

@@ -4,8 +4,9 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, div, img, px, rgb,
+    MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
 use oxicord_media::cdn;
 use oxicord_model::{ChannelType, RelationshipKind, Snowflake, Status};
@@ -14,6 +15,7 @@ use oxicord_store::Unread;
 use crate::{
     backend::{Backend, Command},
     chat::ChatView,
+    context_menu::{CloseMenu, ContextMenu, Target},
     forum::ForumView,
     friends::FriendsView,
     icons::icon,
@@ -79,6 +81,8 @@ pub struct MainView {
     settings_view: Entity<SettingsView>,
     panel: Entity<SidePanel>,
     panel_open: bool,
+    menu: Entity<ContextMenu>,
+    menu_open: bool,
     /// Whether the member list was showing at the last redraw, so turning it
     /// on asks the server for the list.
     members_shown: bool,
@@ -105,6 +109,7 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| SidePanel::new(session, media, backend, window, cx))
         };
+        let menu = cx.new(|_| ContextMenu::new(session.clone(), backend.clone()));
         let members_shown = session.read(cx).settings.show_members;
         let subscriptions = vec![
             cx.observe(&session, |this, session, cx| {
@@ -117,6 +122,10 @@ impl MainView {
             }),
             cx.subscribe(&settings_view, |this, _, _: &CloseSettings, cx| {
                 this.settings_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&menu, |this, _, _: &CloseMenu, cx| {
+                this.menu_open = false;
                 cx.notify();
             }),
             cx.subscribe(&panel, |this, _, _: &ClosePanel, cx| {
@@ -172,6 +181,8 @@ impl MainView {
             members_shown,
             panel,
             panel_open: false,
+            menu,
+            menu_open: false,
             _subscriptions: subscriptions,
         }
     }
@@ -204,6 +215,12 @@ impl MainView {
             self.last_channel.insert(guild, channel);
         }
         self.sync_chat(window, cx);
+        cx.notify();
+    }
+
+    fn open_menu(&mut self, target: Target, at: Point<Pixels>, cx: &mut Context<Self>) {
+        self.menu_open = true;
+        self.menu.update(cx, |menu, cx| menu.show(target, at, cx));
         cx.notify();
     }
 
@@ -522,17 +539,26 @@ impl MainView {
             .bg(rgb(theme::BG_SIDEBAR))
             .child(
                 div()
+                    .id("sidebar-header")
                     .h(px(48.))
                     .flex_none()
                     .flex()
                     .items_center()
+                    .justify_between()
                     .px_4()
                     .border_b_1()
                     .border_color(rgb(theme::BORDER))
                     .text_color(rgb(theme::TEXT_BRIGHT))
                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                    .truncate()
-                    .child(title),
+                    .when_some(self.guild, |header, guild| {
+                        header.cursor_pointer().hover(|s| s.bg(rgb(theme::BG_HOVER))).on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                this.open_menu(Target::Guild(guild), point(px(theme::RAIL_WIDTH + 8.), px(54.)), cx);
+                            }),
+                        )
+                    })
+                    .child(div().flex_1().min_w_0().truncate().child(title))
+                    .children(self.guild.map(|_| icon("chevron-down", 16., theme::TEXT_MUTED))),
             )
             .child(
                 div()
@@ -617,6 +643,12 @@ impl MainView {
 
         div()
             .id(("channel", id.0))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.open_menu(Target::Channel(id), event.position, cx);
+                }),
+            )
             .h(px(32.))
             .ml(px(indent))
             .flex()
@@ -892,6 +924,7 @@ impl Render for MainView {
         let panel = self.panel_open.then(|| self.panel.clone());
         let profile = self.render_profile(cx);
         let settings = self.settings_open.then(|| self.settings_view.clone());
+        let menu = self.menu_open.then(|| self.menu.clone());
 
         div()
             .size_full()
@@ -916,6 +949,7 @@ impl Render for MainView {
                     .children(panel),
             )
             .children(profile)
+            .children(menu)
             .children(settings)
     }
 }

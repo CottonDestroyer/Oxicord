@@ -82,6 +82,44 @@ impl Store {
         }
     }
 
+    /// The level that applies to a server as a whole: its own choice, else
+    /// the default it was created with.
+    pub fn guild_notify_level(&self, guild: Snowflake) -> NotifyLevel {
+        self.settings_for(Some(guild))
+            .and_then(|s| NotifyLevel::from_wire(s.message_notifications))
+            .unwrap_or_else(|| match self.guilds.get(&guild) {
+                Some(g) if g.default_message_notifications == 1 => NotifyLevel::Mentions,
+                _ => NotifyLevel::All,
+            })
+    }
+
+    pub fn suppresses_everyone(&self, guild: Snowflake) -> bool {
+        self.suppresses(guild).0
+    }
+
+    /// A channel's own notification choice, if it has one.
+    pub fn channel_level_override(&self, channel: &Channel) -> Option<NotifyLevel> {
+        self.settings_for(channel.guild_id)?
+            .channel_overrides
+            .iter()
+            .find(|o| o.channel_id == channel.id)
+            .and_then(|o| NotifyLevel::from_wire(o.message_notifications))
+    }
+
+    /// Channels of `guild` we can see with something unread, each paired with
+    /// its newest message, ready to be acknowledged.
+    pub fn unread_in_guild(&self, guild: Snowflake) -> Vec<(Snowflake, Snowflake)> {
+        self.guild_channels
+            .get(&guild)
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.channels.get(id))
+            .filter(|c| c.kind != oxicord_model::ChannelType::GuildCategory && self.can_view(c))
+            .filter(|c| self.unread(c.id).unread || self.unread(c.id).mentions > 0)
+            .filter_map(|c| Some((c.id, c.last_message_id?)))
+            .collect()
+    }
+
     /// Whether `@everyone` and role mentions count for this server.
     pub(crate) fn suppresses(&self, guild: Snowflake) -> (bool, bool) {
         self.settings_for(Some(guild))

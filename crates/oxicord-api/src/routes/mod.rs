@@ -2,6 +2,7 @@
 
 mod account;
 mod channels;
+mod guilds;
 mod interactions;
 mod messages;
 mod reactions;

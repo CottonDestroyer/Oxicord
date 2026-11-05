@@ -288,6 +288,27 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::PatchGuildSettings { guild, body } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.patch_guild_settings(guild, &body).await {
+                    notify(&events, "change those settings", &err).await;
+                }
+            });
+        }
+        Command::AckBulk(channels) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.ack_bulk(&channels).await {
+                    tracing::debug!(?err, "bulk ack failed");
+                }
+            });
+        }
+        Command::LeaveGuild(guild) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.leave_guild(guild).await {
+                    notify(&events, "leave that server", &err).await;
+                }
+            });
+        }
         Command::JoinThread(thread) => {
             tokio::spawn(async move {
                 if let Err(err) = api.join_thread(thread).await {
