@@ -1,10 +1,12 @@
 //! Runs the network side on its own thread with a tokio runtime, because
 //! gpui has its own executor and reqwest and the gateway need tokio.
 
+use std::path::PathBuf;
+
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
     ApiClient, ApiError, Credentials,
-    routes::{MessagePage, ReplyTarget, SendMessage},
+    routes::{MessagePage, ReplyTarget, SendMessage, Upload},
     super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
@@ -136,6 +138,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
             guild,
             content,
             reply_to,
+            files,
         } => {
             tokio::spawn(async move {
                 let message = SendMessage {
@@ -147,7 +150,18 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                         guild_id: guild,
                     }),
                 };
-                if let Err(err) = api.send_message(channel, &message).await {
+                let sent = if files.is_empty() {
+                    api.send_message(channel, &message).await
+                } else {
+                    match read_files(&files).await {
+                        Ok(uploads) => api.send_message_with_files(channel, &message, &uploads).await,
+                        Err(problem) => {
+                            let _ = events.send(Event::Notice(problem)).await;
+                            return;
+                        }
+                    }
+                };
+                if let Err(err) = sent {
                     notify(&events, "send your message", &err).await;
                 }
             });
@@ -242,6 +256,31 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         // Handled before it gets here.
         Command::Login(_) | Command::BrowserLogin | Command::Logout | Command::FetchImage(_) => {}
     }
+}
+
+/// Largest file we will read into memory. Discord's own limit is lower for
+/// most accounts and it reports that itself, this only protects our memory.
+const MAX_UPLOAD_BYTES: u64 = 100 * 1024 * 1024;
+
+async fn read_files(paths: &[PathBuf]) -> Result<Vec<Upload>, String> {
+    let mut uploads = Vec::new();
+    for path in paths {
+        let name = path
+            .file_name()
+            .map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned());
+        let size = tokio::fs::metadata(path)
+            .await
+            .map_err(|err| format!("Couldn't read {name}: {err}"))?
+            .len();
+        if size > MAX_UPLOAD_BYTES {
+            return Err(format!("{name} is too large to upload from here."));
+        }
+        let data = tokio::fs::read(path)
+            .await
+            .map_err(|err| format!("Couldn't read {name}: {err}"))?;
+        uploads.push(Upload { filename: name, data: std::sync::Arc::new(data) });
+    }
+    Ok(uploads)
 }
 
 /// Tells the UI that an action failed, in words a person can act on.
@@ -549,6 +588,25 @@ mod tests {
         )
         .unwrap();
         GatewayEvent::Dispatch(ready)
+    }
+
+    #[tokio::test]
+    async fn files_are_read_under_their_own_names() {
+        let path = std::env::temp_dir().join(format!("oxicord-upload-{}.txt", std::process::id()));
+        tokio::fs::write(&path, b"hello").await.unwrap();
+
+        let uploads = read_files(std::slice::from_ref(&path)).await.unwrap();
+        tokio::fs::remove_file(&path).await.unwrap();
+
+        assert_eq!(uploads.len(), 1);
+        assert!(uploads[0].filename.starts_with("oxicord-upload-"));
+        assert_eq!(uploads[0].data.as_slice(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn a_missing_file_is_reported_by_name() {
+        let err = read_files(&[PathBuf::from("no-such-dir/ghost.bin")]).await.unwrap_err();
+        assert!(err.contains("ghost.bin"), "{err}");
     }
 
     #[test]

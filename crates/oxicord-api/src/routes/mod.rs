@@ -6,5 +6,5 @@ mod reactions;
 mod relationships;
 mod users;
 
-pub use messages::{MessagePage, ReplyTarget, SendMessage};
+pub use messages::{MessagePage, ReplyTarget, SendMessage, Upload};
 pub use reactions::emoji_path_segment;

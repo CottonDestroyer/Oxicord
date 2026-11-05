@@ -51,6 +51,13 @@ pub struct ReplyTarget {
     pub guild_id: Option<Snowflake>,
 }
 
+/// A file to attach, already read into memory.
+#[derive(Clone, Debug)]
+pub struct Upload {
+    pub filename: String,
+    pub data: std::sync::Arc<Vec<u8>>,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct SendMessage {
     pub content: String,
@@ -90,6 +97,47 @@ impl ApiClient {
             Some(&body),
         )
         .await
+    }
+
+    /// Sends a message with files attached. The text and reply go in a JSON
+    /// part, the way the official client does it, with each file named by
+    /// index so Discord can match the two.
+    pub async fn send_message_with_files(
+        &self,
+        channel: Snowflake,
+        message: &SendMessage,
+        files: &[Upload],
+    ) -> Result<Message, ApiError> {
+        let mut payload = serde_json::to_value(message)?;
+        payload["attachments"] = files
+            .iter()
+            .enumerate()
+            .map(|(id, f)| json!({ "id": id, "filename": f.filename }))
+            .collect();
+        let payload = payload.to_string();
+
+        let path = format!("/channels/{channel}/messages");
+        let route = format!("POST /channels/{channel}/messages");
+        let resp = self
+            .send_with(Method::POST, &path, &route, |req| {
+                let mut form = reqwest::multipart::Form::new().part(
+                    "payload_json",
+                    reqwest::multipart::Part::text(payload.clone())
+                        .mime_str("application/json")
+                        .expect("a fixed mime type is valid"),
+                );
+                for (index, file) in files.iter().enumerate() {
+                    form = form.part(
+                        format!("files[{index}]"),
+                        reqwest::multipart::Part::bytes(file.data.to_vec())
+                            .file_name(file.filename.clone()),
+                    );
+                }
+                req.multipart(form)
+            })
+            .await?;
+        let bytes = resp.bytes().await?;
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     pub async fn edit_message(

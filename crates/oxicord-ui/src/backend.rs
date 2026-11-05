@@ -4,6 +4,8 @@
 //! binary supplies the other end, which keeps tokio and the HTTP stack out
 //! of the view code.
 
+use std::path::PathBuf;
+
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
 use oxicord_model::{Channel, Emoji, Message, Profile, Snowflake, User};
@@ -33,6 +35,8 @@ pub enum Command {
         guild: Option<Snowflake>,
         content: String,
         reply_to: Option<Snowflake>,
+        /// Local files to attach. Reading them is the backend's job.
+        files: Vec<PathBuf>,
     },
     EditMessage {
         channel: Snowflake,

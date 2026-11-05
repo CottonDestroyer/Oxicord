@@ -94,16 +94,29 @@ impl ApiClient {
         route: &str,
         body: Option<&Value>,
     ) -> Result<Response, ApiError> {
+        self.send_with(method, path, route, |req| match body {
+            Some(body) => req.json(body),
+            None => req,
+        })
+        .await
+    }
+
+    /// Like [`send`](Self::send) but lets the caller attach the body. It runs
+    /// again on every retry, which a multipart form needs because it can only
+    /// be sent once.
+    pub(crate) async fn send_with(
+        &self,
+        method: Method,
+        path: &str,
+        route: &str,
+        attach: impl Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    ) -> Result<Response, ApiError> {
         let url = format!("{BASE_URL}{path}");
 
         for _ in 0..=MAX_RETRIES {
             self.limiter.acquire(route).await;
 
-            let mut req = self.http.request(method.clone(), &url);
-            if let Some(body) = body {
-                req = req.json(body);
-            }
-            let resp = req.send().await?;
+            let resp = attach(self.http.request(method.clone(), &url)).send().await?;
 
             let status = resp.status();
             self.limiter

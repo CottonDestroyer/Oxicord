@@ -1,12 +1,14 @@
 use std::{
     collections::{HashMap, HashSet},
+    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use chrono::{Local, NaiveDate, Utc};
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, FollowMode, FontWeight,
+    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ExternalPaths, FollowMode, FontWeight,
+    PathPromptOptions,
     Focusable as _,
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
     SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
@@ -54,6 +56,8 @@ pub struct ChatView {
     drafts: HashMap<Snowflake, String>,
     reply_to: Option<Snowflake>,
     editing: Option<Snowflake>,
+    /// Files chosen for the next message.
+    files: Vec<PathBuf>,
     /// The message whose delete button was pressed once already.
     confirm_delete: Option<Snowflake>,
     /// Spoilers the reader has clicked open, as (message, index in message).
@@ -143,6 +147,7 @@ impl ChatView {
             drafts: HashMap::new(),
             reply_to: None,
             editing: None,
+            files: Vec::new(),
             confirm_delete: None,
             revealed: HashSet::new(),
             picker_for: None,
@@ -167,6 +172,7 @@ impl ChatView {
         self.reply_to = None;
         self.editing = None;
         self.confirm_delete = None;
+        self.files.clear();
 
         let draft = channel
             .and_then(|c| self.drafts.get(&c).cloned())
@@ -364,7 +370,8 @@ impl ChatView {
             return;
         }
         let text = self.input.read(cx).value().trim().to_owned();
-        if text.is_empty() {
+        let sending_files = self.editing.is_none() && !self.files.is_empty();
+        if text.is_empty() && !sending_files {
             return;
         }
 
@@ -381,12 +388,40 @@ impl ChatView {
                     guild,
                     content: text,
                     reply_to: self.reply_to.take(),
+                    files: std::mem::take(&mut self.files),
                 });
             }
         }
         self.drafts.remove(&channel);
         self.input.update(cx, |input, cx| input.set_value("", window, cx));
         cx.notify();
+    }
+
+    /// Discord allows ten attachments on one message.
+    const MAX_FILES: usize = 10;
+
+    fn add_files(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+        for path in paths {
+            if self.files.len() < Self::MAX_FILES && !self.files.contains(&path) {
+                self.files.push(path);
+            }
+        }
+        cx.notify();
+    }
+
+    fn pick_files(&mut self, cx: &mut Context<Self>) {
+        let chosen = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: true,
+            prompt: None,
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = chosen.await {
+                this.update(cx, |this, cx| this.add_files(paths, cx)).ok();
+            }
+        })
+        .detach();
     }
 
     fn start_reply(&mut self, message: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
@@ -981,6 +1016,9 @@ impl ChatView {
         if let Some(bar) = self.compose_context_bar(cx) {
             column = column.child(bar);
         }
+        if !self.files.is_empty() && self.editing.is_none() {
+            column = column.child(self.render_file_chips(cx));
+        }
 
         column
             .child(
@@ -992,6 +1030,13 @@ impl ChatView {
                     .py_2()
                     .rounded(px(8.))
                     .bg(rgb(theme::BG_INPUT))
+                    .on_drop(cx.listener(|this, dropped: &ExternalPaths, _, cx| {
+                        this.add_files(dropped.paths().to_vec(), cx);
+                    }))
+                    .children((self.editing.is_none()).then(|| {
+                        action_button("attach", "paperclip", theme::TEXT_MUTED)
+                            .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx)))
+                    }))
                     .child(
                         div()
                             .flex_1()
@@ -1023,6 +1068,42 @@ impl ChatView {
     }
 
     /// "Replying to X" or "Editing message", with a button to cancel.
+    /// The files waiting to be sent, each removable.
+    fn render_file_chips(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let mut row = div().flex().flex_wrap().gap_2().mb_2();
+        for (index, path) in self.files.iter().enumerate() {
+            let name = path
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            row = row.child(
+                div()
+                    .max_w(px(240.))
+                    .h(px(30.))
+                    .pl_3()
+                    .pr_1()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .rounded(px(6.))
+                    .bg(rgb(theme::BG_INPUT))
+                    .text_size(px(13.))
+                    .child(icon("file", 14., theme::TEXT_MUTED))
+                    .child(div().flex_1().min_w_0().truncate().child(name))
+                    .child(
+                        action_button(("remove-file", index), "x", theme::TEXT_MUTED).on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                if index < this.files.len() {
+                                    this.files.remove(index);
+                                }
+                                cx.notify();
+                            }),
+                        ),
+                    ),
+            );
+        }
+        row.into_any_element()
+    }
+
     fn compose_context_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let label: SharedString = if self.editing.is_some() {
             "Editing message".into()
