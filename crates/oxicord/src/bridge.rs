@@ -4,6 +4,7 @@
 use async_channel::{Receiver, Sender};
 use oxicord_api::{ApiClient, ApiError, Credentials, super_props::SuperProperties};
 use oxicord_browser_login::{Capture, Identity, Outcome};
+use oxicord_media::Fetcher;
 use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, GatewayHandle};
 use oxicord_model::{User, gateway::DispatchEvent};
 use oxicord_ui::{Backend, Command, Event};
@@ -42,6 +43,7 @@ async fn run(
 ) {
     let mut gateway: Option<GatewayHandle> = None;
     let mut browser_open = false;
+    let fetcher = Fetcher::new().expect("failed to build the image fetcher");
 
     loop {
         tokio::select! {
@@ -58,6 +60,7 @@ async fn run(
                             open_browser(signins.clone(), events.clone());
                         }
                     }
+                    Command::FetchImage(url) => fetch_image(&fetcher, url, events.clone()),
                     Command::Logout => {
                         browser_open = false;
                         replace(&mut gateway, None);
@@ -74,6 +77,22 @@ async fn run(
             }
         }
     }
+}
+
+/// Downloads a picture in the background and reports it back. A failure is
+/// reported too, so the UI stops waiting and shows its placeholder.
+fn fetch_image(fetcher: &Fetcher, url: String, events: Sender<Event>) {
+    let fetcher = fetcher.clone();
+    tokio::spawn(async move {
+        let bytes = match fetcher.fetch(&url).await {
+            Ok(bytes) => Some(bytes),
+            Err(err) => {
+                tracing::debug!(%err, %url, "image fetch failed");
+                None
+            }
+        };
+        let _ = events.send(Event::Image { url, bytes }).await;
+    });
 }
 
 /// Swaps in a new gateway connection, closing the previous one.

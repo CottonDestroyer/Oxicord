@@ -8,6 +8,7 @@ use crate::{
     backend::{Backend, Command, Event},
     login::LoginView,
     main_view::MainView,
+    media::Media,
     session::Session,
 };
 
@@ -21,6 +22,7 @@ enum Screen {
 pub struct AppView {
     backend: Backend,
     session: Entity<Session>,
+    media: Entity<Media>,
     screen: Screen,
     /// Shown on the next login screen, for example after a revoked token.
     notice: Option<SharedString>,
@@ -36,6 +38,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Self {
         let session = cx.new(|_| Session::new());
+        let media = cx.new(|_| Media::new(backend.clone()));
         let login = Self::login_view(&backend, None, window, cx);
         if let Some(token) = saved_token {
             login.update(cx, |login, cx| login.sign_in_with(token, cx));
@@ -54,6 +57,7 @@ impl AppView {
         Self {
             backend,
             session,
+            media,
             screen: Screen::Login(login),
             notice: None,
             _pump: pump,
@@ -73,8 +77,9 @@ impl AppView {
     fn on_event(&mut self, event: Event, window: &mut Window, cx: &mut Context<Self>) {
         match event {
             Event::Authenticated(_) => {
-                let (session, backend) = (self.session.clone(), self.backend.clone());
-                let main = cx.new(|cx| MainView::new(session, backend, cx));
+                let (session, media, backend) =
+                    (self.session.clone(), self.media.clone(), self.backend.clone());
+                let main = cx.new(|cx| MainView::new(session, media, backend, cx));
                 self.screen = Screen::Main(main);
             }
             Event::LoginFailed(message) => {
@@ -86,6 +91,9 @@ impl AppView {
                 self.session = cx.new(|_| Session::new());
                 let notice = self.notice.take();
                 self.screen = Screen::Login(Self::login_view(&self.backend, notice, window, cx));
+            }
+            Event::Image { url, bytes } => {
+                self.media.update(cx, |media, cx| media.on_image(url, bytes, cx));
             }
             Event::Gateway(event) => {
                 if matches!(event, GatewayEvent::State(ConnectionState::AuthFailed)) {

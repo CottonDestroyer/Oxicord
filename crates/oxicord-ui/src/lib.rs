@@ -1,7 +1,9 @@
 mod app;
 pub mod backend;
+mod icons;
 mod login;
 mod main_view;
+mod media;
 mod session;
 pub mod theme;
 

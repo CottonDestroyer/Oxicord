@@ -1,99 +1,661 @@
+use std::collections::{HashMap, HashSet};
+
 use gpui_kit::{
-    Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Subscription, Window,
-    div, px, rgb,
-    component::button::Button,
+    AnyElement, App, Context, Entity, ImageSource, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
+    Subscription, Window, div, img, px, rgb,
 };
 use oxicord_gateway::ConnectionState;
+use oxicord_media::cdn;
+use oxicord_model::{ChannelType, Snowflake};
+use oxicord_store::Unread;
 
 use crate::{
     backend::{Backend, Command},
+    icons::icon,
+    media::{Media, acronym, avatar},
     session::Session,
     theme,
 };
 
-/// The signed in frame. The guild rail, channel list, chat and member list
-/// replace the placeholders as they get built.
+struct GuildItem {
+    id: Snowflake,
+    name: String,
+    icon: Option<String>,
+    unread: Unread,
+}
+
+struct ChannelItem {
+    id: Snowflake,
+    name: String,
+    kind: ChannelType,
+    unread: Unread,
+}
+
+struct GroupItem {
+    category: Option<(Snowflake, String)>,
+    channels: Vec<ChannelItem>,
+}
+
+struct DmItem {
+    id: Snowflake,
+    name: String,
+    avatar: String,
+    unread: Unread,
+}
+
+/// The signed in frame: guild rail, channel list, and the content area.
 pub struct MainView {
     session: Entity<Session>,
+    media: Entity<Media>,
     backend: Backend,
-    _observe: Subscription,
+    /// `None` is the home screen with the direct messages.
+    guild: Option<Snowflake>,
+    channel: Option<Snowflake>,
+    /// The channel to return to when switching back to a guild.
+    last_channel: HashMap<Snowflake, Snowflake>,
+    collapsed: HashSet<Snowflake>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl MainView {
-    pub fn new(session: Entity<Session>, backend: Backend, cx: &mut Context<Self>) -> Self {
-        let observe = cx.observe(&session, |_, _, cx| cx.notify());
+    pub fn new(
+        session: Entity<Session>,
+        media: Entity<Media>,
+        backend: Backend,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let subscriptions = vec![
+            cx.observe(&session, |_, _, cx| cx.notify()),
+            cx.observe(&media, |_, _, cx| cx.notify()),
+        ];
         Self {
             session,
+            media,
             backend,
-            _observe: observe,
+            guild: None,
+            channel: None,
+            last_channel: HashMap::new(),
+            collapsed: HashSet::new(),
+            _subscriptions: subscriptions,
         }
+    }
+
+    fn select_guild(&mut self, guild: Option<Snowflake>, cx: &mut Context<Self>) {
+        self.guild = guild;
+        self.channel = guild.and_then(|g| {
+            self.last_channel.get(&g).copied().or_else(|| {
+                let store = &self.session.read(cx).store;
+                store
+                    .channel_groups(g)
+                    .iter()
+                    .flat_map(|group| group.channels.iter())
+                    .find(|c| c.kind.has_messages() && !is_voice(c.kind))
+                    .map(|c| c.id)
+            })
+        });
+        cx.notify();
+    }
+
+    fn select_channel(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
+        self.channel = Some(channel);
+        if let Some(guild) = self.guild {
+            self.last_channel.insert(guild, channel);
+        }
+        cx.notify();
+    }
+
+    fn toggle_category(&mut self, category: Snowflake, cx: &mut Context<Self>) {
+        if !self.collapsed.remove(&category) {
+            self.collapsed.insert(category);
+        }
+        cx.notify();
+    }
+
+    fn guild_items(&self, cx: &App) -> Vec<GuildItem> {
+        let store = &self.session.read(cx).store;
+        store
+            .guilds()
+            .map(|g| GuildItem {
+                id: g.id,
+                name: g.name.clone(),
+                icon: g.icon.as_deref().map(|hash| cdn::guild_icon(g.id, hash, 96)),
+                unread: store.guild_unread(g.id),
+            })
+            .collect()
+    }
+
+    fn dm_items(&self, cx: &App) -> Vec<DmItem> {
+        let store = &self.session.read(cx).store;
+        store
+            .dm_channels()
+            .into_iter()
+            .map(|c| {
+                let avatar = match (c.kind, c.recipients.first()) {
+                    (ChannelType::Dm, Some(user)) => {
+                        cdn::user_avatar(user.id, user.avatar.as_deref(), 64)
+                    }
+                    _ => match c.icon.as_deref() {
+                        Some(hash) => cdn::group_icon(c.id, hash, 64),
+                        None => cdn::default_avatar(c.id),
+                    },
+                };
+                DmItem {
+                    id: c.id,
+                    name: store.dm_name(c),
+                    avatar,
+                    unread: store.unread(c.id),
+                }
+            })
+            .collect()
+    }
+
+    fn group_items(&self, guild: Snowflake, cx: &App) -> Vec<GroupItem> {
+        let store = &self.session.read(cx).store;
+        store
+            .channel_groups(guild)
+            .into_iter()
+            .map(|group| GroupItem {
+                category: group
+                    .category
+                    .map(|c| (c.id, c.name.clone().unwrap_or_default())),
+                channels: group
+                    .channels
+                    .into_iter()
+                    .map(|c| ChannelItem {
+                        id: c.id,
+                        name: c.name.clone().unwrap_or_default(),
+                        kind: c.kind,
+                        unread: store.unread(c.id),
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    fn home_unread(&self, cx: &App) -> Unread {
+        let store = &self.session.read(cx).store;
+        store
+            .dm_channels()
+            .into_iter()
+            .map(|c| store.unread(c.id))
+            .fold(Unread::default(), |acc, u| Unread {
+                unread: acc.unread || u.unread,
+                mentions: acc.mentions + u.mentions,
+            })
+    }
+
+    fn render_rail(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let guilds = self.guild_items(cx);
+        let home_unread = self.home_unread(cx);
+        let selected_guild = self.guild;
+
+        let home = rail_button(
+            "home",
+            0,
+            selected_guild.is_none(),
+            home_unread,
+            div()
+                .size(px(48.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgb(if selected_guild.is_none() { theme::ACCENT } else { theme::BG_CHAT }))
+                .rounded(px(if selected_guild.is_none() { 16. } else { 24. }))
+                .child(icon("messages-square", 24., theme::TEXT_BRIGHT))
+                .into_any_element(),
+            cx.listener(|this, _, _, cx| this.select_guild(None, cx)),
+        );
+
+        let mut list = div().flex().flex_col().gap_2().items_center().w_full();
+        for item in guilds {
+            let selected = selected_guild == Some(item.id);
+            let id = item.id;
+            let body = guild_icon(&self.media, item.icon.as_deref(), &item.name, selected, cx);
+            list = list.child(rail_button(
+                "guild",
+                id.0,
+                selected,
+                item.unread,
+                body,
+                cx.listener(move |this, _, _, cx| this.select_guild(Some(id), cx)),
+            ));
+        }
+
+        div()
+            .w(px(theme::RAIL_WIDTH))
+            .h_full()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_2()
+            .py_3()
+            .bg(rgb(theme::BG_RAIL))
+            .child(home)
+            .child(div().w(px(32.)).h(px(2.)).rounded_full().bg(rgb(theme::BORDER)))
+            .child(
+                div()
+                    .id("guild-list")
+                    .flex_1()
+                    .w_full()
+                    .overflow_y_scroll()
+                    .child(list),
+            )
+    }
+
+    fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let title: SharedString = match self.guild {
+            Some(guild) => self
+                .session
+                .read(cx)
+                .store
+                .guild(guild)
+                .map(|g| g.name.clone())
+                .unwrap_or_default()
+                .into(),
+            None => "Direct Messages".into(),
+        };
+
+        let mut list = div().flex().flex_col().gap(px(1.)).p_2();
+        match self.guild {
+            Some(guild) => {
+                for group in self.group_items(guild, cx) {
+                    list = list.child(self.render_group(group, cx));
+                }
+            }
+            None => {
+                for dm in self.dm_items(cx) {
+                    list = list.child(self.render_dm(dm, cx));
+                }
+            }
+        }
+
+        div()
+            .w(px(theme::SIDEBAR_WIDTH))
+            .h_full()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .bg(rgb(theme::BG_SIDEBAR))
+            .child(
+                div()
+                    .h(px(48.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .px_4()
+                    .border_b_1()
+                    .border_color(rgb(theme::BORDER))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .truncate()
+                    .child(title),
+            )
+            .child(
+                div()
+                    .id("channel-list")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .child(list),
+            )
+            .child(self.render_user_panel(cx))
+    }
+
+    fn render_group(&mut self, group: GroupItem, cx: &mut Context<Self>) -> AnyElement {
+        let mut column = div().flex().flex_col().gap(px(1.));
+
+        let hidden = group
+            .category
+            .as_ref()
+            .is_some_and(|(id, _)| self.collapsed.contains(id));
+
+        if let Some((id, name)) = group.category {
+            let chevron = if hidden { "chevron-right" } else { "chevron-down" };
+            column = column.child(
+                div()
+                    .id(("category", id.0))
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .mt_3()
+                    .px_1()
+                    .cursor_pointer()
+                    .text_size(px(12.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .hover(|s| s.text_color(rgb(theme::TEXT)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_category(id, cx)))
+                    .child(icon(chevron, 12., theme::TEXT_MUTED))
+                    .child(div().truncate().child(name.to_uppercase())),
+            );
+        }
+
+        for channel in group.channels {
+            // A collapsed category still shows the channel you are in and
+            // any with unread messages, as the official client does.
+            let selected = self.channel == Some(channel.id);
+            if hidden && !selected && !channel.unread.unread {
+                continue;
+            }
+            column = column.child(self.render_channel(channel, selected, cx));
+        }
+        column.into_any_element()
+    }
+
+    fn render_channel(
+        &mut self,
+        channel: ChannelItem,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let id = channel.id;
+        let glyph = match channel.kind {
+            ChannelType::GuildVoice | ChannelType::GuildStageVoice => "volume-2",
+            ChannelType::GuildAnnouncement => "megaphone",
+            ChannelType::GuildForum => "messages-square",
+            ChannelType::GuildMedia => "image",
+            _ => "hash",
+        };
+        let color = if selected || channel.unread.unread {
+            theme::TEXT_BRIGHT
+        } else {
+            theme::TEXT_MUTED
+        };
+
+        div()
+            .id(("channel", id.0))
+            .h(px(32.))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .text_color(rgb(color))
+            .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_click(cx.listener(move |this, _, _, cx| this.select_channel(id, cx)))
+            .child(icon(glyph, 18., color))
+            .child(
+                div()
+                    .flex_1()
+                    .truncate()
+                    .font_weight(if channel.unread.unread && !selected {
+                        gpui_kit::FontWeight::SEMIBOLD
+                    } else {
+                        gpui_kit::FontWeight::NORMAL
+                    })
+                    .child(channel.name),
+            )
+            .children(mention_badge(channel.unread.mentions))
+    }
+
+    fn render_dm(&mut self, dm: DmItem, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let id = dm.id;
+        let selected = self.channel == Some(id);
+        let color = if selected || dm.unread.unread {
+            theme::TEXT_BRIGHT
+        } else {
+            theme::TEXT_MUTED
+        };
+
+        div()
+            .id(("dm", id.0))
+            .h(px(44.))
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_2()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .text_color(rgb(color))
+            .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_click(cx.listener(move |this, _, _, cx| this.select_channel(id, cx)))
+            .child(avatar(&self.media, &dm.avatar, 32., &dm.name, cx))
+            .child(div().flex_1().truncate().child(dm.name))
+            .children(mention_badge(dm.unread.mentions))
+    }
+
+    fn render_user_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let (name, url) = {
+            let store = &self.session.read(cx).store;
+            match store.me() {
+                Some(me) => (
+                    me.display_name().to_owned(),
+                    cdn::user_avatar(me.id, me.avatar.as_deref(), 64),
+                ),
+                None => (String::new(), String::new()),
+            }
+        };
+        let status = connection_label(&self.session.read(cx).connection);
+        let backend = self.backend.clone();
+
+        div()
+            .h(px(56.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .bg(rgb(theme::BG_PANEL))
+            .child(avatar(&self.media, &url, 36., &name, cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(14.))
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(name),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(status),
+                    ),
+            )
+            .child(
+                div()
+                    .id("log-out")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(move |_, _, _| backend.send(Command::Logout))
+                    .child(icon("log-out", 18., theme::TEXT_MUTED)),
+            )
+    }
+
+    fn render_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let title: SharedString = self
+            .channel
+            .and_then(|id| {
+                let store = &self.session.read(cx).store;
+                let channel = store.channel(id)?;
+                Some(if channel.kind.is_dm() {
+                    store.dm_name(channel)
+                } else {
+                    channel.name.clone().unwrap_or_default()
+                })
+            })
+            .unwrap_or_default()
+            .into();
+        let has_channel = self.channel.is_some();
+
+        div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(rgb(theme::BG_CHAT))
+            .child(
+                div()
+                    .h(px(48.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .px_4()
+                    .border_b_1()
+                    .border_color(rgb(theme::BORDER))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .child(title),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(if has_channel {
+                        "Messages show up here."
+                    } else {
+                        "Pick a channel to get started."
+                    }),
+            )
     }
 }
 
 impl Render for MainView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let session = self.session.read(cx);
-        let name = session
-            .store
-            .me()
-            .map(|u| u.display_name().to_owned())
-            .unwrap_or_default();
-        let status = connection_label(&session.connection);
-        let backend = self.backend.clone();
+        let rail = self.render_rail(cx);
+        let sidebar = self.render_sidebar(cx);
+        let content = self.render_content(cx);
 
         div()
             .size_full()
             .flex()
             .bg(rgb(theme::BG_RAIL))
             .text_color(rgb(theme::TEXT))
-            .child(div().w(px(theme::RAIL_WIDTH)).h_full())
+            .child(rail)
             .child(
                 div()
                     .flex()
                     .flex_1()
+                    .min_w_0()
                     .h_full()
                     .rounded_tl(px(theme::RADIUS))
                     .overflow_hidden()
                     .border_1()
                     .border_color(rgb(theme::BORDER))
-                    .child(
-                        pane(theme::BG_SIDEBAR, "channels")
-                            .w(px(theme::SIDEBAR_WIDTH))
-                            .child(
-                                Button::new("log-out")
-                                    .label("Log out")
-                                    .on_click(move |_, _, _| backend.send(Command::Logout)),
-                            ),
-                    )
-                    .child(
-                        pane(theme::BG_CHAT, "")
-                            .flex_1()
-                            .child(format!("Signed in as {name}"))
-                            .child(status),
-                    )
-                    .child(pane(theme::BG_MEMBERS, "members").w(px(theme::MEMBERS_WIDTH))),
+                    .child(sidebar)
+                    .child(content),
             )
     }
 }
 
-fn pane(bg: u32, label: &'static str) -> gpui_kit::Div {
+/// One entry in the guild rail: the selection pill on the left, the icon,
+/// and a red badge for mentions. An unread guild with no mentions gets a
+/// small pill instead.
+fn rail_button(
+    kind: &'static str,
+    key: u64,
+    selected: bool,
+    unread: Unread,
+    body: AnyElement,
+    on_click: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let pill_height = if selected {
+        40.
+    } else if unread.unread {
+        8.
+    } else {
+        0.
+    };
+
     div()
-        .h_full()
+        .id((kind, key))
+        .relative()
+        .w_full()
+        .h(px(48.))
         .flex()
-        .flex_col()
-        .gap_2()
-        .bg(rgb(bg))
-        .p_4()
-        .text_color(rgb(theme::TEXT_MUTED))
-        .child(label)
+        .justify_center()
+        .cursor_pointer()
+        .on_click(on_click)
+        .child(
+            div()
+                .absolute()
+                .left(px(0.))
+                .top(px((48. - pill_height) / 2.))
+                .w(px(4.))
+                .h(px(pill_height))
+                .rounded_r(px(4.))
+                .bg(rgb(theme::TEXT_BRIGHT)),
+        )
+        .child(body)
+        .children(mention_badge(unread.mentions).map(|badge| {
+            div().absolute().right(px(10.)).bottom(px(-2.)).child(badge)
+        }))
 }
 
-fn connection_label(state: &ConnectionState) -> String {
+fn guild_icon(
+    media: &Entity<Media>,
+    url: Option<&str>,
+    name: &str,
+    selected: bool,
+    cx: &mut App,
+) -> AnyElement {
+    let radius = px(if selected { 16. } else { 24. });
+    let base = div().size(px(48.)).flex_none().rounded(radius).overflow_hidden();
+
+    let image = url.and_then(|url| media.update(cx, |media, _| media.get(url)));
+    match image {
+        Some(image) => base
+            .child(img(ImageSource::Image(image)).size_full().rounded(radius))
+            .into_any_element(),
+        None => base
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(rgb(if selected { theme::ACCENT } else { theme::BG_CHAT }))
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .text_size(px(16.))
+            .child(acronym(name))
+            .into_any_element(),
+    }
+}
+
+fn mention_badge(count: u32) -> Option<AnyElement> {
+    (count > 0).then(|| {
+        div()
+            .min_w(px(16.))
+            .h(px(16.))
+            .px(px(4.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_full()
+            .bg(rgb(theme::BADGE))
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .text_size(px(11.))
+            .font_weight(gpui_kit::FontWeight::BOLD)
+            .child(if count > 99 { "99+".to_owned() } else { count.to_string() })
+            .into_any_element()
+    })
+}
+
+fn is_voice(kind: ChannelType) -> bool {
+    matches!(kind, ChannelType::GuildVoice | ChannelType::GuildStageVoice)
+}
+
+fn connection_label(state: &ConnectionState) -> &'static str {
     match state {
-        ConnectionState::Connecting => "Connecting...".into(),
-        ConnectionState::Connected => "Connected".into(),
-        ConnectionState::Reconnecting { attempt } => format!("Reconnecting (attempt {attempt})..."),
-        ConnectionState::AuthFailed => "Discord rejected the token".into(),
-        ConnectionState::Closed(reason) => reason.clone(),
+        ConnectionState::Connecting => "Connecting...",
+        ConnectionState::Connected => "Online",
+        ConnectionState::Reconnecting { .. } => "Reconnecting...",
+        ConnectionState::AuthFailed => "Signed out",
+        ConnectionState::Closed(_) => "Disconnected",
     }
 }

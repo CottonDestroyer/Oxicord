@@ -16,6 +16,8 @@ pub enum Command {
     /// Open Discord's own login page in a temporary window.
     BrowserLogin,
     Logout,
+    /// Download a picture. The answer arrives as [`Event::Image`].
+    FetchImage(String),
 }
 
 /// Things the backend reports.
@@ -25,6 +27,8 @@ pub enum Event {
     LoginFailed(String),
     LoggedOut,
     Gateway(GatewayEvent),
+    /// `None` when the download failed.
+    Image { url: String, bytes: Option<Vec<u8>> },
 }
 
 #[derive(Clone)]

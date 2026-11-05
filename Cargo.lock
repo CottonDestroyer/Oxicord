@@ -5181,6 +5181,7 @@ dependencies = [
  "oxicord-api",
  "oxicord-browser-login",
  "oxicord-gateway",
+ "oxicord-media",
  "oxicord-model",
  "oxicord-ui",
  "serde",
@@ -5234,6 +5235,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxicord-media"
+version = "0.1.0"
+dependencies = [
+ "oxicord-model",
+ "reqwest",
+ "thiserror 2.0.21",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "oxicord-model"
 version = "0.1.0"
 dependencies = [
@@ -5259,6 +5271,7 @@ dependencies = [
  "async-channel",
  "gpui-kit",
  "oxicord-gateway",
+ "oxicord-media",
  "oxicord-model",
  "oxicord-store",
 ]

@@ -10,6 +10,7 @@ oxicord-ui.workspace = true
 oxicord-api.workspace = true
 oxicord-browser-login.workspace = true
 oxicord-gateway.workspace = true
+oxicord-media.workspace = true
 oxicord-model.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 async-channel.workspace = true
