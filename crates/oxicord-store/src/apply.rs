@@ -2,8 +2,8 @@ use oxicord_model::{
     Emoji, Message, PartialMessage, Reaction, ReadState, Snowflake, Status,
     gateway::{
         DispatchEvent, GuildDelete, GuildMemberUpdate, GuildRoleDelete, GuildRoleEvent,
-        MessageAck, MessageDelete, MessageDeleteBulk, PresenceUpdate, ReactionEvent, Ready,
-        ReadySupplemental, TypingStart,
+        MemberListUpdate, MessageAck, MessageDelete, MessageDeleteBulk, PresenceUpdate,
+        ReactionEvent, Ready, ReadySupplemental, TypingStart,
     },
     MemberList,
 };
@@ -61,6 +61,9 @@ impl Store {
                 self.remove_channel(c.id);
                 self.mark_listing(c.guild_id, &mut changes);
                 changes.messages.insert(c.id);
+            }
+            DispatchEvent::GuildMemberListUpdate(update) => {
+                self.on_member_list(*update, &mut changes);
             }
             DispatchEvent::PresenceUpdate(p) => self.on_presence(p, &mut changes),
             DispatchEvent::TypingStart(t) => self.on_typing(t, &mut changes),
@@ -143,10 +146,42 @@ impl Store {
         }
     }
 
-    /// Picks our own roles out of the extra members READY left for later.
-    /// They decide which channels we can see, so the lists need a redraw.
+    fn on_member_list(&mut self, update: MemberListUpdate, changes: &mut Changes) {
+        let guild = update.guild_id;
+        let state = self.member_lists.entry(guild).or_default();
+
+        for member in state.apply(update) {
+            if let Some(presence) = member.presence {
+                self.set_presence(member.user.id, presence.status);
+                changes.presences = true;
+            }
+            self.users.insert(member.user.id, member.user);
+        }
+        changes.members.insert(guild);
+    }
+
+    /// Presence is per user, so one entry serves every place they appear.
+    fn set_presence(&mut self, user: Snowflake, status: Status) {
+        if status == Status::Offline {
+            self.presences.remove(&user);
+        } else {
+            self.presences.insert(user, status);
+        }
+    }
+
+    /// Picks our own roles out of the extra members READY left for later,
+    /// and the presences of people we talk to. Roles decide which channels
+    /// we can see, so the lists need a redraw.
     fn on_ready_supplemental(&mut self, extra: ReadySupplemental, changes: &mut Changes) {
         let me = self.my_id();
+
+        if let Some(presences) = &extra.merged_presences {
+            for entry in &presences.friends {
+                self.set_presence(entry.user_id, entry.status);
+            }
+            changes.presences = true;
+            changes.dm_list = true;
+        }
 
         for (guild, members) in extra.guilds.iter().zip(extra.merged_members) {
             let mine = members
@@ -350,6 +385,7 @@ impl Store {
         self.guild_channels.remove(&delete.id);
         self.guilds.remove(&delete.id);
         self.my_roles.remove(&delete.id);
+        self.member_lists.remove(&delete.id);
         self.guild_order.retain(|id| *id != delete.id);
         changes.channel_lists.insert(delete.id);
     }
@@ -388,12 +424,7 @@ impl Store {
     }
 
     fn on_presence(&mut self, update: PresenceUpdate, changes: &mut Changes) {
-        // Presence is per user, not per guild, so one entry is enough.
-        if update.status == Status::Offline {
-            self.presences.remove(&update.user.id);
-        } else {
-            self.presences.insert(update.user.id, update.status);
-        }
+        self.set_presence(update.user.id, update.status);
         changes.presences = true;
     }
 

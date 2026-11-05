@@ -50,6 +50,12 @@ pub enum Command {
     Typing(Snowflake),
     /// Add (or with `add` false, remove) our reaction. The new count arrives
     /// through the gateway.
+    /// Show the member list of `channel` in `guild`. Updates arrive through
+    /// the gateway.
+    SubscribeMembers {
+        guild: Snowflake,
+        channel: Snowflake,
+    },
     React {
         channel: Snowflake,
         message: Snowflake,

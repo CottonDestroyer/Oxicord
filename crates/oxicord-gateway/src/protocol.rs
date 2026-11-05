@@ -6,7 +6,7 @@ use std::time::Duration;
 use oxicord_api::super_props::SuperProperties;
 use serde_json::{Value, json};
 
-use oxicord_model::gateway::op;
+use oxicord_model::{Snowflake, gateway::op};
 
 pub const DEFAULT_GATEWAY: &str = "wss://gateway.discord.gg";
 
@@ -66,6 +66,29 @@ pub fn resume(token: &str, session_id: &str, seq: Option<u64>) -> Value {
 
 pub fn heartbeat(seq: Option<u64>) -> Value {
     json!({ "op": op::HEARTBEAT, "d": seq })
+}
+
+/// Asks for a guild's member list. Discord ignores channel ranges until the
+/// guild has been subscribed by an earlier frame, so this is sent twice: once
+/// with `channel` as `None` to subscribe, then again with the channel to ask
+/// for its first hundred members.
+pub fn member_subscription(guild: Snowflake, channel: Option<Snowflake>) -> Value {
+    let channels = match channel {
+        Some(channel) => json!({ channel.to_string(): [[0, 99]] }),
+        None => json!({}),
+    };
+    json!({
+        "op": op::GUILD_SUBSCRIPTIONS_BULK,
+        "d": { "subscriptions": { guild.to_string(): {
+            "typing": true,
+            "threads": false,
+            "activities": true,
+            "member_updates": false,
+            "members": [],
+            "channels": channels,
+            "thread_member_lists": [],
+        } } }
+    })
 }
 
 pub fn presence_update(status: ClientStatus) -> Value {
@@ -191,6 +214,18 @@ mod tests {
         assert_eq!(v["d"]["compress"], false);
         assert_eq!(v["d"]["presence"]["status"], "idle");
         assert!(v["d"]["properties"]["client_build_number"].is_number());
+    }
+
+    #[test]
+    fn member_subscription_has_the_shape_discord_expects() {
+        let subscribe = member_subscription(Snowflake(5), None);
+        assert_eq!(subscribe["op"], 37);
+        let guild = &subscribe["d"]["subscriptions"]["5"];
+        assert_eq!(guild["typing"], true);
+        assert_eq!(guild["channels"], serde_json::json!({}));
+
+        let ranged = member_subscription(Snowflake(5), Some(Snowflake(9)));
+        assert_eq!(ranged["d"]["subscriptions"]["5"]["channels"]["9"], serde_json::json!([[0, 99]]));
     }
 
     #[test]

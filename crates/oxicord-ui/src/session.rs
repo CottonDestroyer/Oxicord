@@ -14,6 +14,8 @@ pub struct Session {
     pub history_errors: HashMap<Snowflake, String>,
     /// The latest thing that went wrong, shown until dismissed.
     pub notice: Option<String>,
+    /// Whether the member list is showing beside the chat.
+    pub show_members: bool,
 }
 
 impl EventEmitter<Changes> for Session {}
@@ -25,6 +27,7 @@ impl Session {
             connection: ConnectionState::Connecting,
             history_errors: HashMap::new(),
             notice: None,
+            show_members: true,
         }
     }
 

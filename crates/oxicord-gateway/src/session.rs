@@ -1,11 +1,15 @@
 use std::{
+    collections::HashSet,
     fmt::Display,
     future::pending,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use futures_util::{Sink, SinkExt, StreamExt};
-use oxicord_model::gateway::{DispatchEvent, GatewayPayload, Hello, op};
+use oxicord_model::{
+    Snowflake,
+    gateway::{DispatchEvent, GatewayPayload, Hello, op},
+};
 use serde_json::Value;
 use tokio::{
     sync::mpsc,
@@ -21,6 +25,8 @@ use crate::{
 
 pub(crate) enum Command {
     SetStatus(ClientStatus),
+    /// Show the member list of `channel` in `guild`.
+    SubscribeMembers { guild: Snowflake, channel: Snowflake },
     Shutdown,
 }
 
@@ -49,6 +55,8 @@ struct Conn<S> {
     /// True once READY or RESUMED arrived. Presence updates sent earlier
     /// would be rejected as unauthenticated.
     ready: bool,
+    /// Guilds we have already sent the subscribing frame for, on this socket.
+    subscribed: HashSet<Snowflake>,
 }
 
 impl<S> Conn<S>
@@ -78,6 +86,8 @@ pub(crate) struct Runtime {
     persist: Persist,
     backoff: Backoff,
     status: ClientStatus,
+    /// The member list we want, kept so a reconnect can ask for it again.
+    members: Option<(Snowflake, Snowflake)>,
 }
 
 impl Runtime {
@@ -93,6 +103,7 @@ impl Runtime {
             cmds,
             events,
             persist: Persist::default(),
+            members: None,
         }
     }
 
@@ -139,6 +150,9 @@ impl Runtime {
                 _ = sleep_until(deadline) => return true,
                 cmd = self.cmds.recv() => match cmd {
                     Some(Command::SetStatus(status)) => self.status = status,
+                    Some(Command::SubscribeMembers { guild, channel }) => {
+                        self.members = Some((guild, channel));
+                    }
                     Some(Command::Shutdown) | None => return false,
                 },
             }
@@ -170,6 +184,7 @@ impl Runtime {
             interval: None,
             next_beat: None,
             ready: false,
+            subscribed: HashSet::new(),
         };
         let mut zlib = ZlibStream::default();
 
@@ -248,6 +263,12 @@ impl Runtime {
                             return RECONNECT;
                         }
                     }
+                    Some(Command::SubscribeMembers { guild, channel }) => {
+                        self.members = Some((guild, channel));
+                        if conn.ready && !self.send_members(&mut conn).await {
+                            return RECONNECT;
+                        }
+                    }
                     Some(Command::Shutdown) | None => {
                         conn.close().await;
                         return Exit::Shutdown;
@@ -255,6 +276,24 @@ impl Runtime {
                 },
             }
         }
+    }
+
+    /// Sends the subscribing frame for the wanted guild if this socket hasn't yet,
+    /// then the frame asking for the channel's member ranges.
+    async fn send_members<S>(&mut self, conn: &mut Conn<S>) -> bool
+    where
+        S: Sink<Message> + Unpin,
+        S::Error: Display,
+    {
+        let Some((guild, channel)) = self.members else {
+            return true;
+        };
+        if conn.subscribed.insert(guild)
+            && !conn.send(&protocol::member_subscription(guild, None)).await
+        {
+            return false;
+        }
+        conn.send(&protocol::member_subscription(guild, Some(channel))).await
     }
 
     fn on_close(&self, code: Option<u16>, reason: &str) -> Exit {
@@ -311,7 +350,15 @@ impl Runtime {
             op::INVALID_SESSION => Some(Exit::Reconnect {
                 resumable: p.d.as_bool().unwrap_or(false),
             }),
-            op::DISPATCH => self.on_dispatch(conn, p),
+            op::DISPATCH => {
+                let exit = self.on_dispatch(conn, p);
+                // The first moment the session is usable, ask again for the
+                // member list we wanted before the connection dropped.
+                if exit.is_none() && conn.ready && conn.subscribed.is_empty() && self.members.is_some() && !self.send_members(conn).await {
+                    return Some(RECONNECT);
+                }
+                exit
+            }
             other => {
                 tracing::debug!(op = other, "ignoring unknown opcode");
                 None

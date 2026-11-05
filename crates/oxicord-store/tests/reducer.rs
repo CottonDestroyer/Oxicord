@@ -480,3 +480,157 @@ fn changes_merge_for_batched_redraws() {
     assert!(a.affects_messages(id(1)) && a.affects_messages(id(2)));
     assert!(!a.is_empty());
 }
+
+fn member(id: u64, name: &str) -> Value {
+    json!({ "member": { "user": { "id": id.to_string(), "username": name },
+                        "roles": ["200"], "presence": { "status": "online" } } })
+}
+
+fn group(id: &str, count: u64) -> Value {
+    json!({ "group": { "id": id, "count": count } })
+}
+
+fn list_update(list_id: &str, ops: Value) -> DispatchEvent {
+    event(
+        "GUILD_MEMBER_LIST_UPDATE",
+        json!({ "guild_id": "100", "id": list_id, "member_count": 50, "ops": ops }),
+    )
+}
+
+/// The user ids and group names in slot order, "-" for an empty slot.
+fn describe(store: &Store) -> Vec<String> {
+    use oxicord_store::Entry;
+    store
+        .member_list(id(GUILD))
+        .unwrap()
+        .entries()
+        .iter()
+        .map(|slot| match slot {
+            Some(Entry::Group { id, .. }) => format!("g:{id}"),
+            Some(Entry::Member { user, .. }) => format!("m:{}", user.0),
+            None => "-".to_owned(),
+        })
+        .collect()
+}
+
+#[test]
+fn member_list_sync_fills_slots_and_teaches_the_store_about_users() {
+    let mut store = ready_store();
+    let changes = store.apply(list_update(
+        "everyone",
+        json!([{ "op": "SYNC", "range": [0, 2],
+                 "items": [group("online", 2), member(10, "ann"), member(11, "bo")] }]),
+    ));
+
+    assert_eq!(describe(&store), ["g:online", "m:10", "m:11"]);
+    assert_eq!(store.user(id(10)).unwrap().username, "ann");
+    assert_eq!(store.presence(id(10)), Status::Online);
+    assert_eq!(store.member_list(id(GUILD)).unwrap().member_count(), Some(50));
+    assert!(changes.members.contains(&id(GUILD)));
+    assert!(changes.presences);
+}
+
+#[test]
+fn member_list_insert_update_delete_and_invalidate_edit_in_place() {
+    let mut store = ready_store();
+    store.apply(list_update(
+        "everyone",
+        json!([{ "op": "SYNC", "range": [0, 3],
+                 "items": [group("online", 3), member(10, "a"), member(11, "b"), member(12, "c")] }]),
+    ));
+
+    store.apply(list_update("everyone", json!([{ "op": "INSERT", "index": 2, "item": member(20, "new") }])));
+    assert_eq!(describe(&store), ["g:online", "m:10", "m:20", "m:11", "m:12"]);
+
+    store.apply(list_update("everyone", json!([{ "op": "UPDATE", "index": 0, "item": group("online", 4) }])));
+    store.apply(list_update("everyone", json!([{ "op": "DELETE", "index": 1 }])));
+    assert_eq!(describe(&store), ["g:online", "m:20", "m:11", "m:12"]);
+
+    store.apply(list_update("everyone", json!([{ "op": "INVALIDATE", "range": [1, 2] }])));
+    assert_eq!(describe(&store), ["g:online", "-", "-", "m:12"]);
+}
+
+#[test]
+fn a_second_sync_range_extends_the_list() {
+    let mut store = ready_store();
+    store.apply(list_update("everyone", json!([{ "op": "SYNC", "range": [0, 1],
+        "items": [group("online", 3), member(10, "a")] }])));
+    store.apply(list_update("everyone", json!([{ "op": "SYNC", "range": [4, 5],
+        "items": [member(14, "e"), member(15, "f")] }])));
+
+    assert_eq!(describe(&store), ["g:online", "m:10", "-", "-", "m:14", "m:15"]);
+}
+
+#[test]
+fn a_different_list_id_starts_the_list_over() {
+    let mut store = ready_store();
+    store.apply(list_update("everyone", json!([{ "op": "SYNC", "range": [0, 1],
+        "items": [group("online", 1), member(10, "a")] }])));
+    store.apply(list_update("abc123", json!([{ "op": "SYNC", "range": [0, 0],
+        "items": [group("offline", 5)] }])));
+
+    assert_eq!(describe(&store), ["g:offline"]);
+}
+
+#[test]
+fn nonsense_indexes_are_survived() {
+    let mut store = ready_store();
+    store.apply(list_update("everyone", json!([
+        { "op": "DELETE", "index": 5 },
+        { "op": "INVALIDATE", "range": [0, 99] },
+        { "op": "UPDATE", "index": 3, "item": member(1, "x") },
+        { "op": "INSERT", "index": 2, "item": member(2, "y") },
+        { "op": "SYNC", "range": [10_000_000, 10_000_001], "items": [member(3, "z")] }
+    ])));
+    // Whatever shape it ended in, nothing blew up or grew without bound.
+    assert!(store.member_list(id(GUILD)).unwrap().entries().len() < 100);
+}
+
+#[test]
+fn member_name_color_comes_from_the_highest_colored_role() {
+    let mut ready = ready_json();
+    ready["guilds"][0]["roles"] = json!([
+        { "id": "100", "name": "@everyone", "permissions": perm(1 << 10) },
+        { "id": "200", "name": "low", "color": 0xff0000, "position": 1 },
+        { "id": "300", "name": "high", "color": 0x00ff00, "position": 5 },
+        { "id": "400", "name": "plain", "color": 0, "position": 9 }
+    ]);
+    let mut store = Store::new();
+    store.apply(event("READY", ready));
+
+    assert_eq!(store.member_color(id(GUILD), &[id(200), id(300)]), Some(0x00ff00));
+    assert_eq!(store.member_color(id(GUILD), &[id(400)]), None, "a role with no color doesn't count");
+    assert_eq!(store.member_color(id(GUILD), &[]), None);
+}
+
+#[test]
+fn friend_presences_arrive_with_ready_supplemental() {
+    let mut store = ready_store();
+    let changes = store.apply(event(
+        "READY_SUPPLEMENTAL",
+        json!({ "guilds": [], "merged_presences": {
+            "friends": [{ "user_id": "2", "status": "idle" }, { "user_id": "3", "status": "offline" }] } }),
+    ));
+    assert_eq!(store.presence(id(ADA)), Status::Idle);
+    assert_eq!(store.presence(id(3)), Status::Offline);
+    assert!(changes.presences && changes.dm_list);
+}
+
+#[test]
+fn group_sizes_come_from_the_top_level_groups_when_headers_carry_none() {
+    let mut store = ready_store();
+    store.apply(event(
+        "GUILD_MEMBER_LIST_UPDATE",
+        json!({
+            "guild_id": "100", "id": "everyone",
+            "groups": [{ "id": "online", "count": 12 }, { "id": "offline", "count": 88 }],
+            "ops": [{ "op": "SYNC", "range": [0, 1],
+                      "items": [{ "group": { "id": "online" } }, member(10, "a")] }]
+        }),
+    ));
+
+    let list = store.member_list(id(GUILD)).unwrap();
+    assert_eq!(list.group_count("online", 0), 12);
+    assert_eq!(list.group_count("offline", 0), 88);
+    assert_eq!(list.group_count("unknown", 7), 7, "falls back to the slot's own number");
+}

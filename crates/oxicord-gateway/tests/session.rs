@@ -6,7 +6,7 @@ use std::time::Duration;
 use flate2::{Compress, Compression, FlushCompress};
 use futures_util::{SinkExt, StreamExt};
 use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, spawn};
-use oxicord_model::gateway::DispatchEvent;
+use oxicord_model::{Snowflake, gateway::DispatchEvent};
 use serde_json::{Value, json};
 use tokio::{net::{TcpListener, TcpStream}, sync::mpsc::UnboundedReceiver, time::timeout};
 use tokio_tungstenite::{
@@ -172,6 +172,55 @@ async fn resumes_with_session_and_sequence_after_a_dropped_socket() {
     assert_eq!(resume["op"], 6);
     assert_eq!(resume["d"]["session_id"], "sess-1");
     assert_eq!(resume["d"]["seq"], 2);
+}
+
+#[tokio::test]
+async fn asks_for_the_member_list_once_ready_and_again_after_a_reconnect() {
+    let (listener, url) = bind().await;
+    let resume_url = url.clone();
+
+    let server = tokio::spawn(async move {
+        let mut first = FakeSocket::accept(&listener).await;
+        first.hello().await;
+        first.recv().await; // identify
+        first.ready("sess-1", &resume_url).await;
+        let subscribe = first.recv().await;
+        let ranges = first.recv().await;
+        drop(first);
+
+        let mut second = FakeSocket::accept(&listener).await;
+        second.hello().await;
+        second.recv().await; // resume
+        second.send(json!({ "op": 0, "s": 3, "t": "RESUMED", "d": {} })).await;
+        let resubscribe = second.recv().await;
+        let reranges = second.recv().await;
+        while second.ws.next().await.is_some_and(|m| m.is_ok()) {}
+        (subscribe, ranges, resubscribe, reranges)
+    });
+
+    let (handle, mut events) = spawn(config(&url));
+    // Asked for before the session exists. It must wait for READY.
+    handle.subscribe_members(Snowflake(5), Snowflake(9));
+
+    let mut states = Vec::new();
+    loop {
+        if matches!(next_dispatch(&mut events, &mut states).await, DispatchEvent::Resumed) {
+            break;
+        }
+    }
+    handle.shutdown();
+
+    let (subscribe, ranges, resubscribe, reranges) =
+        timeout(WAIT, server).await.unwrap().unwrap();
+    for frame in [&subscribe, &ranges, &resubscribe, &reranges] {
+        assert_eq!(frame["op"], 37);
+    }
+    // Subscribe first (no channels), then the channel ranges.
+    assert_eq!(subscribe["d"]["subscriptions"]["5"]["channels"], json!({}));
+    assert_eq!(ranges["d"]["subscriptions"]["5"]["channels"]["9"], json!([[0, 99]]));
+    // A new socket starts from nothing, so it does both steps again.
+    assert_eq!(resubscribe["d"]["subscriptions"]["5"]["channels"], json!({}));
+    assert_eq!(reranges["d"]["subscriptions"]["5"]["channels"]["9"], json!([[0, 99]]));
 }
 
 #[tokio::test]

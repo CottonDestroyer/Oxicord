@@ -8,7 +8,7 @@ use gpui_kit::{
 };
 use oxicord_gateway::ConnectionState;
 use oxicord_media::cdn;
-use oxicord_model::{ChannelType, Snowflake};
+use oxicord_model::{ChannelType, Snowflake, Status};
 use oxicord_store::Unread;
 
 use crate::{
@@ -16,6 +16,7 @@ use crate::{
     chat::ChatView,
     icons::icon,
     media::{Media, acronym, avatar},
+    member_list::{MemberList, presence_dot},
     session::Session,
     theme,
 };
@@ -43,6 +44,8 @@ struct DmItem {
     id: Snowflake,
     name: String,
     avatar: String,
+    /// Only for one-to-one conversations.
+    status: Option<Status>,
     unread: Unread,
 }
 
@@ -51,6 +54,7 @@ pub struct MainView {
     session: Entity<Session>,
     media: Entity<Media>,
     chat: Entity<ChatView>,
+    members: Entity<MemberList>,
     backend: Backend,
     /// `None` is the home screen with the direct messages.
     guild: Option<Snowflake>,
@@ -77,10 +81,15 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| ChatView::new(session, media, backend, window, cx))
         };
+        let members = {
+            let (session, media) = (session.clone(), media.clone());
+            cx.new(|cx| MemberList::new(session, media, cx))
+        };
         Self {
             session,
             media,
             chat,
+            members,
             backend,
             guild: None,
             channel: None,
@@ -126,6 +135,18 @@ impl MainView {
         let channel = self.channel;
         self.chat
             .update(cx, |chat, cx| chat.set_channel(channel, window, cx));
+        self.sync_members(cx);
+    }
+
+    /// Points the member list at the open guild and asks the server for it.
+    fn sync_members(&mut self, cx: &mut Context<Self>) {
+        let guild = self.guild;
+        self.members.update(cx, |members, cx| members.set_guild(guild, cx));
+
+        let show = self.session.read(cx).show_members;
+        if let (true, Some(guild), Some(channel)) = (show, self.guild, self.channel) {
+            self.backend.send(Command::SubscribeMembers { guild, channel });
+        }
     }
 
     fn toggle_category(&mut self, category: Snowflake, cx: &mut Context<Self>) {
@@ -163,10 +184,15 @@ impl MainView {
                         None => cdn::default_avatar(c.id),
                     },
                 };
+                let status = match (c.kind, c.recipients.first()) {
+                    (ChannelType::Dm, Some(user)) => Some(store.presence(user.id)),
+                    _ => None,
+                };
                 DmItem {
                     id: c.id,
                     name: store.dm_name(c),
                     avatar,
+                    status,
                     unread: store.unread(c.id),
                 }
             })
@@ -435,7 +461,13 @@ impl MainView {
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
             .on_click(cx.listener(move |this, _, window, cx| this.select_channel(id, window, cx)))
-            .child(avatar(&self.media, &dm.avatar, 32., &dm.name, cx))
+            .child(
+                div()
+                    .relative()
+                    .flex_none()
+                    .child(avatar(&self.media, &dm.avatar, 32., &dm.name, cx))
+                    .children(dm.status.map(presence_dot)),
+            )
             .child(div().flex_1().truncate().child(dm.name))
             .children(mention_badge(dm.unread.mentions))
     }
@@ -505,6 +537,8 @@ impl Render for MainView {
         let rail = self.render_rail(cx);
         let sidebar = self.render_sidebar(cx);
         let content = self.chat.clone();
+        let members = (self.guild.is_some() && self.session.read(cx).show_members)
+            .then(|| self.members.clone());
 
         div()
             .size_full()
@@ -523,7 +557,8 @@ impl Render for MainView {
                     .border_1()
                     .border_color(rgb(theme::BORDER))
                     .child(sidebar)
-                    .child(content),
+                    .child(content)
+                    .children(members),
             )
     }
 }

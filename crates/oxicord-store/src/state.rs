@@ -5,6 +5,7 @@ use oxicord_model::{
 };
 
 use crate::{
+    member_list::MemberListState,
     perms::{self, DM_PERMISSIONS},
     timeline::Timeline,
 };
@@ -39,6 +40,8 @@ pub struct Store {
     pub(crate) timelines: HashMap<Snowflake, Timeline>,
     pub(crate) read_states: HashMap<Snowflake, ReadState>,
     pub(crate) presences: HashMap<Snowflake, Status>,
+    /// The member list the server last sent for each guild we subscribed to.
+    pub(crate) member_lists: HashMap<Snowflake, MemberListState>,
     /// Channel to user to the unix second the indicator expires.
     pub(crate) typing: HashMap<Snowflake, HashMap<Snowflake, u64>>,
 }
@@ -198,6 +201,22 @@ impl Store {
             unread: chan.last_message_id > read.last_message_id,
             mentions: read.mention_count,
         }
+    }
+
+    pub fn member_list(&self, guild: Snowflake) -> Option<&MemberListState> {
+        self.member_lists.get(&guild)
+    }
+
+    /// The color a member's name is drawn in: that of their highest role
+    /// that has one.
+    pub fn member_color(&self, guild: Snowflake, roles: &[Snowflake]) -> Option<u32> {
+        self.guilds
+            .get(&guild)?
+            .roles
+            .iter()
+            .filter(|r| r.color != 0 && roles.contains(&r.id))
+            .max_by_key(|r| r.position)
+            .map(|r| r.color)
     }
 
     /// The last message we have read in `channel`, if the server told us.

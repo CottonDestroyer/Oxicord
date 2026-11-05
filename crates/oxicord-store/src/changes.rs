@@ -18,6 +18,8 @@ pub struct Changes {
     /// Channels whose typing indicator changed.
     pub typing: HashSet<Snowflake>,
     pub presences: bool,
+    /// Guilds whose member list changed.
+    pub members: HashSet<Snowflake>,
 }
 
 impl Changes {
@@ -47,6 +49,7 @@ impl Changes {
         self.guild_list |= other.guild_list;
         self.dm_list |= other.dm_list;
         self.presences |= other.presences;
+        self.members.extend(other.members);
         self.channel_lists.extend(other.channel_lists);
         self.messages.extend(other.messages);
         self.typing.extend(other.typing);

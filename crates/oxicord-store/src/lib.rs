@@ -4,10 +4,12 @@
 
 mod apply;
 mod changes;
+mod member_list;
 pub mod perms;
 mod state;
 mod timeline;
 
 pub use changes::Changes;
+pub use member_list::{Entry, MemberListState};
 pub use state::{ChannelGroup, Store, Unread};
 pub use timeline::Timeline;

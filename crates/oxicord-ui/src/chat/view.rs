@@ -800,7 +800,9 @@ impl ChatView {
         bar
     }
 
-    fn render_header(&self, cx: &App) -> impl IntoElement + use<> {
+    fn render_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let has_members = self.guild(cx).is_some();
+        let showing = self.session.read(cx).show_members;
         let (glyph, name, topic) = self
             .channel
             .and_then(|id| {
@@ -843,6 +845,23 @@ impl ChatView {
                     .text_color(rgb(theme::TEXT_MUTED))
                     .child(topic)
             }))
+            .child(div().flex_1())
+            .children(has_members.then(|| {
+                let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
+                action_button("toggle-members", "users", color)
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_members(cx)))
+            }))
+    }
+
+    fn toggle_members(&mut self, cx: &mut Context<Self>) {
+        let showing = self.session.update(cx, |session, cx| {
+            session.show_members = !session.show_members;
+            cx.notify();
+            session.show_members
+        });
+        if let (true, Some(guild), Some(channel)) = (showing, self.guild(cx), self.channel) {
+            self.backend.send(Command::SubscribeMembers { guild, channel });
+        }
     }
 
     fn render_body(&mut self, cx: &mut Context<Self>) -> AnyElement {

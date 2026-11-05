@@ -70,11 +70,90 @@ pub struct ReadySupplemental {
     pub guilds: Vec<SupplementalGuild>,
     #[serde(default)]
     pub merged_members: Vec<MemberList>,
+    #[serde(default)]
+    pub merged_presences: Option<MergedPresences>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SupplementalGuild {
     pub id: Snowflake,
+}
+
+/// Who is online, delivered alongside READY. `friends` covers the people we
+/// can see in DMs, `guilds` is indexed in parallel with the supplemental
+/// guild list.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct MergedPresences {
+    #[serde(default)]
+    pub friends: Vec<PresenceEntry>,
+    #[serde(default)]
+    pub guilds: Vec<Vec<PresenceEntry>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct PresenceEntry {
+    pub user_id: Snowflake,
+    #[serde(default)]
+    pub status: Status,
+}
+
+/// One slot of a guild's member list: a group header or a member.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ListItem {
+    Group { group: ListGroup },
+    Member { member: ListMember },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ListGroup {
+    /// A role id, or "online" or "offline".
+    pub id: String,
+    #[serde(default)]
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ListMember {
+    pub user: User,
+    #[serde(default)]
+    pub nick: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<Snowflake>,
+    #[serde(default)]
+    pub presence: Option<ListPresence>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ListPresence {
+    #[serde(default)]
+    pub status: Status,
+    #[serde(default)]
+    pub activities: Vec<Activity>,
+}
+
+/// An edit to the slots of a member list, in the order the server sent them.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "op", rename_all = "UPPERCASE")]
+pub enum ListOp {
+    Sync { range: [usize; 2], items: Vec<ListItem> },
+    Insert { index: usize, item: ListItem },
+    Update { index: usize, item: ListItem },
+    Delete { index: usize },
+    Invalidate { range: [usize; 2] },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct MemberListUpdate {
+    pub guild_id: Snowflake,
+    /// Which list this is. Channels with the same visibility share one.
+    pub id: String,
+    #[serde(default)]
+    pub member_count: Option<u64>,
+    #[serde(default)]
+    pub groups: Vec<ListGroup>,
+    #[serde(default)]
+    pub ops: Vec<ListOp>,
 }
 
 /// User sessions get read states as `{ entries: [...] }`. Accept a bare
@@ -210,6 +289,7 @@ pub enum DispatchEvent {
     ChannelDelete(Box<Channel>),
     PresenceUpdate(PresenceUpdate),
     TypingStart(TypingStart),
+    GuildMemberListUpdate(Box<MemberListUpdate>),
     Unknown { name: String, data: Value },
 }
 
@@ -240,6 +320,7 @@ impl DispatchEvent {
             "CHANNEL_DELETE" => Self::ChannelDelete(Box::new(de(data)?)),
             "PRESENCE_UPDATE" => Self::PresenceUpdate(de(data)?),
             "TYPING_START" => Self::TypingStart(de(data)?),
+            "GUILD_MEMBER_LIST_UPDATE" => Self::GuildMemberListUpdate(Box::new(de(data)?)),
             _ => Self::Unknown {
                 name: name.to_owned(),
                 data,
@@ -359,6 +440,52 @@ mod tests {
         assert_eq!(s.guilds[1].id, Snowflake(6));
         let first = s.merged_members.into_iter().next().unwrap().into_vec();
         assert_eq!(first[0].roles, vec![Snowflake(10)]);
+    }
+
+    #[test]
+    fn parses_member_list_updates_with_every_op_kind() {
+        let event = DispatchEvent::parse(
+            "GUILD_MEMBER_LIST_UPDATE",
+            json!({
+                "guild_id": "5", "id": "everyone", "member_count": 40,
+                "groups": [{ "id": "online", "count": 2 }, { "id": "offline", "count": 38 }],
+                "ops": [
+                    { "op": "SYNC", "range": [0, 2], "items": [
+                        { "group": { "id": "online", "count": 2 } },
+                        { "member": { "user": { "id": "1", "username": "a" },
+                                      "roles": ["9"], "presence": { "status": "online" } } },
+                        { "member": { "user": { "id": "2", "username": "b" } } }
+                    ] },
+                    { "op": "INSERT", "index": 1, "item": { "member": { "user": { "id": "3", "username": "c" } } } },
+                    { "op": "UPDATE", "index": 0, "item": { "group": { "id": "online", "count": 3 } } },
+                    { "op": "DELETE", "index": 2 },
+                    { "op": "INVALIDATE", "range": [0, 99] }
+                ]
+            }),
+        )
+        .unwrap();
+
+        let DispatchEvent::GuildMemberListUpdate(u) = event else {
+            panic!("wrong variant");
+        };
+        assert_eq!(u.ops.len(), 5);
+        assert_eq!(u.groups[1].count, 38);
+        let ListOp::Sync { items, .. } = &u.ops[0] else { panic!("expected SYNC first") };
+        assert!(matches!(items[0], ListItem::Group { .. }));
+        assert!(matches!(&items[1], ListItem::Member { member } if member.roles == vec![Snowflake(9)]));
+    }
+
+    #[test]
+    fn ready_supplemental_carries_friend_presences() {
+        let event = DispatchEvent::parse(
+            "READY_SUPPLEMENTAL",
+            json!({ "guilds": [], "merged_presences": {
+                "friends": [{ "user_id": "7", "status": "dnd" }], "guilds": [[]] } }),
+        )
+        .unwrap();
+        let DispatchEvent::ReadySupplemental(s) = event else { panic!("wrong variant") };
+        let friends = s.merged_presences.unwrap().friends;
+        assert_eq!(friends[0].status, Status::Dnd);
     }
 
     #[test]

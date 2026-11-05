@@ -11,7 +11,7 @@ mod zlib;
 use std::{fmt, time::Duration};
 
 use oxicord_api::super_props::SuperProperties;
-use oxicord_model::gateway::DispatchEvent;
+use oxicord_model::{Snowflake, gateway::DispatchEvent};
 use tokio::sync::mpsc;
 
 pub use protocol::{ClientStatus, DEFAULT_GATEWAY};
@@ -79,6 +79,12 @@ pub struct GatewayHandle {
 impl GatewayHandle {
     pub fn set_status(&self, status: ClientStatus) {
         let _ = self.tx.send(Command::SetStatus(status));
+    }
+
+    /// Asks the server for the member list of `channel` in `guild`. It is
+    /// asked for again by itself after a reconnect.
+    pub fn subscribe_members(&self, guild: Snowflake, channel: Snowflake) {
+        let _ = self.tx.send(Command::SubscribeMembers { guild, channel });
     }
 
     pub fn shutdown(&self) {
