@@ -28,7 +28,13 @@ base64 = "0.22"
 percent-encoding = "2"
 
 oxicord-model = { path = "crates/oxicord-model" }
+async-channel = "2"
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+tracing-subscriber = "0.3"
+
 oxicord-api = { path = "crates/oxicord-api" }
+oxicord-gateway = { path = "crates/oxicord-gateway" }
+oxicord-store = { path = "crates/oxicord-store" }
 
 oxicord-ui = { path = "crates/oxicord-ui" }
 

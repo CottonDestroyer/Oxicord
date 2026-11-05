@@ -11,6 +11,7 @@ pub const TEXT: u32 = 0xe3e5e8;
 pub const TEXT_MUTED: u32 = 0x949ba4;
 
 pub const ACCENT: u32 = 0x5865f2;
+pub const DANGER: u32 = 0xf2686b;
 
 pub const RAIL_WIDTH: f32 = 72.0;
 pub const SIDEBAR_WIDTH: f32 = 240.0;

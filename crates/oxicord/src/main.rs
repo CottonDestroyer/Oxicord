@@ -1,11 +1,33 @@
-use gpui_kit::{AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
-use oxicord_ui::Shell;
+mod bridge;
+mod credentials;
+
+use gpui_kit::{
+    AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size,
+    component::{Theme, ThemeMode},
+};
+use oxicord_ui::AppView;
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    let backend = bridge::start();
+    let saved_token = credentials::load();
+
     gpui_kit::application()
         .with_assets(gpui_kit::assets::Assets)
-        .run(|cx| {
+        .run(move |cx| {
             gpui_kit::init(cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+
+            // Without this the process lingers after the last window closes.
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
 
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
             let options = WindowOptions {
@@ -18,8 +40,10 @@ fn main() {
                 ..Default::default()
             };
 
-            gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| Shell))
-                .expect("failed to open the main window");
+            gpui_kit::open_window(options, cx, move |window, cx| {
+                cx.new(|cx| AppView::new(backend, saved_token, window, cx))
+            })
+            .expect("failed to open the main window");
             cx.activate(true);
         });
 }
