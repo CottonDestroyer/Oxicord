@@ -19,7 +19,7 @@ use crate::{
     forum::ForumView,
     friends::FriendsView,
     icons::icon,
-    media::{Media, acronym, avatar},
+    media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
     profile,
     session::{DmOpened, JumpTo, OpenPanel, PanelKind, Session, ShowProfile},
@@ -83,6 +83,8 @@ pub struct MainView {
     panel_open: bool,
     menu: Entity<ContextMenu>,
     menu_open: bool,
+    /// The picture open in the full size viewer.
+    viewer: Option<String>,
     /// Whether the member list was showing at the last redraw, so turning it
     /// on asks the server for the list.
     members_shown: bool,
@@ -122,6 +124,10 @@ impl MainView {
             }),
             cx.subscribe(&settings_view, |this, _, _: &CloseSettings, cx| {
                 this.settings_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&media, |this, _, shown: &ViewImage, cx| {
+                this.viewer = Some(shown.0.clone());
                 cx.notify();
             }),
             cx.subscribe(&menu, |this, _, _: &CloseMenu, cx| {
@@ -183,6 +189,7 @@ impl MainView {
             panel_open: false,
             menu,
             menu_open: false,
+            viewer: None,
             _subscriptions: subscriptions,
         }
     }
@@ -222,6 +229,74 @@ impl MainView {
         self.menu_open = true;
         self.menu.update(cx, |menu, cx| menu.show(target, at, cx));
         cx.notify();
+    }
+
+    /// The picture viewer: the image as large as fits, with a way to open
+    /// the original in the browser.
+    fn render_viewer(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let url = self.viewer.clone()?;
+        let image = self.media.update(cx, |media, _| media.get(&url));
+
+        let picture = match image {
+            Some(image) => img(ImageSource::Image(image)).max_w_full().max_h_full().into_any_element(),
+            None => div().text_color(rgb(theme::TEXT_MUTED)).child("Loading...").into_any_element(),
+        };
+        let open = url.clone();
+        let content = div()
+            .id("viewer")
+            .occlude()
+            .relative()
+            .size_full()
+            .p_8()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(picture)
+            .child(
+                div()
+                    .absolute()
+                    .top(px(16.))
+                    .right(px(16.))
+                    .flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .id("viewer-open")
+                            .size(px(36.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(rgb(theme::BG_PANEL))
+                            .cursor_pointer()
+                            .on_click(move |_, _, cx| cx.open_url(&open))
+                            .child(icon("external-link", 18., theme::TEXT)),
+                    )
+                    .child(
+                        div()
+                            .id("viewer-close")
+                            .size(px(36.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(rgb(theme::BG_PANEL))
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.viewer = None;
+                                cx.notify();
+                            }))
+                            .child(icon("x", 18., theme::TEXT)),
+                    ),
+            )
+            .into_any_element();
+        Some(profile::modal(
+            content,
+            Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.viewer = None;
+                cx.notify();
+            })),
+        ))
     }
 
     /// Opens the pins or search panel for the channel on screen.
@@ -925,6 +1000,7 @@ impl Render for MainView {
         let profile = self.render_profile(cx);
         let settings = self.settings_open.then(|| self.settings_view.clone());
         let menu = self.menu_open.then(|| self.menu.clone());
+        let viewer = self.render_viewer(cx);
 
         div()
             .size_full()
@@ -950,6 +1026,7 @@ impl Render for MainView {
             )
             .children(profile)
             .children(menu)
+            .children(viewer)
             .children(settings)
     }
 }

@@ -11,6 +11,11 @@ use crate::{
     theme,
 };
 
+/// A picture was clicked and should be shown full size.
+pub struct ViewImage(pub String);
+
+impl gpui_kit::EventEmitter<ViewImage> for Media {}
+
 enum Slot {
     Loading,
     Ready(Arc<Image>),

@@ -6,7 +6,11 @@ use gpui_kit::{
 };
 use oxicord_model::{Attachment, Embed, Message, embed::EmbedMedia};
 
-use crate::{icons::icon, media::Media, theme};
+use crate::{
+    icons::icon,
+    media::{Media, ViewImage},
+    theme,
+};
 
 /// Largest a picture is drawn.
 const MAX_WIDTH: f32 = 400.;
@@ -58,7 +62,7 @@ pub(super) fn picture(
     cx: &mut App,
 ) -> AnyElement {
     let image = media.update(cx, |media, _| media.get(url));
-    let link = link.to_owned();
+    let (link, viewer) = (link.to_owned(), media.clone());
     let frame = div()
         .id(id)
         .w(px(size.0))
@@ -67,7 +71,9 @@ pub(super) fn picture(
         .rounded(px(8.))
         .overflow_hidden()
         .cursor_pointer()
-        .on_click(move |_, _, cx| cx.open_url(&link));
+        .on_click(move |_, _, cx| {
+            viewer.update(cx, |_, cx| cx.emit(ViewImage(link.clone())));
+        });
 
     match image {
         Some(image) => frame
