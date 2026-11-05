@@ -1,6 +1,6 @@
 use gpui_kit::{
     AnyElement, App, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ListAlignment, ListState,
+    ListAlignment, ListState, MouseButton, MouseDownEvent,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
 };
 use oxicord_media::cdn;
@@ -9,7 +9,7 @@ use oxicord_store::{Changes, Entry};
 
 use crate::{
     media::{Media, avatar},
-    session::Session,
+    session::{OpenUserMenu, Session},
     theme,
 };
 
@@ -167,6 +167,11 @@ impl MemberList {
 
         div()
             .id(("member", user.0))
+            .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                this.session.update(cx, |_, cx| {
+                    cx.emit(OpenUserMenu { user, guild: Some(guild), at: event.position, dm: None, can_mention: true });
+                });
+            }))
             .h(px(MEMBER_HEIGHT))
             .flex()
             .items_center()

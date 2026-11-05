@@ -29,11 +29,11 @@ use crate::{
     member_list::{MemberList, presence_dot},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, OpenInbox, OpenMenu, OpenPanel, OpenPicker, OpenPopup, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenInbox, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     side_panel::{ClosePanel, SidePanel},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
-    theme,
+    theme, user_menu,
 };
 
 struct GuildItem {
@@ -157,6 +157,7 @@ impl MainView {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let subscriptions = vec![
+            cx.subscribe(&session, |this, _, open: &OpenUserMenu, cx| this.open_user_menu(open, cx)),
             cx.subscribe(&popup, |this, _, _: &ClosePopup, cx| {
                 this.popup_open = false;
                 cx.notify();
@@ -553,6 +554,60 @@ impl MainView {
                 handler: send(Command::RemoveRelationship),
             }],
             _ => vec![add("Add Friend"), block],
+        }
+    }
+
+    /// Opens the menu for a person and carries out whatever is picked.
+    fn open_user_menu(&mut self, open: &OpenUserMenu, cx: &mut Context<Self>) {
+        let (tie, is_me) = {
+            let store = &self.session.read(cx).store;
+            (store.relationship(open.user), store.me().map(|u| u.id) == Some(open.user))
+        };
+        let list = user_menu::choices(tie, is_me, open.can_mention, open.dm.is_some());
+        let entries = list.iter().map(|c| c.entry()).collect();
+        let (user, guild, dm) = (open.user, open.guild, open.dm);
+        let view = cx.entity().downgrade();
+        let pick = std::rc::Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
+            let Some(choice) = list.get(index).copied() else { return };
+            view.update(cx, |this, cx| this.user_choice(user, guild, dm, choice, window, cx)).ok();
+        });
+        self.popup_open = true;
+        self.popup.update(cx, |popup, cx| popup.show(open.at, entries, pick, cx));
+        cx.notify();
+    }
+
+    fn user_choice(
+        &mut self,
+        user: Snowflake,
+        guild: Option<Snowflake>,
+        dm: Option<Snowflake>,
+        choice: user_menu::Choice,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use user_menu::Choice;
+        match choice {
+            Choice::Profile => self.open_profile(user, guild, cx),
+            Choice::Mention => self.session.update(cx, |_, cx| cx.emit(MentionUser(user))),
+            Choice::Message => self.message_from_card(user, cx),
+            Choice::AddFriend => {
+                let name = self.session.read(cx).store.user(user).map(|u| u.username.clone());
+                if let Some(name) = name {
+                    self.backend.send(Command::AddFriendByName(name));
+                }
+            }
+            Choice::RemoveFriend | Choice::CancelRequest | Choice::Unblock => {
+                self.backend.send(Command::RemoveRelationship(user));
+            }
+            Choice::AcceptRequest => self.backend.send(Command::AcceptFriend(user)),
+            Choice::Block => self.backend.send(Command::BlockUser(user)),
+            Choice::CloseDm => {
+                if let Some(dm) = dm {
+                    self.close_dm(dm, window, cx);
+                }
+            }
+            Choice::CopyId => cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string())),
+            Choice::Separator => {}
         }
     }
 
@@ -1116,6 +1171,12 @@ impl MainView {
 
         div()
             .id(("dm", id.0))
+            .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                let Some(user) = this.session.read(cx).store.channel(id).filter(|c| c.kind == ChannelType::Dm).and_then(|c| c.recipients.first().map(|r| r.id)) else { return };
+                this.session.update(cx, |_, cx| {
+                    cx.emit(OpenUserMenu { user, guild: None, at: event.position, dm: Some(id), can_mention: false });
+                });
+            }))
             .group("dm-row")
             .h(px(44.))
             .flex()

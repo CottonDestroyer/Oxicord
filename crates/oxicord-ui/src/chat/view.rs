@@ -36,7 +36,7 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{OpenInbox, OpenMenu, OpenPicker, PanelKind, Session},
+    session::{MentionUser, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -152,6 +152,9 @@ impl ChatView {
             cx.subscribe(&session, |this, _, changes: &Changes, cx| {
                 this.on_changes(changes, cx)
             }),
+            cx.subscribe_in(&session, window, |this, _, mention: &MentionUser, window, cx| {
+                this.insert_mention(mention.0, window, cx);
+            }),
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
@@ -259,6 +262,26 @@ impl ChatView {
     }
 
     /// Asks the window to show `user`'s card, as seen from this channel's server.
+    /// Puts `<@id> ` at the cursor, for the Mention entry of a person's menu.
+    fn insert_mention(&mut self, user: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        if self.channel.is_none() || !self.can_send(cx) {
+            return;
+        }
+        self.input.update(cx, |input, cx| {
+            input.insert(format!("<@{user}> "), window, cx);
+            input.focus(window, cx);
+        });
+    }
+
+    fn user_menu_at(&mut self, user: Snowflake, event: &MouseDownEvent, cx: &mut Context<Self>) {
+        cx.stop_propagation();
+        let guild = self.guild(cx);
+        let can_mention = self.can_send(cx);
+        self.session.update(cx, |_, cx| {
+            cx.emit(OpenUserMenu { user, guild, at: event.position, dm: None, can_mention });
+        });
+    }
+
     fn open_profile(&mut self, user: Snowflake, cx: &mut Context<Self>) {
         let guild = self
             .channel
@@ -1120,6 +1143,7 @@ impl ChatView {
             let user = message.author.id;
             div()
                 .id(("avatar", id.0))
+                .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| this.user_menu_at(user, event, cx)))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, cx)))
                 .child(avatar(&self.media, &url, GUTTER, &author, cx))
@@ -1136,6 +1160,10 @@ impl ChatView {
                     .child(
                         div()
                             .id(("author", id.0))
+                            .on_mouse_down(MouseButton::Right, cx.listener({
+                                let user = message.author.id;
+                                move |this, event: &MouseDownEvent, _, cx| this.user_menu_at(user, event, cx)
+                            }))
                             .cursor_pointer()
                             .hover(|s| s.underline())
                             .on_click(cx.listener({

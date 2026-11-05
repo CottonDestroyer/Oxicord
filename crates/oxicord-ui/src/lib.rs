@@ -26,6 +26,7 @@ mod session;
 mod settings_view;
 mod side_panel;
 mod settings;
+mod user_menu;
 mod switcher;
 pub mod theme;
 

@@ -91,6 +91,24 @@ pub struct OpenPopup {
 
 impl EventEmitter<OpenPopup> for Session {}
 
+/// A view wants the menu for a person at a point on screen.
+pub struct OpenUserMenu {
+    pub user: Snowflake,
+    pub guild: Option<Snowflake>,
+    pub at: gpui_kit::Point<gpui_kit::Pixels>,
+    /// Set for a conversation in the DM list, which adds closing it.
+    pub dm: Option<Snowflake>,
+    /// Whether a composer is on screen to take a mention.
+    pub can_mention: bool,
+}
+
+impl EventEmitter<OpenUserMenu> for Session {}
+
+/// Put a mention of this person into the composer.
+pub struct MentionUser(pub Snowflake);
+
+impl EventEmitter<MentionUser> for Session {}
+
 /// The inbox button was pressed.
 pub struct OpenInbox;
 
