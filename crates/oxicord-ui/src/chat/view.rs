@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
     backend::{Backend, Command},
-    emoji_panel::{ClosePicker, EmojiPanel, Picked},
+    emoji_panel::{ClosePicker, EmojiPanel, Picked, PickedGif},
     icons::icon,
     media::{Media, avatar},
     session::{PanelKind, Session},
@@ -129,13 +129,16 @@ impl ChatView {
         });
 
         let emoji = {
-            let (session, media) = (session.clone(), media.clone());
-            cx.new(|cx| EmojiPanel::new(session, media, window, cx))
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| EmojiPanel::new(session, media, backend, window, cx))
         };
 
         let subscriptions = vec![
             cx.subscribe_in(&emoji, window, |this, _, picked: &Picked, window, cx| {
                 this.on_emoji(&picked.0, window, cx);
+            }),
+            cx.subscribe(&emoji, |this, _, picked: &PickedGif, cx| {
+                this.send_gif(&picked.0, cx);
             }),
             cx.subscribe(&emoji, |this, _, _: &ClosePicker, cx| {
                 this.emoji_for = None;
@@ -514,6 +517,23 @@ impl ChatView {
             let guild = self.guild(cx);
             self.emoji_for = Some(target);
             self.emoji.update(cx, |panel, cx| panel.show(guild, window, cx));
+        }
+        cx.notify();
+    }
+
+    /// Posts a picked GIF: its address as the message, which Discord turns
+    /// into an inline animation.
+    fn send_gif(&mut self, gif: &oxicord_model::Gif, cx: &mut Context<Self>) {
+        self.emoji_for = None;
+        if let (Some(channel), true) = (self.channel, self.can_send(cx)) {
+            let guild = self.guild(cx);
+            self.backend.send(Command::SendMessage {
+                channel,
+                guild,
+                content: gif.url.clone(),
+                reply_to: self.reply_to.take(),
+                files: Vec::new(),
+            });
         }
         cx.notify();
     }

@@ -39,6 +39,10 @@ pub struct Session {
     pub invite_joined: Option<Result<(), String>>,
     /// Opening message of each forum post we have seen, by post id.
     pub previews: HashMap<Snowflake, Message>,
+    /// The GIF picker's results and the search they answer (`None` is the
+    /// trending list).
+    pub gifs: Load<Vec<oxicord_model::Gif>>,
+    pub gif_query: Option<String>,
     /// People already looked up, so each is asked about once.
     users_requested: HashSet<Snowflake>,
     /// Posts whose preview was already asked for.
@@ -102,6 +106,8 @@ impl Session {
             commands: HashMap::new(),
             invite_joined: None,
             previews: HashMap::new(),
+            gifs: Load::Idle,
+            gif_query: None,
             users_requested: HashSet::new(),
             preview_requested: HashSet::new(),
             status: ClientStatus::default(),
@@ -269,6 +275,29 @@ impl Session {
         self.store.add_users(users);
         cx.emit(Changes::full());
         cx.notify();
+    }
+
+    pub fn request_gifs(&mut self, backend: &Backend, query: Option<String>, cx: &mut Context<Self>) {
+        self.gifs = Load::Loading;
+        self.gif_query.clone_from(&query);
+        backend.send(Command::LoadGifs(query));
+        cx.notify();
+    }
+
+    /// Ignores answers to a search the user has already replaced.
+    pub fn apply_gifs(
+        &mut self,
+        query: Option<String>,
+        result: Result<Vec<oxicord_model::Gif>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.gif_query == query {
+            self.gifs = match result {
+                Ok(list) => Load::Ready(list),
+                Err(error) => Load::Failed(error),
+            };
+            cx.notify();
+        }
     }
 
     pub fn apply_previews(&mut self, messages: Vec<Message>, cx: &mut Context<Self>) {

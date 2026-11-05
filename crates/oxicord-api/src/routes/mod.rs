@@ -3,6 +3,7 @@
 mod account;
 mod channels;
 mod commands;
+mod gifs;
 mod guilds;
 mod interactions;
 mod invites;

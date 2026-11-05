@@ -142,6 +142,9 @@ pub enum Command {
     /// Look up people we only know by id. The answer arrives as
     /// [`Event::Users`].
     FetchUsers(Vec<Snowflake>),
+    /// Load GIFs for the picker: the trending ones, or a search. The answer
+    /// arrives as [`Event::Gifs`].
+    LoadGifs(Option<String>),
     JoinThread(Snowflake),
     LeaveThread(Snowflake),
     /// Start a thread on a message. The answer arrives as
@@ -229,6 +232,10 @@ pub enum Event {
         result: Result<ThreadPage, String>,
     },
     ThreadCreated(Result<Channel, String>),
+    Gifs {
+        query: Option<String>,
+        result: Result<Vec<oxicord_model::Gif>, String>,
+    },
     Users(Vec<User>),
     Commands {
         channel: Snowflake,

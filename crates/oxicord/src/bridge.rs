@@ -102,7 +102,7 @@ fn fetch_image(fetcher: &Fetcher, url: String, events: Sender<Event>) {
         let bytes = match fetcher.fetch(&url).await {
             Ok(bytes) => Some(bytes),
             Err(err) => {
-                tracing::debug!(%err, %url, "image fetch failed");
+                tracing::info!(%err, host = url.split('/').nth(2).unwrap_or_default(), "image fetch failed");
                 None
             }
         };
@@ -347,6 +347,19 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 if !found.is_empty() {
                     let _ = events.send(Event::Users(found)).await;
                 }
+            });
+        }
+        Command::LoadGifs(query) => {
+            tokio::spawn(async move {
+                let result = match &query {
+                    Some(q) => api.gifs_search(q).await,
+                    None => api.gifs_trending().await,
+                }
+                .map_err(|err| {
+                    tracing::debug!(?err, "could not load gifs");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::Gifs { query, result }).await;
             });
         }
         Command::JoinThread(thread) => {

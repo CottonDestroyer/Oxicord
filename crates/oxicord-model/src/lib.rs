@@ -11,6 +11,7 @@ pub mod component;
 pub mod embed;
 pub mod emoji;
 pub mod gateway;
+pub mod gif;
 pub mod guild;
 pub mod invite;
 pub mod member;
@@ -35,6 +36,7 @@ pub use channel::{
 };
 pub use embed::Embed;
 pub use emoji::Emoji;
+pub use gif::Gif;
 pub use guild::Guild;
 pub use invite::{InvitePreview, invite_code};
 pub use member::{Member, MemberList};

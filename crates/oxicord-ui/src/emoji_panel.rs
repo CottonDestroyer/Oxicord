@@ -5,13 +5,20 @@ use emojis::Group;
 use gpui_kit::{
     AppContext as _, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window, div, img, px, rgb,
-    component::input::{Input, InputState},
+    Styled as _, StyledImage as _, Subscription, Window, div, img, px, rgb,
+    component::input::{Input, InputEvent, InputState},
 };
 use oxicord_media::cdn;
-use oxicord_model::{Emoji, Snowflake};
+use oxicord_model::{Emoji, Gif, Snowflake};
 
-use crate::{icons::icon, media::Media, session::Session, theme};
+use crate::{
+    account::Load,
+    backend::Backend,
+    icons::icon,
+    media::Media,
+    session::Session,
+    theme,
+};
 
 /// Newer emoji than this show as empty boxes in the system font, so they
 /// are left out rather than offered as something that can't be seen.
@@ -23,6 +30,18 @@ const CELL: f32 = 34.;
 
 /// The user chose an emoji. Unicode ones carry their character as the name.
 pub struct Picked(pub Emoji);
+
+/// A GIF was chosen. Posting it is the owner's business.
+pub struct PickedGif(pub Gif);
+
+impl EventEmitter<PickedGif> for EmojiPanel {}
+
+/// Emoji or GIFs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Emoji,
+    Gifs,
+}
 
 /// The panel wants to go away.
 pub struct ClosePicker;
@@ -90,6 +109,8 @@ enum Item {
 pub struct EmojiPanel {
     session: Entity<Session>,
     media: Entity<Media>,
+    backend: Backend,
+    mode: Mode,
     search: Entity<InputState>,
     tab: Tab,
     /// The server whose emoji the first tab lists.
@@ -101,6 +122,7 @@ impl EmojiPanel {
     pub fn new(
         session: Entity<Session>,
         media: Entity<Media>,
+        backend: Backend,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -108,10 +130,19 @@ impl EmojiPanel {
         let subscriptions = vec![
             cx.observe(&search, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
+            cx.observe(&session, |_, _, cx| cx.notify()),
+            // GIF searches go to the server, so they wait for Enter.
+            cx.subscribe_in(&search, window, |this, _, event: &InputEvent, _, cx| {
+                if this.mode == Mode::Gifs && matches!(event, InputEvent::PressEnter { .. }) {
+                    this.search_gifs(cx);
+                }
+            }),
         ];
         Self {
             session,
             media,
+            backend,
+            mode: Mode::Emoji,
             search,
             tab: Tab::Unicode(Group::SmileysAndEmotion),
             guild: None,
@@ -119,12 +150,97 @@ impl EmojiPanel {
         }
     }
 
+    fn set_mode(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
+        self.mode = mode;
+        self.search.update(cx, |input, cx| {
+            let hint = if mode == Mode::Gifs { "Search GIFs" } else { "Search emoji" };
+            input.set_placeholder(hint, window, cx);
+            input.set_value("", window, cx);
+            input.focus(window, cx);
+        });
+        if mode == Mode::Gifs && matches!(self.session.read(cx).gifs, Load::Idle | Load::Failed(_)) {
+            let backend = self.backend.clone();
+            self.session.update(cx, |s, cx| s.request_gifs(&backend, None, cx));
+        }
+        cx.notify();
+    }
+
+    fn search_gifs(&mut self, cx: &mut Context<Self>) {
+        let text = self.search.read(cx).value().trim().to_owned();
+        let query = (!text.is_empty()).then_some(text);
+        let backend = self.backend.clone();
+        self.session.update(cx, |s, cx| s.request_gifs(&backend, query, cx));
+    }
+
+    /// The Emoji and GIFs switch at the top.
+    fn render_modes(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let mut row = div().flex().gap_1();
+        for (mode, label) in [(Mode::Emoji, "Emoji"), (Mode::Gifs, "GIFs")] {
+            let selected = self.mode == mode;
+            row = row.child(
+                div()
+                    .id(label)
+                    .h(px(26.))
+                    .px_3()
+                    .flex()
+                    .items_center()
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .text_size(px(13.))
+                    .text_color(rgb(if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
+                    .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_PANEL }))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |this, _, window, cx| this.set_mode(mode, window, cx)))
+                    .child(label),
+            );
+        }
+        row
+    }
+
+    /// The grid of GIF thumbnails, two to a row.
+    fn render_gifs(&mut self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+        let note = |text: String| {
+            div().p_2().text_color(rgb(theme::TEXT_MUTED)).child(text).into_any_element()
+        };
+        match self.session.read(cx).gifs.clone() {
+            Load::Ready(list) if list.is_empty() => note("No GIFs found.".into()),
+            Load::Ready(list) => {
+                let mut grid = div().flex().flex_wrap().gap(px(4.));
+                for (i, gif) in list.into_iter().enumerate() {
+                    let image = self.media.update(cx, |m, _| m.get(&gif.preview));
+                    grid = grid.child(
+                        div()
+                            .id(("gif", i as u64))
+                            .w(px(166.))
+                            .h(px(110.))
+                            .rounded(px(6.))
+                            .overflow_hidden()
+                            .bg(rgb(theme::BG_SIDEBAR))
+                            .cursor_pointer()
+                            .hover(|s| s.opacity(0.85))
+                            .on_click(cx.listener(move |_, _, _, cx| cx.emit(PickedGif(gif.clone()))))
+                            .children(image.map(|image| {
+                                img(gpui_kit::ImageSource::Image(image))
+                                    .size_full()
+                                    .object_fit(gpui_kit::ObjectFit::Cover)
+                            })),
+                    );
+                }
+                grid.into_any_element()
+            }
+            Load::Failed(error) => note(format!("Could not load GIFs. {error}")),
+            _ => note("Loading GIFs...".into()),
+        }
+    }
+
     /// Opens on the right tab for `guild` and focuses the search box.
     pub fn show(&mut self, guild: Option<Snowflake>, window: &mut Window, cx: &mut Context<Self>) {
+        self.mode = Mode::Emoji;
         self.guild = guild;
         let has_custom = !self.custom(cx).is_empty();
         self.tab = if has_custom { Tab::Server } else { Tab::Unicode(Group::SmileysAndEmotion) };
         self.search.update(cx, |input, cx| {
+            input.set_placeholder("Search emoji", window, cx);
             input.set_value("", window, cx);
             input.focus(window, cx);
         });
@@ -241,6 +357,10 @@ impl Render for EmojiPanel {
             });
         }
 
+        let gifs_view = self.mode == Mode::Gifs;
+        let body = if gifs_view { self.render_gifs(cx) } else { grid.into_any_element() };
+        let modes = self.render_modes(cx);
+
         div()
             .id("emoji-panel")
             .occlude()
@@ -254,15 +374,16 @@ impl Render for EmojiPanel {
             .border_1()
             .border_color(rgb(theme::BORDER))
             .bg(rgb(theme::BG_PANEL))
+            .child(modes)
             .child(Input::new(&self.search))
-            .child(tabs)
-            .child(
+            .children((!gifs_view).then_some(tabs))
+            .children((!gifs_view).then(|| {
                 div()
                     .text_size(px(11.))
                     .font_weight(FontWeight::BOLD)
                     .text_color(rgb(theme::TEXT_MUTED))
-                    .child(title.to_uppercase()),
-            )
-            .child(div().id("emoji-grid").flex_1().min_h_0().overflow_y_scroll().child(grid))
+                    .child(title.to_uppercase())
+            }))
+            .child(div().id("emoji-grid").flex_1().min_h_0().overflow_y_scroll().child(body))
     }
 }

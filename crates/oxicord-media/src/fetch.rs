@@ -35,7 +35,8 @@ pub fn is_allowed(url: &str) -> bool {
     let Some(host) = url.host_str() else {
         return false;
     };
-    let discord_host = ["discordapp.com", "discordapp.net"]
+    // Discord's own CDN, plus the services behind the GIF picker.
+    let discord_host = ["discordapp.com", "discordapp.net", "tenor.com", "giphy.com", "klipy.com"]
         .iter()
         .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")));
 
