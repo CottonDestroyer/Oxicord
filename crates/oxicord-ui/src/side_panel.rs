@@ -210,7 +210,7 @@ impl SidePanel {
             .cursor_pointer()
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
             .on_click(cx.listener(move |this, _, _, cx| {
-                this.session.update(cx, |s, cx| s.jump_to(channel, cx));
+                this.session.update(cx, |s, cx| s.jump_to_message(channel, id, cx));
             }))
             .children(place.map(|p| {
                 div()

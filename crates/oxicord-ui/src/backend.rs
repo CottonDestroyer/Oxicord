@@ -145,6 +145,12 @@ pub enum Command {
     /// Load GIFs for the picker: the trending ones, or a search. The answer
     /// arrives as [`Event::Gifs`].
     LoadGifs(Option<String>),
+    /// Load the messages around one, for jumping to it. The answer arrives
+    /// as [`Event::Around`].
+    LoadAround {
+        channel: Snowflake,
+        message: Snowflake,
+    },
     JoinThread(Snowflake),
     LeaveThread(Snowflake),
     /// Start a thread on a message. The answer arrives as
@@ -232,6 +238,11 @@ pub enum Event {
         result: Result<ThreadPage, String>,
     },
     ThreadCreated(Result<Channel, String>),
+    Around {
+        channel: Snowflake,
+        message: Snowflake,
+        result: Result<Vec<Message>, String>,
+    },
     Gifs {
         query: Option<String>,
         result: Result<Vec<oxicord_model::Gif>, String>,

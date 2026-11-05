@@ -12,11 +12,23 @@ pub struct Timeline {
     messages: VecDeque<Message>,
     /// True while older history may still exist on the server.
     has_more_before: bool,
+    /// Holds a stretch of history around a message we jumped to, not the
+    /// newest messages. Live messages are not added while this is set,
+    /// because they would sit apart from what is shown.
+    detached: bool,
 }
 
 impl Timeline {
     pub fn messages(&self) -> &VecDeque<Message> {
         &self.messages
+    }
+
+    pub fn is_detached(&self) -> bool {
+        self.detached
+    }
+
+    pub(crate) fn set_detached(&mut self, value: bool) {
+        self.detached = value;
     }
 
     pub fn has_more_before(&self) -> bool {

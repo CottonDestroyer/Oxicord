@@ -153,7 +153,7 @@ impl MainView {
                 this.open_panel(open.0, window, cx);
             }),
             cx.subscribe_in(&session, window, |this, _, jump: &JumpTo, window, cx| {
-                this.show_channel(jump.0, window, cx);
+                this.show_channel(jump.channel, jump.message, window, cx);
             }),
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&session, window, |this, _, opened: &DmOpened, window, cx| {
@@ -322,7 +322,13 @@ impl MainView {
     }
 
     /// Goes to any channel we know, for example from a search result.
-    fn show_channel(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+    fn show_channel(
+        &mut self,
+        channel: Snowflake,
+        message: Option<Snowflake>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.guild = self
             .session
             .read(cx)
@@ -330,6 +336,9 @@ impl MainView {
             .channel(channel)
             .and_then(|c| c.guild_id);
         self.select_channel(channel, window, cx);
+        if let Some(message) = message {
+            self.chat.update(cx, |chat, cx| chat.focus_message(message, cx));
+        }
     }
 
     /// Goes to a direct message from wherever we are, for example after

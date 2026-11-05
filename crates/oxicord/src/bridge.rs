@@ -362,6 +362,16 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::Gifs { query, result }).await;
             });
         }
+        Command::LoadAround { channel, message } => {
+            tokio::spawn(async move {
+                let page = MessagePage { around: Some(message), limit: HISTORY_PAGE, ..MessagePage::default() };
+                let result = api.messages(channel, page).await.map_err(|err| {
+                    tracing::warn!(?err, %channel, "could not load messages around one");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::Around { channel, message, result }).await;
+            });
+        }
         Command::JoinThread(thread) => {
             tokio::spawn(async move {
                 if let Err(err) = api.join_thread(thread).await {

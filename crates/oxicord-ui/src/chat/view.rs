@@ -71,7 +71,9 @@ pub struct ChatView {
     revealed: HashSet<(Snowflake, usize)>,
     /// The message whose quick-reaction row is open.
     picker_for: Option<Snowflake>,
-    /// People mentioned on screen whose names we don't have yet. Filled while
+    /// A message briefly marked after jumping to it.
+    highlight: Option<Snowflake>,
+    /// People mentioned on screen whose names we do not have yet. Filled while
     /// drawing, so it sits behind a cell.
     unknown_users: std::cell::RefCell<HashSet<Snowflake>>,
     /// The option form of the slash command being filled in.
@@ -197,6 +199,7 @@ impl ChatView {
             revealed: HashSet::new(),
             picker_for: None,
             open_menu: None,
+            highlight: None,
             unknown_users: std::cell::RefCell::new(HashSet::new()),
             command_form: None,
             suggestions: Vec::new(),
@@ -260,6 +263,93 @@ impl ChatView {
             .and_then(|c| c.guild_id);
         self.session
             .update(cx, |session, cx| session.show_profile(user, guild, cx));
+    }
+
+    /// Goes to a message: straight there when it is loaded, otherwise after
+    /// loading the history around it.
+    pub fn focus_message(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        if self.message(message, cx).is_some() {
+            self.scroll_to_message(message, cx);
+        } else {
+            self.backend.send(Command::LoadAround { channel, message });
+        }
+    }
+
+    /// Scrolls to a message the session was asked to show, once it is loaded.
+    fn apply_jump_target(&mut self, cx: &mut Context<Self>) {
+        let target = self.session.read(cx).jump_target;
+        let (Some((channel, message)), Some(current)) = (target, self.channel) else { return };
+        if channel == current && self.message(message, cx).is_some() {
+            self.session.update(cx, |s, _| s.jump_target = None);
+            self.scroll_to_message(message, cx);
+        }
+    }
+
+    fn scroll_to_message(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        let Some(ix) = self
+            .rows
+            .iter()
+            .position(|row| matches!(row, Row::Message { id, .. } if *id == message))
+        else {
+            return;
+        };
+        self.list.scroll_to_reveal_item(ix);
+        // Mark it for a moment so the eye finds it.
+        self.highlight = Some(message);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            this.update(cx, |this, cx| {
+                if this.highlight == Some(message) {
+                    this.highlight = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Leaves a jumped-to stretch of history and loads the newest messages.
+    fn return_to_present(&mut self, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        self.session.update(cx, |s, cx| {
+            let changes = s.store.return_to_present(channel);
+            cx.emit(changes);
+        });
+        self.fetched.insert(channel);
+        self.request(channel, None, cx);
+    }
+
+    /// The bar shown while looking at older history, with a way back.
+    fn render_present_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let channel = self.channel?;
+        let detached = self
+            .session
+            .read(cx)
+            .store
+            .timeline(channel)
+            .is_some_and(|t| t.is_detached());
+        detached.then(|| {
+            div()
+                .id("jump-present")
+                .mb_1()
+                .px_3()
+                .h(px(32.))
+                .flex()
+                .items_center()
+                .justify_between()
+                .rounded(px(6.))
+                .bg(rgb(theme::ACCENT))
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .cursor_pointer()
+                .hover(|s| s.opacity(0.9))
+                .on_click(cx.listener(|this, _, _, cx| this.return_to_present(cx)))
+                .child("You are viewing older messages")
+                .child(div().font_weight(FontWeight::SEMIBOLD).child("Jump to present"))
+                .into_any_element()
+        })
     }
 
     /// Marks the newest message read once we are looking at the end of the
@@ -465,6 +555,7 @@ impl ChatView {
         if changes.messages.contains(&channel) {
             self.loading = false;
             self.rebuild(cx);
+            self.apply_jump_target(cx);
             self.maybe_ack(cx);
             cx.notify();
         }
@@ -1053,7 +1144,13 @@ impl ChatView {
                     ),
             );
         }
-        if let Some(reply) = reply_line(&message) {
+        let replied_to = message.message_reference.as_ref().and_then(|r| r.message_id);
+        let open_original = cx.listener(move |this, _: &ClickEvent, _, cx| {
+            if let Some(original) = replied_to {
+                this.focus_message(original, cx);
+            }
+        });
+        if let Some(reply) = reply_line(&message, open_original) {
             body = body.child(reply);
         }
         body = body.child(self.render_content(&message, window, cx));
@@ -1101,7 +1198,7 @@ impl ChatView {
         };
         let bar = self.action_bar(id, allowed, confirming, cx);
 
-        div()
+        let row = div()
             .id(("message", id.0))
             .group("message")
             .relative()
@@ -1114,8 +1211,11 @@ impl ChatView {
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
             .child(left)
             .child(body)
-            .child(bar)
-            .into_any_element()
+            .child(bar);
+        if self.highlight == Some(id) {
+            return row.bg(rgb(0x2c3050)).into_any_element();
+        }
+        row.into_any_element()
     }
 
     /// Reply, edit and delete, floating at the top right of a hovered
@@ -1524,6 +1624,10 @@ impl ChatView {
             );
         }
 
+        if let Some(bar) = self.render_present_bar(cx) {
+            column = column.child(bar);
+        }
+
         if !can_send {
             return column
                 .child(
@@ -1798,7 +1902,10 @@ fn divider(day: NaiveDate) -> impl IntoElement {
 }
 
 /// The quoted line above a reply: who it answers and what they said.
-fn reply_line(message: &Message) -> Option<AnyElement> {
+fn reply_line(
+    message: &Message,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Option<AnyElement> {
     if message.kind != MessageType::Reply && message.referenced_message.is_none() {
         return None;
     }
@@ -1824,12 +1931,16 @@ fn reply_line(message: &Message) -> Option<AnyElement> {
 
     Some(
         div()
+            .id(("reply-line", message.id.0))
             .flex()
             .items_center()
             .gap_2()
             .mb_1()
             .text_size(px(13.))
             .text_color(rgb(theme::TEXT_MUTED))
+            .cursor_pointer()
+            .hover(|s| s.text_color(rgb(theme::TEXT)))
+            .on_click(on_click)
             .child(icon("reply", 14., theme::TEXT_MUTED))
             .child(content)
             .into_any_element(),

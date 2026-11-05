@@ -970,3 +970,45 @@ fn poll_votes_arrive_live_and_our_own_apply_at_once() {
     assert!(!poll(&store).votes(2).me);
     assert_eq!(poll(&store).votes(2).count, 0);
 }
+
+fn window_message(id: &str, content: &str) -> Value {
+    json!({ "id": id, "channel_id": "11", "guild_id": "100",
+            "author": { "id": "2", "username": "ada" }, "content": content,
+            "timestamp": "2024-05-01T12:00:00.000000+00:00", "type": 0 })
+}
+
+#[test]
+fn a_jumped_to_window_replaces_the_timeline_and_ignores_live_messages() {
+    let mut store = ready_store();
+    store.open_channel(id(11));
+    store.apply(event("MESSAGE_CREATE", window_message("900", "newest")));
+
+    let page: Vec<Message> = [("100", "old one"), ("101", "old two")]
+        .iter()
+        .map(|(i, c)| serde_json::from_value(window_message(i, c)).unwrap())
+        .collect();
+    let changes = store.show_window(id(11), page);
+    assert!(changes.messages.contains(&id(11)));
+
+    let timeline = store.timeline(id(11)).unwrap();
+    assert!(timeline.is_detached());
+    assert!(timeline.get(id(900)).is_none(), "the newest message is not part of this window");
+    assert_eq!(timeline.messages().len(), 2);
+
+    // A live message must not land beside messages from long ago.
+    store.apply(event("MESSAGE_CREATE", window_message("901", "live")));
+    assert!(store.timeline(id(11)).unwrap().get(id(901)).is_none());
+    // It still counts as unread, which does not depend on the timeline.
+    assert!(store.unread(id(11)).unread);
+}
+
+#[test]
+fn returning_to_the_present_starts_the_timeline_fresh() {
+    let mut store = ready_store();
+    store.show_window(id(11), vec![serde_json::from_value(window_message("100", "old")).unwrap()]);
+    store.return_to_present(id(11));
+    let timeline = store.timeline(id(11)).unwrap();
+    assert!(!timeline.is_detached() && timeline.messages().is_empty());
+    store.apply(event("MESSAGE_CREATE", window_message("902", "live again")));
+    assert!(store.timeline(id(11)).unwrap().get(id(902)).is_some());
+}

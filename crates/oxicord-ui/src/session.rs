@@ -39,6 +39,8 @@ pub struct Session {
     pub invite_joined: Option<Result<(), String>>,
     /// Opening message of each forum post we have seen, by post id.
     pub previews: HashMap<Snowflake, Message>,
+    /// A message a view should scroll to once it is on screen.
+    pub jump_target: Option<(Snowflake, Snowflake)>,
     /// The GIF picker's results and the search they answer (`None` is the
     /// trending list).
     pub gifs: Load<Vec<oxicord_model::Gif>>,
@@ -70,8 +72,12 @@ pub struct OpenPanel(pub PanelKind);
 
 impl EventEmitter<OpenPanel> for Session {}
 
-/// Someone picked a message in a list and wants to go to its channel.
-pub struct JumpTo(pub Snowflake);
+/// Someone picked a message in a list and wants to go to its channel, and
+/// to the message itself when one is named.
+pub struct JumpTo {
+    pub channel: Snowflake,
+    pub message: Option<Snowflake>,
+}
 
 impl EventEmitter<JumpTo> for Session {}
 
@@ -106,6 +112,7 @@ impl Session {
             commands: HashMap::new(),
             invite_joined: None,
             previews: HashMap::new(),
+            jump_target: None,
             gifs: Load::Idle,
             gif_query: None,
             users_requested: HashSet::new(),
@@ -121,7 +128,31 @@ impl Session {
     }
 
     pub fn jump_to(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
-        cx.emit(JumpTo(channel));
+        cx.emit(JumpTo { channel, message: None });
+    }
+
+    pub fn jump_to_message(&mut self, channel: Snowflake, message: Snowflake, cx: &mut Context<Self>) {
+        cx.emit(JumpTo { channel, message: Some(message) });
+    }
+
+    /// Takes in the window of history around a message and remembers where
+    /// the view should scroll to.
+    pub fn apply_around(
+        &mut self,
+        channel: Snowflake,
+        message: Snowflake,
+        result: Result<Vec<Message>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
+            Ok(page) => {
+                let changes = self.store.show_window(channel, page);
+                self.jump_target = Some((channel, message));
+                cx.emit(changes);
+                cx.notify();
+            }
+            Err(error) => self.set_notice(Some(format!("Could not load that message. {error}")), cx),
+        }
     }
 
     pub fn request_pins(&mut self, backend: &Backend, channel: Snowflake, cx: &mut Context<Self>) {
@@ -314,7 +345,7 @@ impl Session {
                 let id = thread.id;
                 self.store.add_thread(thread, true);
                 cx.emit(Changes::full());
-                cx.emit(JumpTo(id));
+                cx.emit(JumpTo { channel: id, message: None });
                 cx.notify();
             }
             Err(error) => self.set_notice(Some(format!("Couldn't start a thread. {error}")), cx),

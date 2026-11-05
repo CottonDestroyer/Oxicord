@@ -121,6 +121,10 @@ impl AppView {
             Event::Threads { channel, result, .. } => {
                 self.session.update(cx, |session, cx| session.apply_threads(channel, result, cx));
             }
+            Event::Around { channel, message, result } => {
+                self.session
+                    .update(cx, |session, cx| session.apply_around(channel, message, result, cx));
+            }
             Event::Gifs { query, result } => {
                 self.session.update(cx, |session, cx| session.apply_gifs(query, result, cx));
             }

@@ -8,7 +8,7 @@ use oxicord_model::{
     MemberList,
 };
 
-use crate::{Changes, Store};
+use crate::{Changes, Store, Timeline};
 
 /// How long a TYPING_START keeps the indicator alive.
 const TYPING_SECONDS: u64 = 10;
@@ -149,6 +149,33 @@ impl Store {
             m.pinned = pinned;
             changes.messages.insert(channel);
         }
+        changes
+    }
+
+    /// Replaces a channel's messages with a window around a message we are
+    /// jumping to. Older history stays available to page in.
+    pub fn show_window(&mut self, channel: Snowflake, page: Vec<Message>) -> Changes {
+        for message in &page {
+            self.users.insert(message.author.id, message.author.clone());
+        }
+        let mut timeline = Timeline::default();
+        for message in page {
+            timeline.insert(message);
+        }
+        timeline.set_has_more_before(true);
+        timeline.set_detached(true);
+        self.timelines.insert(channel, timeline);
+
+        let mut changes = Changes::default();
+        changes.messages.insert(channel);
+        changes
+    }
+
+    /// Leaves a jumped-to window so the newest messages can be loaded again.
+    pub fn return_to_present(&mut self, channel: Snowflake) -> Changes {
+        self.timelines.insert(channel, Timeline::default());
+        let mut changes = Changes::default();
+        changes.messages.insert(channel);
         changes
     }
 
@@ -298,7 +325,9 @@ impl Store {
 
         self.touch_channel(channel_id, changes);
 
-        if let Some(timeline) = self.timelines.get_mut(&channel_id) {
+        if let Some(timeline) = self.timelines.get_mut(&channel_id)
+            && !timeline.is_detached()
+        {
             timeline.insert_live(message);
             changes.messages.insert(channel_id);
         }
