@@ -4578,6 +4578,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxicord-store"
+version = "0.1.0"
+dependencies = [
+ "oxicord-model",
+ "serde_json",
+]
+
+[[package]]
 name = "oxicord-ui"
 version = "0.1.0"
 dependencies = [

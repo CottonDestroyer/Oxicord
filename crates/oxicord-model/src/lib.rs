@@ -23,7 +23,7 @@ pub use channel::{Channel, ChannelType, Overwrite, OverwriteKind};
 pub use embed::Embed;
 pub use emoji::Emoji;
 pub use guild::Guild;
-pub use member::Member;
+pub use member::{Member, MemberList};
 pub use message::{Message, MessageType, PartialMessage, Reaction};
 pub use permissions::Permissions;
 pub use presence::{Activity, Status};

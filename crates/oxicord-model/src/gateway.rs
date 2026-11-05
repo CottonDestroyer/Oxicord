@@ -2,7 +2,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    Activity, Channel, Emoji, Guild, Message, PartialMessage, ReadState, Snowflake, Status, User,
+    Activity, Channel, Emoji, Guild, MemberList, Message, PartialMessage, ReadState, Role,
+    Snowflake, Status, User,
 };
 
 pub mod op {
@@ -50,8 +51,14 @@ pub struct Ready {
     pub private_channels: Vec<Channel>,
     #[serde(default)]
     pub read_state: Option<ReadStates>,
+    /// Every user mentioned elsewhere in the payload, listed once. Private
+    /// channels only carry `recipient_ids` and rely on this to resolve them.
     #[serde(default)]
     pub users: Vec<User>,
+    /// Indexed in parallel with `guilds`. For a user session each entry is
+    /// our own member in that guild.
+    #[serde(default)]
+    pub merged_members: Vec<MemberList>,
 }
 
 /// User sessions get read states as `{ entries: [...] }`. Accept a bare
@@ -139,6 +146,28 @@ pub struct PresenceUpdate {
     pub activities: Vec<Activity>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct GuildMemberUpdate {
+    pub guild_id: Snowflake,
+    pub user: PresenceUser,
+    #[serde(default)]
+    pub roles: Vec<Snowflake>,
+    #[serde(default)]
+    pub nick: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GuildRoleEvent {
+    pub guild_id: Snowflake,
+    pub role: Role,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GuildRoleDelete {
+    pub guild_id: Snowflake,
+    pub role_id: Snowflake,
+}
+
 /// Dispatch events the client reacts to. Anything else is kept as `Unknown`
 /// so new server events never turn into hard errors.
 #[derive(Clone, Debug)]
@@ -155,6 +184,10 @@ pub enum DispatchEvent {
     GuildCreate(Box<Guild>),
     GuildUpdate(Box<Guild>),
     GuildDelete(GuildDelete),
+    GuildMemberUpdate(GuildMemberUpdate),
+    GuildRoleCreate(GuildRoleEvent),
+    GuildRoleUpdate(GuildRoleEvent),
+    GuildRoleDelete(GuildRoleDelete),
     ChannelCreate(Box<Channel>),
     ChannelUpdate(Box<Channel>),
     ChannelDelete(Box<Channel>),
@@ -180,6 +213,10 @@ impl DispatchEvent {
             "GUILD_CREATE" => Self::GuildCreate(Box::new(de(data)?)),
             "GUILD_UPDATE" => Self::GuildUpdate(Box::new(de(data)?)),
             "GUILD_DELETE" => Self::GuildDelete(de(data)?),
+            "GUILD_MEMBER_UPDATE" => Self::GuildMemberUpdate(de(data)?),
+            "GUILD_ROLE_CREATE" => Self::GuildRoleCreate(de(data)?),
+            "GUILD_ROLE_UPDATE" => Self::GuildRoleUpdate(de(data)?),
+            "GUILD_ROLE_DELETE" => Self::GuildRoleDelete(de(data)?),
             "CHANNEL_CREATE" => Self::ChannelCreate(Box::new(de(data)?)),
             "CHANNEL_UPDATE" => Self::ChannelUpdate(Box::new(de(data)?)),
             "CHANNEL_DELETE" => Self::ChannelDelete(Box::new(de(data)?)),
@@ -259,6 +296,47 @@ mod tests {
         assert_eq!(r.guilds[0].name, "home");
         assert_eq!(r.private_channels[0].recipient_ids, vec![Snowflake(7)]);
         assert_eq!(r.read_state.unwrap().entries()[0].mention_count, 2);
+    }
+
+    #[test]
+    fn ready_reads_merged_members_as_array_or_object_per_guild() {
+        let event = DispatchEvent::parse(
+            "READY",
+            json!({
+                "user": { "id": "1", "username": "me" },
+                "session_id": "abc",
+                "guilds": [{ "id": "5" }, { "id": "6" }],
+                "merged_members": [
+                    [{ "user_id": "1", "roles": ["10", "11"] }],
+                    { "user_id": "1", "roles": ["12"] }
+                ]
+            }),
+        )
+        .unwrap();
+
+        let DispatchEvent::Ready(r) = event else {
+            panic!("wrong variant");
+        };
+        let lists: Vec<_> = r.merged_members.into_iter().map(|m| m.into_vec()).collect();
+        assert_eq!(lists[0][0].roles.len(), 2);
+        assert_eq!(lists[1][0].roles, vec![Snowflake(12)]);
+    }
+
+    #[test]
+    fn parses_role_and_member_updates() {
+        let member = DispatchEvent::parse(
+            "GUILD_MEMBER_UPDATE",
+            json!({ "guild_id": "5", "user": { "id": "1" }, "roles": ["9"] }),
+        )
+        .unwrap();
+        assert!(matches!(member, DispatchEvent::GuildMemberUpdate(m) if m.roles == vec![Snowflake(9)]));
+
+        let role = DispatchEvent::parse(
+            "GUILD_ROLE_UPDATE",
+            json!({ "guild_id": "5", "role": { "id": "9", "name": "mods", "permissions": "8" } }),
+        )
+        .unwrap();
+        assert!(matches!(role, DispatchEvent::GuildRoleUpdate(r) if r.role.name == "mods"));
     }
 
     #[test]

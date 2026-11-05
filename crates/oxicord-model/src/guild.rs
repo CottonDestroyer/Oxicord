@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{Channel, Emoji, Role, Snowflake};
+use crate::{Channel, Emoji, Member, Role, Snowflake};
 
 /// A guild in the shape the rest of the client wants.
 ///
@@ -20,6 +20,9 @@ pub struct Guild {
     pub channels: Vec<Channel>,
     pub threads: Vec<Channel>,
     pub emojis: Vec<Emoji>,
+    /// Only the members the server chose to include. For a user account
+    /// that is usually just ourselves.
+    pub members: Vec<Member>,
 }
 
 #[derive(Deserialize)]
@@ -45,6 +48,8 @@ struct RawGuild {
     threads: Vec<Channel>,
     #[serde(default)]
     emojis: Vec<Emoji>,
+    #[serde(default)]
+    members: Vec<Member>,
 }
 
 #[derive(Default, Deserialize)]
@@ -78,6 +83,7 @@ impl From<RawGuild> for Guild {
             channels,
             threads,
             emojis: raw.emojis,
+            members: raw.members,
         }
     }
 }
