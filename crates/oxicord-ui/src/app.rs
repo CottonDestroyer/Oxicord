@@ -137,6 +137,9 @@ impl AppView {
             Event::InvitePreview(result) => {
                 self.session.update(cx, |session, cx| session.apply_invite_preview(result, cx));
             }
+            Event::InviteCreated(result) => {
+                self.session.update(cx, |session, cx| session.apply_created_invite(result, cx));
+            }
             Event::InviteJoined(result) => {
                 self.session.update(cx, |session, cx| session.apply_invite_joined(result, cx));
             }

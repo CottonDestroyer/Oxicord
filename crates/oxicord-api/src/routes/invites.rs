@@ -1,4 +1,4 @@
-use oxicord_model::InvitePreview;
+use oxicord_model::{InvitePreview, Snowflake};
 use reqwest::Method;
 use serde_json::json;
 
@@ -30,5 +30,25 @@ impl ApiClient {
             Some(&json!({ "session_id": session_id })),
         )
         .await
+    }
+
+    /// Makes a link into the server through `channel`. `max_age` is in
+    /// seconds and 0 never expires, `max_uses` of 0 has no limit. Returns the
+    /// invite code.
+    pub async fn create_invite(&self, channel: Snowflake, max_age: u32, max_uses: u32) -> Result<String, ApiError> {
+        let body = json!({ "max_age": max_age, "max_uses": max_uses, "temporary": false });
+        let reply: serde_json::Value = self
+            .json(
+                Method::POST,
+                &format!("/channels/{channel}/invites"),
+                "POST /channels/:id/invites",
+                Some(&body),
+            )
+            .await?;
+        reply
+            .get("code")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| ApiError::Protocol("the invite had no code".into()))
     }
 }

@@ -39,6 +39,8 @@ pub struct Session {
     pub commands: HashMap<Snowflake, Load<oxicord_model::CommandIndex>>,
     /// Set once a join attempt has finished.
     pub invite_joined: Option<Result<(), String>>,
+    /// The link last made from the invite dialog.
+    pub created_invite: Load<String>,
     /// Opening message of each forum post we have seen, by post id.
     pub previews: HashMap<Snowflake, Message>,
     /// A message a view should scroll to once it is on screen.
@@ -109,6 +111,11 @@ pub struct MentionUser(pub Snowflake);
 
 impl EventEmitter<MentionUser> for Session {}
 
+/// Someone wants to invite people to the server `channel` belongs to.
+pub struct OpenInviteDialog(pub Snowflake);
+
+impl EventEmitter<OpenInviteDialog> for Session {}
+
 /// The inbox button was pressed.
 pub struct OpenInbox;
 
@@ -162,6 +169,7 @@ impl Session {
             commands: HashMap::new(),
             mentions: Load::Idle,
             invite_joined: None,
+            created_invite: Load::Idle,
             previews: HashMap::new(),
             jump_target: None,
             gifs: Load::Idle,
@@ -297,6 +305,20 @@ impl Session {
     pub fn apply_invite_preview(&mut self, result: Result<oxicord_model::InvitePreview, String>, cx: &mut Context<Self>) {
         self.invite = match result {
             Ok(preview) => Load::Ready(preview),
+            Err(error) => Load::Failed(error),
+        };
+        cx.notify();
+    }
+
+    pub fn request_invite(&mut self, backend: &Backend, channel: Snowflake, max_age: u32, max_uses: u32, cx: &mut Context<Self>) {
+        self.created_invite = Load::Loading;
+        backend.send(Command::CreateInvite { channel, max_age, max_uses });
+        cx.notify();
+    }
+
+    pub fn apply_created_invite(&mut self, result: Result<String, String>, cx: &mut Context<Self>) {
+        self.created_invite = match result {
+            Ok(code) => Load::Ready(code),
             Err(error) => Load::Failed(error),
         };
         cx.notify();

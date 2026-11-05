@@ -13,7 +13,7 @@ use crate::{
     backend::{Backend, Command},
     icons::icon,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
-    session::Session,
+    session::{OpenInviteDialog, Session},
     theme,
 };
 
@@ -209,6 +209,26 @@ impl Render for ContextMenu {
             .border_color(rgb(theme::BORDER))
             .bg(rgb(theme::BG_PANEL));
 
+        let invite_channel = match target {
+            Target::Guild(g) => {
+                let store = &self.session.read(cx).store;
+                store
+                    .channel_groups(g)
+                    .iter()
+                    .flat_map(|group| group.channels.iter())
+                    .find(|c| {
+                        !c.kind.is_thread() && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE)
+                    })
+                    .map(|c| c.id)
+            }
+            Target::Channel(_) => None,
+        };
+        if let Some(channel) = invite_channel {
+            menu = menu.child(self.item("invite", "Invite People", theme::ACCENT, false, move |this, _, _, cx| {
+                this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
+                this.close(cx);
+            }, cx));
+        }
         menu = menu.child(self.item("mark-read", "Mark as read", theme::TEXT, false, |this, _, _, cx| {
             this.run(Action::MarkRead, cx);
         }, cx));

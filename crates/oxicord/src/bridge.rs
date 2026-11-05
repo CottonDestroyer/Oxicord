@@ -316,6 +316,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::CreateInvite { channel, max_age, max_uses } => {
+            tokio::spawn(async move {
+                let result = api.create_invite(channel, max_age, max_uses).await.map_err(|err| {
+                    tracing::warn!(?err, "could not create an invite");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::InviteCreated(result)).await;
+            });
+        }
         Command::ResolveInvite(code) => {
             tokio::spawn(async move {
                 let result = api.resolve_invite(&code).await.map_err(|err| invite_failure(&err));

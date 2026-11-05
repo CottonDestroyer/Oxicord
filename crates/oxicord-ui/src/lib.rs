@@ -8,6 +8,7 @@ mod context_menu;
 mod dm_picker;
 mod friends;
 mod icons;
+mod invite_dialog;
 mod inbox;
 mod join_server;
 mod keys;

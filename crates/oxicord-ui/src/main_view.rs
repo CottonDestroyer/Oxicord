@@ -24,12 +24,13 @@ use crate::{
     icons::icon,
     rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
+    invite_dialog::{CloseInvite, InviteDialog},
     keys::QuickSwitch,
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenInbox, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenInbox, OpenInviteDialog, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     side_panel::{ClosePanel, SidePanel},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
@@ -48,6 +49,8 @@ struct ChannelItem {
     name: String,
     kind: ChannelType,
     unread: Unread,
+    /// Whether we may make an invite through it, which adds a shortcut on hover.
+    can_invite: bool,
     muted: bool,
     /// Threads shown beneath this channel.
     threads: Vec<ChannelItem>,
@@ -107,6 +110,8 @@ pub struct MainView {
     picker_open: bool,
     inbox: Entity<Inbox>,
     inbox_open: bool,
+    invite: Entity<InviteDialog>,
+    invite_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
     focus: FocusHandle,
     /// Whether the member list was showing at the last redraw, so turning it
@@ -153,11 +158,24 @@ impl MainView {
             cx.new(|cx| Inbox::new(session, media, backend, cx))
         };
         let popup = cx.new(|_| PopupMenu::default());
+        let invite = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| InviteDialog::new(session, media, backend, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let subscriptions = vec![
             cx.subscribe(&session, |this, _, open: &OpenUserMenu, cx| this.open_user_menu(open, cx)),
+            cx.subscribe(&invite, |this, _, _: &CloseInvite, cx| {
+                this.invite_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenInviteDialog, cx| {
+                this.invite_open = true;
+                this.invite.update(cx, |dialog, cx| dialog.opened(open.0, cx));
+                cx.notify();
+            }),
             cx.subscribe(&popup, |this, _, _: &ClosePopup, cx| {
                 this.popup_open = false;
                 cx.notify();
@@ -285,6 +303,8 @@ impl MainView {
             picker_open: false,
             inbox,
             inbox_open: false,
+            invite,
+            invite_open: false,
             focus,
             _subscriptions: subscriptions,
         }
@@ -1062,6 +1082,7 @@ impl MainView {
 
         div()
             .id(("channel", id.0))
+            .group("channel-row")
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, _, cx| {
@@ -1092,6 +1113,22 @@ impl MainView {
                     })
                     .child(channel.name),
             )
+            .children(channel.can_invite.then(|| {
+                div()
+                    .id(("invite-channel", id.0))
+                    .size(px(18.))
+                    .flex_none()
+                    .items_center()
+                    .justify_center()
+                    .hidden()
+                    .group_hover("channel-row", |s| s.flex())
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(id)));
+                    }))
+                    .child(icon("user-plus", 15., theme::TEXT_MUTED))
+            }))
             .children(mention_badge(channel.unread.mentions))
     }
 
@@ -1418,6 +1455,7 @@ impl Render for MainView {
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
+        let invite = self.invite_open.then(|| self.invite.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
 
         div()
@@ -1455,6 +1493,7 @@ impl Render for MainView {
             .children(menu)
             .children(viewer)
             .children(join)
+            .children(invite)
             .children(switcher)
             .children(picker)
             .children(popup)
@@ -1603,6 +1642,8 @@ fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> Cha
         kind: c.kind,
         unread: store.unread(c.id),
         muted: store.is_muted(c),
+        can_invite: !c.kind.is_thread()
+            && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE),
         threads: Vec::new(),
     }
 }

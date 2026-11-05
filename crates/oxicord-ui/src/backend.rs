@@ -128,6 +128,12 @@ pub enum Command {
     /// Mark channels read, each up to its newest message.
     AckBulk(Vec<(Snowflake, Snowflake)>),
     LeaveGuild(Snowflake),
+    /// Create an invite link. The code arrives as [`Event::InviteCreated`].
+    CreateInvite {
+        channel: Snowflake,
+        max_age: u32,
+        max_uses: u32,
+    },
     /// Look an invite up. The answer arrives as [`Event::InvitePreview`].
     ResolveInvite(String),
     /// Join the server an invite leads to. The outcome arrives as
@@ -268,6 +274,7 @@ pub enum Event {
         result: Result<oxicord_model::CommandIndex, String>,
     },
     InvitePreview(Result<oxicord_model::InvitePreview, String>),
+    InviteCreated(Result<String, String>),
     InviteJoined(Result<(), String>),
     /// Whether a friend request sent by name went through.
     FriendRequest { username: String, result: Result<(), String> },
