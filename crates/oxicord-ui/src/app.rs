@@ -101,6 +101,10 @@ impl AppView {
                     session.apply_history(channel, result, requested, cx)
                 });
             }
+            Event::Profile { user, result } => {
+                self.session
+                    .update(cx, |session, cx| session.apply_profile(user, result, cx));
+            }
             Event::DmOpened(result) => {
                 self.session.update(cx, |session, cx| session.apply_dm(result, cx));
             }

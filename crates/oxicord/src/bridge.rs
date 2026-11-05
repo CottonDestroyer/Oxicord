@@ -212,6 +212,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::DmOpened(result)).await;
             });
         }
+        Command::LoadProfile { user, guild } => {
+            tokio::spawn(async move {
+                let result = api.profile(user, guild).await.map_err(|err| {
+                    tracing::debug!(?err, "could not load a profile");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::Profile { user, result }).await;
+            });
+        }
         Command::AcceptFriend(user) => {
             tokio::spawn(async move {
                 if let Err(err) = api.accept_friend(user).await {

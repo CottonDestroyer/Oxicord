@@ -6,7 +6,7 @@
 
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
-use oxicord_model::{Channel, Emoji, Message, Snowflake, User};
+use oxicord_model::{Channel, Emoji, Message, Profile, Snowflake, User};
 
 /// Things the UI asks for.
 #[derive(Debug)]
@@ -71,6 +71,12 @@ pub enum Command {
     AcceptFriend(Snowflake),
     /// Unfriend, decline or cancel, depending on what the tie is now.
     RemoveRelationship(Snowflake),
+    /// Fetch the details behind a profile card. The answer arrives as
+    /// [`Event::Profile`].
+    LoadProfile {
+        user: Snowflake,
+        guild: Option<Snowflake>,
+    },
 }
 
 /// Things the backend reports.
@@ -92,6 +98,10 @@ pub enum Event {
         requested: usize,
     },
     DmOpened(Result<Channel, String>),
+    Profile {
+        user: Snowflake,
+        result: Result<Profile, String>,
+    },
 }
 
 #[derive(Clone)]

@@ -192,6 +192,16 @@ impl ChatView {
         cx.notify();
     }
 
+    /// Asks the window to show `user`'s card, as seen from this channel's server.
+    fn open_profile(&mut self, user: Snowflake, cx: &mut Context<Self>) {
+        let guild = self
+            .channel
+            .and_then(|c| self.session.read(cx).store.channel(c))
+            .and_then(|c| c.guild_id);
+        self.session
+            .update(cx, |session, cx| session.show_profile(user, guild, cx));
+    }
+
     /// Marks the newest message read once we are looking at the end of the
     /// channel, here and on the server, so its badge goes away.
     fn maybe_ack(&mut self, cx: &mut Context<Self>) {
@@ -646,7 +656,13 @@ impl ChatView {
         let left: AnyElement = if grouped {
             div().w(px(GUTTER)).flex_none().into_any_element()
         } else {
-            avatar(&self.media, &url, GUTTER, &author, cx).into_any_element()
+            let user = message.author.id;
+            div()
+                .id(("avatar", id.0))
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, cx)))
+                .child(avatar(&self.media, &url, GUTTER, &author, cx))
+                .into_any_element()
         };
 
         let mut body = div().flex_1().min_w_0().flex().flex_col();
@@ -658,6 +674,13 @@ impl ChatView {
                     .gap_2()
                     .child(
                         div()
+                            .id(("author", id.0))
+                            .cursor_pointer()
+                            .hover(|s| s.underline())
+                            .on_click(cx.listener({
+                                let user = message.author.id;
+                                move |this, _, _, cx| this.open_profile(user, cx)
+                            }))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(theme::TEXT_BRIGHT))
                             .child(author),

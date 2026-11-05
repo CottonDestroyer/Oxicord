@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, ImageSource, InteractiveElement as _,
+    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, img, px, rgb,
@@ -18,7 +18,8 @@ use crate::{
     icons::icon,
     media::{Media, acronym, avatar},
     member_list::{MemberList, presence_dot},
-    session::{DmOpened, Session},
+    profile,
+    session::{DmOpened, Session, ShowProfile},
     theme,
 };
 
@@ -65,6 +66,8 @@ pub struct MainView {
     last_channel: HashMap<Snowflake, Snowflake>,
     collapsed: HashSet<Snowflake>,
     status_menu_open: bool,
+    /// The profile card on screen, if any.
+    profile: Option<ShowProfile>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -81,6 +84,9 @@ impl MainView {
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&session, window, |this, _, opened: &DmOpened, window, cx| {
                 this.show_dm(opened.0, window, cx);
+            }),
+            cx.subscribe(&session, |this, _, shown: &ShowProfile, cx| {
+                this.open_profile(shown.user, shown.guild, cx);
             }),
         ];
         let chat = {
@@ -107,6 +113,7 @@ impl MainView {
             last_channel: HashMap::new(),
             collapsed: HashSet::new(),
             status_menu_open: false,
+            profile: None,
             _subscriptions: subscriptions,
         }
     }
@@ -147,6 +154,75 @@ impl MainView {
     fn show_dm(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.guild = None;
         self.select_channel(channel, window, cx);
+    }
+
+    fn open_profile(&mut self, user: Snowflake, guild: Option<Snowflake>, cx: &mut Context<Self>) {
+        let fetch = self.session.update(cx, |s, _| s.should_fetch_profile(user));
+        if fetch {
+            self.backend.send(Command::LoadProfile { user, guild });
+        }
+        self.profile = Some(ShowProfile { user, guild });
+        cx.notify();
+    }
+
+    /// The card for the person we are looking at, over everything else.
+    fn render_profile(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (user, guild) = self.profile.as_ref().map(|p| (p.user, p.guild))?;
+        let card = {
+            let session = self.session.read(cx);
+            let store = &session.store;
+            let account = store.user(user)?;
+            let member = guild.and_then(|g| store.member_in_guild(g, user));
+            let profile = session.profiles.get(&user);
+
+            profile::Card {
+                name: member
+                    .as_ref()
+                    .and_then(|(nick, _)| nick.clone())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| account.display_name().to_owned()),
+                username: account.username.clone(),
+                pronouns: profile.map(|p| p.pronouns.clone()).unwrap_or_default(),
+                avatar_url: cdn::user_avatar(user, account.avatar.as_deref(), 128),
+                status: store.presence(user),
+                bio: profile.map(|p| p.bio.clone()).unwrap_or_default(),
+                created: user.datetime().format("%b %d, %Y").to_string(),
+                roles: member
+                    .map(|(_, roles)| {
+                        roles
+                            .iter()
+                            .map(|r| (r.name.clone(), (r.color != 0).then_some(r.color)))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                is_me: store.me().is_some_and(|me| me.id == user),
+            }
+        };
+
+        let on_message =
+            cx.listener(move |this, _: &ClickEvent, _, cx| this.message_from_card(user, cx));
+        let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
+            this.profile = None;
+            cx.notify();
+        });
+        Some(profile::overlay(
+            card,
+            &self.media,
+            Box::new(on_message),
+            Box::new(on_close),
+            cx,
+        ))
+    }
+
+    /// Opens the conversation with the person on the card.
+    fn message_from_card(&mut self, user: Snowflake, cx: &mut Context<Self>) {
+        self.profile = None;
+        let existing = self.session.read(cx).store.dm_with(user);
+        match existing {
+            Some(channel) => self.session.update(cx, |_, cx| cx.emit(DmOpened(channel))),
+            None => self.backend.send(Command::OpenDm(user)),
+        }
+        cx.notify();
     }
 
     /// The home screen without a conversation open.
@@ -689,9 +765,11 @@ impl Render for MainView {
         };
         let members = (self.guild.is_some() && self.session.read(cx).show_members)
             .then(|| self.members.clone());
+        let profile = self.render_profile(cx);
 
         div()
             .size_full()
+            .relative()
             .flex()
             .bg(rgb(theme::BG_RAIL))
             .text_color(rgb(theme::TEXT))
@@ -710,6 +788,7 @@ impl Render for MainView {
                     .child(content)
                     .children(members),
             )
+            .children(profile)
     }
 }
 

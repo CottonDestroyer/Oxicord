@@ -7,6 +7,7 @@ mod login;
 mod main_view;
 mod media;
 mod member_list;
+mod profile;
 mod session;
 pub mod theme;
 

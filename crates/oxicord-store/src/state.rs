@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use oxicord_model::{
     Channel, ChannelType, Guild, Member, Permissions, ReadState, Relationship, RelationshipKind,
-    Snowflake, Status, User,
+    Role, Snowflake, Status, User,
 };
 
 use crate::{
-    member_list::MemberListState,
+    member_list::{Entry, MemberListState},
     perms::{self, DM_PERMISSIONS},
     timeline::Timeline,
 };
@@ -245,6 +245,25 @@ impl Store {
             .filter(|r| r.color != 0 && roles.contains(&r.id))
             .max_by_key(|r| r.position)
             .map(|r| r.color)
+    }
+
+    /// A member's server nickname and their roles, highest first, as far as
+    /// the member list has told us. `None` when they never appeared in it.
+    pub fn member_in_guild(&self, guild: Snowflake, user: Snowflake) -> Option<(Option<String>, Vec<&Role>)> {
+        let list = self.member_lists.get(&guild)?;
+        let (nick, ids) = list.entries().iter().flatten().find_map(|entry| match entry {
+            Entry::Member { user: u, nick, roles } if *u == user => Some((nick.clone(), roles)),
+            _ => None,
+        })?;
+        let mut roles: Vec<_> = self
+            .guilds
+            .get(&guild)?
+            .roles
+            .iter()
+            .filter(|r| r.id != guild && ids.contains(&r.id))
+            .collect();
+        roles.sort_by_key(|r| std::cmp::Reverse(r.position));
+        Some((nick, roles))
     }
 
     /// The last message we have read in `channel`, if the server told us.

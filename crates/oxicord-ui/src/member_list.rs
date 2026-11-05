@@ -1,7 +1,7 @@
 use gpui_kit::{
     AnyElement, App, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ListAlignment, ListState,
-    ParentElement as _, Render, Styled as _, Subscription, Window, div, list, px, rgb,
+    ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
 };
 use oxicord_media::cdn;
 use oxicord_model::{Snowflake, Status};
@@ -166,6 +166,7 @@ impl MemberList {
         };
 
         div()
+            .id(("member", user.0))
             .h(px(MEMBER_HEIGHT))
             .flex()
             .items_center()
@@ -173,6 +174,11 @@ impl MemberList {
             .mx_2()
             .px_2()
             .rounded(px(6.))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.session
+                    .update(cx, |session, cx| session.show_profile(user, Some(guild), cx));
+            }))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
             .child(
                 div()

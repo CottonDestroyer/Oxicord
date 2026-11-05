@@ -32,4 +32,4 @@ pub use read_state::ReadState;
 pub use relationship::{Relationship, RelationshipKind, RelationshipRemove};
 pub use role::Role;
 pub use snowflake::Snowflake;
-pub use user::User;
+pub use user::{Profile, User};

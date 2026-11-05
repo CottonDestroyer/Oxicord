@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{Context, EventEmitter};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Channel, Message, Snowflake, gateway::DispatchEvent};
+use oxicord_model::{Channel, Message, Profile, Snowflake, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 /// The signed in client state. Views observe this entity and listen for the
@@ -18,6 +18,10 @@ pub struct Session {
     pub show_members: bool,
     /// The status we last chose, which the server won't echo back to us.
     pub status: ClientStatus,
+    /// Profiles fetched so far, so reopening a card is instant.
+    pub profiles: HashMap<Snowflake, Profile>,
+    /// People whose profile was asked for already, answered or not.
+    profile_requested: HashSet<Snowflake>,
 }
 
 impl EventEmitter<Changes> for Session {}
@@ -26,6 +30,15 @@ impl EventEmitter<Changes> for Session {}
 pub struct DmOpened(pub Snowflake);
 
 impl EventEmitter<DmOpened> for Session {}
+
+/// Someone asked to see a person's profile card.
+pub struct ShowProfile {
+    pub user: Snowflake,
+    /// The server the click happened in, for server specific details.
+    pub guild: Option<Snowflake>,
+}
+
+impl EventEmitter<ShowProfile> for Session {}
 
 impl Session {
     pub fn new() -> Self {
@@ -36,6 +49,8 @@ impl Session {
             notice: None,
             show_members: true,
             status: ClientStatus::default(),
+            profiles: HashMap::new(),
+            profile_requested: HashSet::new(),
         }
     }
 
@@ -58,6 +73,34 @@ impl Session {
                 cx.notify();
             }
         }
+    }
+
+    pub fn show_profile(&mut self, user: Snowflake, guild: Option<Snowflake>, cx: &mut Context<Self>) {
+        cx.emit(ShowProfile { user, guild });
+    }
+
+    /// Returns true the first time a profile is wanted, which is when it is
+    /// worth asking the server.
+    pub fn should_fetch_profile(&mut self, user: Snowflake) -> bool {
+        self.profile_requested.insert(user)
+    }
+
+    pub fn apply_profile(
+        &mut self,
+        user: Snowflake,
+        result: Result<Profile, String>,
+        cx: &mut Context<Self>,
+    ) {
+        match result {
+            Ok(profile) => {
+                self.profiles.insert(user, profile);
+            }
+            // Let a later click try again.
+            Err(_) => {
+                self.profile_requested.remove(&user);
+            }
+        }
+        cx.notify();
     }
 
     /// Takes in the conversation the server created or found for us, then
