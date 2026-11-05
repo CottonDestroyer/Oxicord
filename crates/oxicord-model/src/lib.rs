@@ -56,5 +56,5 @@ pub use relationship::{Relationship, RelationshipKind, RelationshipRemove};
 pub use role::Role;
 pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
-pub use user::{Profile, User};
+pub use user::{Badge, LinkedAccount, MutualGuild, Profile, User};
 pub use voice::VoiceState;

@@ -13,6 +13,15 @@ pub fn user_avatar(user: Snowflake, hash: Option<&str>, size: u32) -> String {
     }
 }
 
+pub fn user_banner(user: Snowflake, hash: &str, width: u32) -> String {
+    format!("{CDN}/banners/{user}/{hash}.png?size={width}")
+}
+
+/// The picture for a profile badge, named by the `icon` Discord sends.
+pub fn badge_icon(icon: &str) -> String {
+    format!("{CDN}/badge-icons/{icon}.png")
+}
+
 /// Accounts with no avatar get one of six, picked from the account's
 /// creation time.
 pub fn default_avatar(user: Snowflake) -> String {

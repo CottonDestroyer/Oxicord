@@ -620,3 +620,23 @@ mod tests {
         assert!(jumbo_emoji(content).is_none());
     }
 }
+
+/// Free text that is markdown, such as an embed or a profile bio, drawn like a message.
+/// Spoilers stay closed: there is no handler to open them from here.
+pub fn rich(text: &str, key: u64, media: &Entity<Media>, names: &Names, window: &mut Window, cx: &mut App) -> AnyElement {
+    let blocks = oxicord_markdown::parse(text);
+    let revealed = std::collections::HashSet::new();
+    let options = Options {
+        names,
+        revealed: &revealed,
+        media,
+        now: chrono::Utc::now(),
+        offset: *chrono::Local::now().offset(),
+        hour12: false,
+        reveal_spoilers: false,
+        edited: false,
+        key,
+        on_spoiler: std::rc::Rc::new(|_, _, _| {}),
+    };
+    render(&blocks, &options, window, cx)
+}

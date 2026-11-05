@@ -1,5 +1,5 @@
 use gpui_kit::{
-    AnyElement, App, ClickEvent, FontWeight, InteractiveElement as _, IntoElement, Entity,
+    AnyElement, App, ClickEvent, FontWeight, InteractiveElement as _, IntoElement, Entity, StyledImage as _, img,
     ParentElement as _, StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb, rgba,
 };
 use oxicord_model::Status;
@@ -24,6 +24,18 @@ pub struct Card {
     pub created: String,
     /// Role name and color, highest role first. Empty outside servers.
     pub roles: Vec<(String, Option<u32>)>,
+    /// A banner picture, or `None` to fill with the accent color.
+    pub banner_url: Option<String>,
+    pub accent: u32,
+    /// Badge description and icon address.
+    pub badges: Vec<(String, String)>,
+    /// When they joined the server the card was opened from.
+    pub joined_server: String,
+    /// Servers in common: name and icon address.
+    pub mutual_servers: Vec<(String, Option<String>)>,
+    pub mutual_friends: u32,
+    /// Linked accounts as `kind: name`.
+    pub accounts: Vec<String>,
     /// Hide the message button on our own card.
     pub is_me: bool,
     /// Buttons for the person's relationship to us: add, remove, block.
@@ -45,9 +57,10 @@ pub fn overlay(
     media: &Entity<Media>,
     on_message: Box<Handler>,
     on_close: Box<Handler>,
+    window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    modal(body(card, media, on_message, cx), on_close)
+    modal(body(card, media, on_message, window, cx), on_close)
 }
 
 /// Dims everything behind `content` and closes when the dimmed part is
@@ -76,7 +89,13 @@ pub fn modal(content: AnyElement, on_close: Box<Handler>) -> AnyElement {
         .into_any_element()
 }
 
-fn body(card: Card, media: &Entity<Media>, on_message: Box<Handler>, cx: &mut App) -> AnyElement {
+fn body(
+    card: Card,
+    media: &Entity<Media>,
+    on_message: Box<Handler>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
     let status = match card.status {
         Status::Online => "Online",
         Status::Idle => "Idle",
@@ -86,7 +105,10 @@ fn body(card: Card, media: &Entity<Media>, on_message: Box<Handler>, cx: &mut Ap
 
     let mut sections = div().flex().flex_col().gap_3().p_3().rounded(px(8.)).bg(rgb(theme::BG_PANEL));
     if !card.bio.is_empty() {
-        sections = sections.child(section("About me", div().child(card.bio)));
+        sections = sections.child(section(
+            "About me",
+            crate::chat::markdown::rich(&card.bio, 0xB10, media, &Default::default(), window, cx),
+        ));
     }
     if !card.roles.is_empty() {
         let mut chips = div().flex().flex_wrap().gap_1();
@@ -107,7 +129,35 @@ fn body(card: Card, media: &Entity<Media>, on_message: Box<Handler>, cx: &mut Ap
         }
         sections = sections.child(section("Roles", chips));
     }
-    sections = sections.child(section("Joined Discord", div().child(card.created)));
+    let mut since = div().flex().flex_col().child(div().child(format!("Discord: {}", card.created)));
+    if !card.joined_server.is_empty() {
+        since = since.child(div().child(format!("This server: {}", card.joined_server)));
+    }
+    sections = sections.child(section("Member since", since));
+    if !card.mutual_servers.is_empty() {
+        let mut list = div().flex().flex_col().gap_1();
+        for (name, icon_url) in card.mutual_servers.iter().take(6) {
+            let mut row = div().flex().items_center().gap_2();
+            if let Some(url) = icon_url {
+                row = row.child(avatar(media, url, 20., name, cx));
+            }
+            list = list.child(row.child(div().truncate().child(name.clone())));
+        }
+        if card.mutual_servers.len() > 6 {
+            list = list.child(div().text_color(rgb(theme::TEXT_MUTED)).child(format!("and {} more", card.mutual_servers.len() - 6)));
+        }
+        sections = sections.child(section("Mutual servers", list));
+    }
+    if card.mutual_friends > 0 {
+        sections = sections.child(section("Mutual friends", div().child(card.mutual_friends.to_string())));
+    }
+    if !card.accounts.is_empty() {
+        let mut list = div().flex().flex_col();
+        for line in card.accounts {
+            list = list.child(div().child(line));
+        }
+        sections = sections.child(section("Connections", list));
+    }
 
     div()
         .id("profile-card")
@@ -119,7 +169,15 @@ fn body(card: Card, media: &Entity<Media>, on_message: Box<Handler>, cx: &mut Ap
         .border_1()
         .border_color(rgb(theme::BORDER))
         .bg(rgb(theme::BG_SIDEBAR))
-        .child(div().h(px(72.)).w_full().bg(rgb(theme::ACCENT)))
+        .child({
+            let banner = div().h(px(100.)).w_full().bg(rgb(card.accent)).overflow_hidden();
+            match card.banner_url.as_deref().and_then(|url| media.update(cx, |m, _| m.get(url))) {
+                Some(image) => banner.child(
+                    img(gpui_kit::ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover),
+                ),
+                None => banner,
+            }
+        })
         .child(
             div()
                 .px_4()
@@ -191,6 +249,16 @@ fn body(card: Card, media: &Entity<Media>, on_message: Box<Handler>, cx: &mut Ap
                                 .child(status),
                         ),
                 )
+                .children((!card.badges.is_empty()).then(|| {
+                    let mut row = div().flex().flex_wrap().gap_1();
+                    for (description, url) in &card.badges {
+                        let _ = description;
+                        if let Some(image) = media.update(cx, |m, _| m.get(url)) {
+                            row = row.child(img(gpui_kit::ImageSource::Image(image)).size(px(20.)));
+                        }
+                    }
+                    row
+                }))
                 .children((!card.actions.is_empty()).then(|| {
                     let mut row = div().flex().flex_wrap().gap_2();
                     for (i, action) in card.actions.into_iter().enumerate() {

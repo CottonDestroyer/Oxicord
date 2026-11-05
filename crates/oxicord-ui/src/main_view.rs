@@ -508,7 +508,7 @@ impl MainView {
     }
 
     /// The card for the person we are looking at, over everything else.
-    fn render_profile(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn render_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (user, guild) = self.profile.as_ref().map(|p| (p.user, p.guild))?;
         let card = {
             let session = self.session.read(cx);
@@ -537,6 +537,31 @@ impl MainView {
                             .collect()
                     })
                     .unwrap_or_default(),
+                banner_url: profile
+                    .and_then(|p| p.banner.as_deref())
+                    .map(|hash| cdn::user_banner(user, hash, 600)),
+                accent: profile.and_then(|p| p.accent_color).unwrap_or(theme::ACCENT),
+                badges: profile
+                    .map(|p| p.badges.iter().map(|b| (b.description.clone(), cdn::badge_icon(&b.icon))).collect())
+                    .unwrap_or_default(),
+                joined_server: profile
+                    .and_then(|p| p.joined_server.as_deref())
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                    .map(|d| d.format("%b %d, %Y").to_string())
+                    .unwrap_or_default(),
+                mutual_servers: profile
+                    .map(|p| {
+                        p.mutual_guilds
+                            .iter()
+                            .filter_map(|m| store.guild(m.id))
+                            .map(|g| (g.name.clone(), g.icon.as_deref().map(|h| cdn::guild_icon(g.id, h, 64))))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                mutual_friends: profile.map_or(0, |p| p.mutual_friends),
+                accounts: profile
+                    .map(|p| p.accounts.iter().map(|a| format!("{}: {}", a.kind, a.name)).collect())
+                    .unwrap_or_default(),
                 is_me: store.me().is_some_and(|me| me.id == user),
                 actions: Vec::new(),
             }
@@ -558,6 +583,7 @@ impl MainView {
             &self.media,
             Box::new(on_message),
             Box::new(on_close),
+            window,
             cx,
         ))
     }
@@ -1178,10 +1204,11 @@ impl MainView {
                     .id(("invite-channel", id.0))
                     .size(px(18.))
                     .flex_none()
+                    .flex()
                     .items_center()
                     .justify_center()
-                    .hidden()
-                    .group_hover("channel-row", |s| s.flex())
+                    .invisible()
+                    .group_hover("channel-row", |s| s.visible())
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
@@ -1312,11 +1339,12 @@ impl MainView {
                     .id(("close-dm", id.0))
                     .size(px(18.))
                     .flex_none()
+                    .flex()
                     .items_center()
                     .justify_center()
                     .rounded(px(4.))
-                    .hidden()
-                    .group_hover("dm-row", |s| s.flex())
+                    .invisible()
+                    .group_hover("dm-row", |s| s.visible())
                     .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         cx.stop_propagation();
@@ -1492,7 +1520,7 @@ impl MainView {
 }
 
 impl Render for MainView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rail = self.render_rail(cx);
         let sidebar = self.render_sidebar(cx);
         let content = if self.guild.is_none() && self.channel.is_none() {
@@ -1509,7 +1537,7 @@ impl Render for MainView {
             && self.session.read(cx).settings.show_members)
             .then(|| self.members.clone());
         let panel = self.panel_open.then(|| self.panel.clone());
-        let profile = self.render_profile(cx);
+        let profile = self.render_profile(window, cx);
         let settings = self.settings_open.then(|| self.settings_view.clone());
         let menu = self.menu_open.then(|| self.menu.clone());
         let viewer = self.render_viewer(cx);

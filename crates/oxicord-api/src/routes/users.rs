@@ -22,7 +22,7 @@ impl ApiClient {
         user: Snowflake,
         guild: Option<Snowflake>,
     ) -> Result<Profile, ApiError> {
-        let mut path = format!("/users/{user}/profile?with_mutual_guilds=false");
+        let mut path = format!("/users/{user}/profile?with_mutual_guilds=true&with_mutual_friends_count=true");
         if let Some(guild) = guild {
             path.push_str(&format!("&guild_id={guild}"));
         }

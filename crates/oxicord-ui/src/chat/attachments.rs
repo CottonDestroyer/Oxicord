@@ -6,7 +6,7 @@ use gpui_kit::{
 };
 use oxicord_model::{Attachment, Embed, Message, embed::EmbedMedia};
 
-use super::markdown::{Names, humanize};
+use super::markdown::{Names, humanize, rich};
 use crate::{
     icons::icon,
     media::{Media, ViewImage},
@@ -381,24 +381,4 @@ mod tests {
             "https://media.discordapp.net/a.png?ex=1&hm=2&format=webp&width=400&height=300"
         );
     }
-}
-
-/// Embed text is markdown, like a message, so bold, links and lists show.
-/// Spoilers stay closed: there is no handler to open them from here.
-fn rich(text: &str, key: u64, media: &Entity<Media>, names: &Names, window: &mut Window, cx: &mut App) -> AnyElement {
-    let blocks = oxicord_markdown::parse(text);
-    let revealed = std::collections::HashSet::new();
-    let options = super::markdown::Options {
-        names,
-        revealed: &revealed,
-        media,
-        now: chrono::Utc::now(),
-        offset: *chrono::Local::now().offset(),
-        hour12: false,
-        reveal_spoilers: false,
-        edited: false,
-        key,
-        on_spoiler: std::rc::Rc::new(|_, _, _| {}),
-    };
-    super::markdown::render(&blocks, &options, window, cx)
 }

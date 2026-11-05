@@ -2,7 +2,7 @@ mod attachments;
 mod autocomplete;
 mod command_form;
 mod format;
-mod markdown;
+pub(crate) mod markdown;
 mod rows;
 mod typing;
 mod view;
