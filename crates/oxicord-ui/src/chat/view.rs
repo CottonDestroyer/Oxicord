@@ -1,11 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
 use chrono::{Local, NaiveDate, Utc};
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, FollowMode, FontWeight,
+    Focusable as _,
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list,
-    px, rgb,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
+    list, px, rgb,
     component::input::{InputEvent, Textarea, TextareaState},
 };
 use oxicord_media::cdn;
@@ -15,6 +19,7 @@ use oxicord_store::Changes;
 use super::{
     format,
     rows::{Row, build_rows, diff},
+    typing::typing_text,
 };
 use crate::{
     backend::{Backend, Command},
@@ -47,6 +52,18 @@ pub struct ChatView {
     editing: Option<Snowflake>,
     /// The message whose delete button was pressed once already.
     confirm_delete: Option<Snowflake>,
+
+    /// The newest message we have acknowledged per channel, so we don't ack
+    /// the same one twice.
+    acked: HashMap<Snowflake, Snowflake>,
+    /// Where the unread messages began when this channel was opened. It stays
+    /// put while we read, so the "new" line doesn't move under the reader.
+    unread_after: Option<Snowflake>,
+    last_typing_sent: Option<Instant>,
+    /// Whether the typing line is on screen, which decides if the clock needs
+    /// to keep redrawing it.
+    typing_shown: bool,
+    _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -82,12 +99,28 @@ impl ChatView {
             }),
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
-            cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
-                if matches!(event, InputEvent::PressEnter { shift: false, .. }) {
-                    this.submit(window, cx);
-                }
+            cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
+                InputEvent::PressEnter { shift: false, .. } => this.submit(window, cx),
+                InputEvent::Change => this.note_typing(window, cx),
+                _ => {}
             }),
         ];
+
+        // A typing indicator has to disappear on its own, so redraw once a
+        // second while one is showing.
+        let ticker = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let alive = this.update(cx, |this, cx| {
+                    if this.typing_shown {
+                        cx.notify();
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        });
 
         Self {
             session,
@@ -103,6 +136,11 @@ impl ChatView {
             reply_to: None,
             editing: None,
             confirm_delete: None,
+            acked: HashMap::new(),
+            unread_after: None,
+            last_typing_sent: None,
+            typing_shown: false,
+            _ticker: ticker,
             _subscriptions: subscriptions,
         }
     }
@@ -125,6 +163,12 @@ impl ChatView {
             .unwrap_or_default();
         self.input.update(cx, |input, cx| input.set_value(draft, window, cx));
 
+        // Remember where the unread part starts before reading it clears it.
+        self.unread_after = channel.and_then(|c| {
+            let store = &self.session.read(cx).store;
+            store.unread(c).unread.then(|| store.last_read(c)).flatten()
+        });
+
         if let Some(id) = channel {
             self.session.update(cx, |s, _| s.store.open_channel(id));
             if self.fetched.insert(id) {
@@ -134,7 +178,57 @@ impl ChatView {
         self.rows.clear();
         self.list.reset(0);
         self.rebuild(cx);
+        self.maybe_ack(cx);
         cx.notify();
+    }
+
+    /// Marks the newest message read once we are looking at the end of the
+    /// channel, here and on the server, so its badge goes away.
+    fn maybe_ack(&mut self, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let (newest, unread) = {
+            let store = &self.session.read(cx).store;
+            (
+                store.timeline(channel).and_then(|t| t.newest_id()),
+                store.unread(channel).unread,
+            )
+        };
+        let Some(newest) = newest else { return };
+
+        let already = self.acked.get(&channel).is_some_and(|a| *a >= newest);
+        let reading_history = self.list.is_scrolled_to_end() == Some(false);
+        if !unread || already || reading_history {
+            return;
+        }
+
+        self.acked.insert(channel, newest);
+        self.backend.send(Command::AckMessage {
+            channel,
+            message: newest,
+        });
+        self.session.update(cx, |session, cx| {
+            let changes = session.store.mark_read(channel, newest);
+            cx.emit(changes);
+            cx.notify();
+        });
+    }
+
+    /// Tells the channel we are typing, at most once every few seconds and
+    /// only for text the user is actually entering, not a restored draft.
+    fn note_typing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        const EVERY: Duration = Duration::from_secs(8);
+
+        let Some(channel) = self.channel else { return };
+        let focused = self.input.read(cx).focus_handle(cx).is_focused(window);
+        let has_text = !self.input.read(cx).value().trim().is_empty();
+        if !focused || !has_text || self.editing.is_some() {
+            return;
+        }
+        if self.last_typing_sent.is_some_and(|at| at.elapsed() < EVERY) {
+            return;
+        }
+        self.last_typing_sent = Some(Instant::now());
+        self.backend.send(Command::Typing(channel));
     }
 
     /// Remembers what was typed in the channel we are leaving.
@@ -194,6 +288,10 @@ impl ChatView {
         if changes.messages.contains(&channel) {
             self.loading = false;
             self.rebuild(cx);
+            self.maybe_ack(cx);
+            cx.notify();
+        }
+        if changes.typing.contains(&channel) {
             cx.notify();
         }
     }
@@ -205,7 +303,7 @@ impl ChatView {
         let new = self
             .channel
             .and_then(|c| self.session.read(cx).store.timeline(c))
-            .map(|t| build_rows(t.messages(), offset))
+            .map(|t| build_rows(t.messages(), offset, self.unread_after))
             .unwrap_or_default();
 
         match diff(&self.rows, &new) {
@@ -314,6 +412,7 @@ impl ChatView {
     fn render_row(&mut self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
         match self.rows.get(ix).cloned() {
             Some(Row::Divider(day)) => divider(day).into_any_element(),
+            Some(Row::NewMessages) => new_messages_line().into_any_element(),
             Some(Row::Message { id, grouped }) => match self.message(id, cx) {
                 Some(message) => self.render_message(message, grouped, cx),
                 None => div().into_any_element(),
@@ -559,8 +658,20 @@ impl ChatView {
 
         let notice = self.session.read(cx).notice.clone();
         let can_send = self.permissions(cx).contains(Permissions::SEND_MESSAGES);
+        let typing = self.typing_line(cx);
+        self.typing_shown = typing.is_some();
 
-        let mut column = div().flex_none().flex().flex_col().px_4().pb_4().pt_1();
+        let mut column = div().flex_none().flex().flex_col().px_4().pb_2().pt_1();
+
+        // The line always takes up its height so the composer doesn't jump
+        // when someone starts or stops typing.
+        column = column.child(
+            div()
+                .h(px(18.))
+                .text_size(px(12.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .child(typing.unwrap_or_default()),
+        );
 
         if let Some(text) = notice {
             column = column.child(
@@ -627,6 +738,21 @@ impl ChatView {
                     ),
             )
             .into_any_element()
+    }
+
+    /// "Ada is typing...", or nothing.
+    fn typing_line(&self, cx: &App) -> Option<String> {
+        let channel = self.channel?;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
+        let names: Vec<String> = self
+            .session
+            .read(cx)
+            .store
+            .typing_users(channel, now)
+            .into_iter()
+            .map(|u| u.display_name().to_owned())
+            .collect();
+        typing_text(&names)
     }
 
     /// "Replying to X" or "Editing message", with a button to cancel.
@@ -700,6 +826,27 @@ fn action_button(
         .cursor_pointer()
         .hover(|s| s.bg(rgb(theme::BG_HOVER)))
         .child(icon(glyph, 16., color))
+}
+
+/// The red line above the first message you haven't read.
+fn new_messages_line() -> impl IntoElement {
+    div()
+        .w_full()
+        .flex()
+        .items_center()
+        .px_4()
+        .mt_2()
+        .child(div().flex_1().h(px(1.)).bg(rgb(theme::BADGE)))
+        .child(
+            div()
+                .px(px(6.))
+                .rounded(px(4.))
+                .bg(rgb(theme::BADGE))
+                .text_size(px(10.))
+                .font_weight(FontWeight::BOLD)
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .child("NEW"),
+        )
 }
 
 fn divider(day: NaiveDate) -> impl IntoElement {

@@ -41,6 +41,13 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// Mark everything up to `message` as read.
+    AckMessage {
+        channel: Snowflake,
+        message: Snowflake,
+    },
+    /// Show the "is typing" indicator to others for a few seconds.
+    Typing(Snowflake),
 }
 
 /// Things the backend reports.

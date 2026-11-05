@@ -200,6 +200,11 @@ impl Store {
         }
     }
 
+    /// The last message we have read in `channel`, if the server told us.
+    pub fn last_read(&self, channel: Snowflake) -> Option<Snowflake> {
+        self.read_states.get(&channel).and_then(|r| r.last_message_id)
+    }
+
     /// Rolls channel state up for the guild rail. Channels we can't view
     /// don't count.
     pub fn guild_unread(&self, guild: Snowflake) -> Unread {

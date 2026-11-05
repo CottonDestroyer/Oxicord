@@ -12,6 +12,8 @@ const GROUP_WINDOW_SECS: i64 = 7 * 60;
 pub enum Row {
     /// The first row of a new day.
     Divider(NaiveDate),
+    /// Where the messages we have not read begin.
+    NewMessages,
     Message { id: Snowflake, grouped: bool },
 }
 
@@ -20,9 +22,11 @@ pub enum Row {
 pub fn build_rows<'a>(
     messages: impl IntoIterator<Item = &'a Message>,
     offset: FixedOffset,
+    unread_after: Option<Snowflake>,
 ) -> Vec<Row> {
     let mut rows = Vec::new();
     let mut previous: Option<&Message> = None;
+    let mut marked = false;
 
     for message in messages {
         let day = message.timestamp.with_timezone(&offset).date_naive();
@@ -32,7 +36,16 @@ pub fn build_rows<'a>(
         if !same_day {
             rows.push(Row::Divider(day));
         }
-        let grouped = same_day && previous.is_some_and(|p| shares_header(p, message));
+        // The marker goes before the first message newer than the read point,
+        // and only when something older is shown above it.
+        let starts_unread = !marked && unread_after.is_some_and(|read| message.id > read);
+        if starts_unread {
+            marked = true;
+            if previous.is_some() {
+                rows.push(Row::NewMessages);
+            }
+        }
+        let grouped = !starts_unread && same_day && previous.is_some_and(|p| shares_header(p, message));
         rows.push(Row::Message {
             id: message.id,
             grouped,
@@ -110,7 +123,7 @@ mod tests {
             message(4, 2, 21),
         ];
         assert_eq!(
-            build_rows(&messages, utc()),
+            build_rows(&messages, utc(), None),
             [
                 Row::Divider("2024-05-01".parse().unwrap()),
                 row(1, false),
@@ -124,7 +137,7 @@ mod tests {
     #[test]
     fn a_new_day_gets_a_divider_and_breaks_the_group() {
         let messages = [message(1, 1, 0), message(2, 1, 14 * 60 + 1)];
-        let rows = build_rows(&messages, utc());
+        let rows = build_rows(&messages, utc(), None);
         assert_eq!(rows.len(), 4);
         assert_eq!(rows[2], Row::Divider("2024-05-02".parse().unwrap()));
         assert_eq!(rows[3], row(2, false));
@@ -136,15 +149,15 @@ mod tests {
         // straddle midnight (23:59 and 00:01).
         let messages = [message(1, 1, -1), message(2, 1, 1)];
         let east = FixedOffset::east_opt(14 * 3600).unwrap();
-        assert_eq!(build_rows(&messages, utc()).len(), 3);
-        assert_eq!(build_rows(&messages, east).len(), 4);
+        assert_eq!(build_rows(&messages, utc(), None).len(), 3);
+        assert_eq!(build_rows(&messages, east, None).len(), 4);
     }
 
     #[test]
     fn a_reply_starts_its_own_group() {
         let mut reply = message(2, 1, 1);
         reply.kind = MessageType::Reply;
-        let rows = build_rows(&[message(1, 1, 0), reply], utc());
+        let rows = build_rows(&[message(1, 1, 0), reply], utc(), None);
         assert_eq!(rows[2], row(2, false));
     }
 
@@ -152,8 +165,36 @@ mod tests {
     fn system_messages_never_share_a_header() {
         let mut joined = message(2, 1, 1);
         joined.kind = MessageType::UserJoin;
-        let rows = build_rows(&[message(1, 1, 0), joined], utc());
+        let rows = build_rows(&[message(1, 1, 0), joined], utc(), None);
         assert_eq!(rows[2], row(2, false));
+    }
+
+    #[test]
+    fn new_marker_goes_before_the_first_unread_message_and_breaks_its_group() {
+        let messages = [message(1, 1, 0), message(2, 1, 1), message(3, 1, 2)];
+        let rows = build_rows(&messages, utc(), Some(Snowflake(2)));
+        assert_eq!(
+            rows,
+            [
+                Row::Divider("2024-05-01".parse().unwrap()),
+                row(1, false),
+                row(2, true),
+                Row::NewMessages,
+                row(3, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn no_marker_when_everything_is_read_or_nothing_is_above_it() {
+        let messages = [message(5, 1, 0), message(6, 1, 1)];
+        let read = build_rows(&messages, utc(), Some(Snowflake(6)));
+        assert!(!read.contains(&Row::NewMessages));
+
+        // Everything shown is newer than the read point, so there is no
+        // older message to put the marker under.
+        let all_unread = build_rows(&messages, utc(), Some(Snowflake(1)));
+        assert!(!all_unread.contains(&Row::NewMessages));
     }
 
     #[test]

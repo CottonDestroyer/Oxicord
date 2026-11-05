@@ -127,6 +127,17 @@ fn sidebar_groups_by_category_and_hides_what_we_cannot_see() {
 }
 
 #[test]
+fn last_read_follows_acks() {
+    let mut store = ready_store();
+    assert_eq!(store.last_read(id(11)), Some(id(500)));
+    assert_eq!(store.last_read(id(12)), None);
+
+    store.mark_read(id(11), id(600));
+    assert_eq!(store.last_read(id(11)), Some(id(600)));
+    assert!(!store.unread(id(11)).unread);
+}
+
+#[test]
 fn unread_compares_last_message_with_read_marker() {
     let store = ready_store();
     assert!(store.unread(id(11)).unread);

@@ -170,6 +170,22 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        // Acks and typing pings are best effort, a failure isn't worth
+        // interrupting the user over.
+        Command::AckMessage { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.ack_message(channel, message).await {
+                    tracing::debug!(?err, "ack failed");
+                }
+            });
+        }
+        Command::Typing(channel) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.trigger_typing(channel).await {
+                    tracing::debug!(?err, "typing ping failed");
+                }
+            });
+        }
         // Handled before it gets here.
         Command::Login(_) | Command::BrowserLogin | Command::Logout | Command::FetchImage(_) => {}
     }
