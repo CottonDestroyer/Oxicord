@@ -203,6 +203,29 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::OpenDm(user) => {
+            tokio::spawn(async move {
+                let result = api.open_dm(user).await.map_err(|err| {
+                    tracing::warn!(?err, "could not open a conversation");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::DmOpened(result)).await;
+            });
+        }
+        Command::AcceptFriend(user) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.accept_friend(user).await {
+                    notify(&events, "accept that request", &err).await;
+                }
+            });
+        }
+        Command::RemoveRelationship(user) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.remove_relationship(user).await {
+                    notify(&events, "remove that person", &err).await;
+                }
+            });
+        }
         Command::SubscribeMembers { guild, channel } => {
             live.gateway.subscribe_members(guild, channel);
         }

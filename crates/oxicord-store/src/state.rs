@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use oxicord_model::{
-    Channel, ChannelType, Guild, Member, Permissions, ReadState, Snowflake, Status, User,
+    Channel, ChannelType, Guild, Member, Permissions, ReadState, Relationship, RelationshipKind,
+    Snowflake, Status, User,
 };
 
 use crate::{
@@ -44,6 +45,8 @@ pub struct Store {
     pub(crate) member_lists: HashMap<Snowflake, MemberListState>,
     /// Channel to user to the unix second the indicator expires.
     pub(crate) typing: HashMap<Snowflake, HashMap<Snowflake, u64>>,
+    /// Friends, requests and blocks, keyed by the other person.
+    pub(crate) relationships: HashMap<Snowflake, Relationship>,
 }
 
 impl Store {
@@ -177,6 +180,31 @@ impl Store {
                 .then_with(|| b.id.cmp(&a.id))
         });
         dms
+    }
+
+    /// The one-to-one conversation with `user`, if it is already open.
+    pub fn dm_with(&self, user: Snowflake) -> Option<Snowflake> {
+        self.channels
+            .values()
+            .find(|c| c.kind == ChannelType::Dm && c.recipients.iter().any(|r| r.id == user))
+            .map(|c| c.id)
+    }
+
+    /// People we have a tie of `kind` with, by name. Entries whose user we
+    /// never learned about are skipped, there is nothing to show for them.
+    pub fn relationships(&self, kind: RelationshipKind) -> Vec<&User> {
+        let mut people: Vec<_> = self
+            .relationships
+            .values()
+            .filter(|r| r.kind == kind)
+            .filter_map(|r| self.users.get(&r.id))
+            .collect();
+        people.sort_by_key(|u| u.display_name().to_lowercase());
+        people
+    }
+
+    pub fn relationship(&self, user: Snowflake) -> Option<RelationshipKind> {
+        self.relationships.get(&user).map(|r| r.kind)
     }
 
     /// What to show in the DM list for a channel.

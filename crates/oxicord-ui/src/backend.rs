@@ -6,7 +6,7 @@
 
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
-use oxicord_model::{Emoji, Message, Snowflake, User};
+use oxicord_model::{Channel, Emoji, Message, Snowflake, User};
 
 /// Things the UI asks for.
 #[derive(Debug)]
@@ -64,6 +64,13 @@ pub enum Command {
         emoji: Emoji,
         add: bool,
     },
+    /// Open a conversation with `user`, or find the one that exists. The
+    /// answer arrives as [`Event::DmOpened`].
+    OpenDm(Snowflake),
+    /// Accept a friend request. The new state arrives through the gateway.
+    AcceptFriend(Snowflake),
+    /// Unfriend, decline or cancel, depending on what the tie is now.
+    RemoveRelationship(Snowflake),
 }
 
 /// Things the backend reports.
@@ -84,6 +91,7 @@ pub enum Event {
         result: Result<Vec<Message>, String>,
         requested: usize,
     },
+    DmOpened(Result<Channel, String>),
 }
 
 #[derive(Clone)]

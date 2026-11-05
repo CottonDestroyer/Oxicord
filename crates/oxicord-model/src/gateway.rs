@@ -2,8 +2,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    Activity, Channel, Emoji, Guild, MemberList, Message, PartialMessage, ReadState, Role,
-    Snowflake, Status, User,
+    Activity, Channel, Emoji, Guild, MemberList, Message, PartialMessage, ReadState,
+    Relationship, RelationshipRemove, Role, Snowflake, Status, User,
 };
 
 pub mod op {
@@ -59,6 +59,8 @@ pub struct Ready {
     /// our own member in that guild.
     #[serde(default)]
     pub merged_members: Vec<MemberList>,
+    #[serde(default)]
+    pub relationships: Vec<Relationship>,
 }
 
 /// Follows READY with data that didn't fit in it. All we use is
@@ -288,6 +290,8 @@ pub enum DispatchEvent {
     ChannelUpdate(Box<Channel>),
     ChannelDelete(Box<Channel>),
     PresenceUpdate(PresenceUpdate),
+    RelationshipAdd(Box<Relationship>),
+    RelationshipRemove(RelationshipRemove),
     TypingStart(TypingStart),
     GuildMemberListUpdate(Box<MemberListUpdate>),
     Unknown { name: String, data: Value },
@@ -319,6 +323,8 @@ impl DispatchEvent {
             "CHANNEL_UPDATE" => Self::ChannelUpdate(Box::new(de(data)?)),
             "CHANNEL_DELETE" => Self::ChannelDelete(Box::new(de(data)?)),
             "PRESENCE_UPDATE" => Self::PresenceUpdate(de(data)?),
+            "RELATIONSHIP_ADD" => Self::RelationshipAdd(Box::new(de(data)?)),
+            "RELATIONSHIP_REMOVE" => Self::RelationshipRemove(de(data)?),
             "TYPING_START" => Self::TypingStart(de(data)?),
             "GUILD_MEMBER_LIST_UPDATE" => Self::GuildMemberListUpdate(Box::new(de(data)?)),
             _ => Self::Unknown {

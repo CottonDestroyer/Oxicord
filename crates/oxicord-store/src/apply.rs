@@ -1,5 +1,5 @@
 use oxicord_model::{
-    Emoji, Message, PartialMessage, Reaction, ReadState, Snowflake, Status,
+    Emoji, Message, PartialMessage, Reaction, ReadState, Relationship, Snowflake, Status,
     gateway::{
         DispatchEvent, GuildDelete, GuildMemberUpdate, GuildRoleDelete, GuildRoleEvent,
         MemberListUpdate, MessageAck, MessageDelete, MessageDeleteBulk, PresenceUpdate,
@@ -66,6 +66,11 @@ impl Store {
                 self.on_member_list(*update, &mut changes);
             }
             DispatchEvent::PresenceUpdate(p) => self.on_presence(p, &mut changes),
+            DispatchEvent::RelationshipAdd(r) => self.on_relationship_add(*r, &mut changes),
+            DispatchEvent::RelationshipRemove(r) => {
+                self.relationships.remove(&r.id);
+                changes.relationships = true;
+            }
             DispatchEvent::TypingStart(t) => self.on_typing(t, &mut changes),
             DispatchEvent::Resumed | DispatchEvent::Unknown { .. } => {}
         }
@@ -137,6 +142,10 @@ impl Store {
 
         for channel in ready.private_channels {
             self.ingest_channel(channel);
+        }
+
+        for relationship in ready.relationships {
+            self.insert_relationship(relationship);
         }
 
         if let Some(states) = ready.read_state {
@@ -421,6 +430,22 @@ impl Store {
         }
         changes.guild_list = true;
         changes.channel_lists.insert(delete.guild_id);
+    }
+
+    fn on_relationship_add(&mut self, relationship: Relationship, changes: &mut Changes) {
+        self.insert_relationship(relationship);
+        changes.relationships = true;
+        // Names in the DM list can come from the same user.
+        changes.dm_list = true;
+    }
+
+    /// READY lists the people in its own `users` and may omit them here, so
+    /// keep whichever copy we get.
+    fn insert_relationship(&mut self, mut relationship: Relationship) {
+        if let Some(user) = relationship.user.take() {
+            self.users.insert(user.id, user);
+        }
+        self.relationships.insert(relationship.id, relationship);
     }
 
     fn on_presence(&mut self, update: PresenceUpdate, changes: &mut Changes) {

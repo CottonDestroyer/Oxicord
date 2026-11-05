@@ -3,6 +3,7 @@
 mod channels;
 mod messages;
 mod reactions;
+mod relationships;
 mod users;
 
 pub use messages::{MessagePage, ReplyTarget, SendMessage};

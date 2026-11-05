@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gpui_kit::{Context, EventEmitter};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Message, Snowflake};
+use oxicord_model::{Channel, Message, Snowflake, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 /// The signed in client state. Views observe this entity and listen for the
@@ -21,6 +21,11 @@ pub struct Session {
 }
 
 impl EventEmitter<Changes> for Session {}
+
+/// A conversation the user asked to open is ready to be shown.
+pub struct DmOpened(pub Snowflake);
+
+impl EventEmitter<DmOpened> for Session {}
 
 impl Session {
     pub fn new() -> Self {
@@ -52,6 +57,23 @@ impl Session {
                 self.connection = state;
                 cx.notify();
             }
+        }
+    }
+
+    /// Takes in the conversation the server created or found for us, then
+    /// tells the views to switch to it.
+    pub fn apply_dm(&mut self, result: Result<Channel, String>, cx: &mut Context<Self>) {
+        match result {
+            Ok(channel) => {
+                let id = channel.id;
+                let changes = self
+                    .store
+                    .apply(DispatchEvent::ChannelCreate(Box::new(channel)));
+                cx.emit(changes);
+                cx.emit(DmOpened(id));
+                cx.notify();
+            }
+            Err(error) => self.set_notice(Some(format!("Couldn't open that conversation. {error}")), cx),
         }
     }
 

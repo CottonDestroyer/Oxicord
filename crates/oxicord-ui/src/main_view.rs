@@ -8,16 +8,17 @@ use gpui_kit::{
 };
 use oxicord_gateway::{ClientStatus, ConnectionState};
 use oxicord_media::cdn;
-use oxicord_model::{ChannelType, Snowflake, Status};
+use oxicord_model::{ChannelType, RelationshipKind, Snowflake, Status};
 use oxicord_store::Unread;
 
 use crate::{
     backend::{Backend, Command},
     chat::ChatView,
+    friends::FriendsView,
     icons::icon,
     media::{Media, acronym, avatar},
     member_list::{MemberList, presence_dot},
-    session::Session,
+    session::{DmOpened, Session},
     theme,
 };
 
@@ -54,6 +55,7 @@ pub struct MainView {
     session: Entity<Session>,
     media: Entity<Media>,
     chat: Entity<ChatView>,
+    friends: Entity<FriendsView>,
     members: Entity<MemberList>,
     backend: Backend,
     /// `None` is the home screen with the direct messages.
@@ -77,6 +79,9 @@ impl MainView {
         let subscriptions = vec![
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&session, window, |this, _, opened: &DmOpened, window, cx| {
+                this.show_dm(opened.0, window, cx);
+            }),
         ];
         let chat = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -86,10 +91,15 @@ impl MainView {
             let (session, media) = (session.clone(), media.clone());
             cx.new(|cx| MemberList::new(session, media, cx))
         };
+        let friends = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| FriendsView::new(session, media, backend, cx))
+        };
         Self {
             session,
             media,
             chat,
+            friends,
             members,
             backend,
             guild: None,
@@ -128,6 +138,20 @@ impl MainView {
         if let Some(guild) = self.guild {
             self.last_channel.insert(guild, channel);
         }
+        self.sync_chat(window, cx);
+        cx.notify();
+    }
+
+    /// Goes to a direct message from wherever we are, for example after
+    /// pressing the message button on the friends page.
+    fn show_dm(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        self.guild = None;
+        self.select_channel(channel, window, cx);
+    }
+
+    /// The home screen without a conversation open.
+    fn show_friends(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.channel = None;
         self.sync_chat(window, cx);
         cx.notify();
     }
@@ -316,6 +340,7 @@ impl MainView {
                 }
             }
             None => {
+                list = list.child(self.render_friends_entry(cx));
                 for dm in self.dm_items(cx) {
                     list = list.child(self.render_dm(dm, cx));
                 }
@@ -440,6 +465,36 @@ impl MainView {
                     .child(channel.name),
             )
             .children(mention_badge(channel.unread.mentions))
+    }
+
+    /// The row above the DM list that opens the friends page.
+    fn render_friends_entry(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let selected = self.channel.is_none();
+        let pending = self
+            .session
+            .read(cx)
+            .store
+            .relationships(RelationshipKind::IncomingRequest)
+            .len();
+        let color = if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
+
+        div()
+            .id("friends")
+            .h(px(40.))
+            .mb_2()
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_2()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .text_color(rgb(color))
+            .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_click(cx.listener(|this, _, window, cx| this.show_friends(window, cx)))
+            .child(icon("users", 20., color))
+            .child(div().flex_1().child("Friends"))
+            .children(mention_badge(u32::try_from(pending).unwrap_or(u32::MAX)))
     }
 
     fn render_dm(&mut self, dm: DmItem, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -627,7 +682,11 @@ impl Render for MainView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rail = self.render_rail(cx);
         let sidebar = self.render_sidebar(cx);
-        let content = self.chat.clone();
+        let content = if self.guild.is_none() && self.channel.is_none() {
+            self.friends.clone().into_any_element()
+        } else {
+            self.chat.clone().into_any_element()
+        };
         let members = (self.guild.is_some() && self.session.read(cx).show_members)
             .then(|| self.members.clone());
 

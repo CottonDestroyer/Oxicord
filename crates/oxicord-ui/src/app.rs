@@ -101,6 +101,9 @@ impl AppView {
                     session.apply_history(channel, result, requested, cx)
                 });
             }
+            Event::DmOpened(result) => {
+                self.session.update(cx, |session, cx| session.apply_dm(result, cx));
+            }
             Event::Notice(text) => {
                 self.session
                     .update(cx, |session, cx| session.set_notice(Some(text), cx));

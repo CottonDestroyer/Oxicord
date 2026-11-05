@@ -1,4 +1,4 @@
-use oxicord_model::{Message, Snowflake, Status, gateway::DispatchEvent};
+use oxicord_model::{Message, RelationshipKind, Snowflake, Status, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 use serde_json::{Value, json};
 
@@ -633,4 +633,61 @@ fn group_sizes_come_from_the_top_level_groups_when_headers_carry_none() {
     assert_eq!(list.group_count("online", 0), 12);
     assert_eq!(list.group_count("offline", 0), 88);
     assert_eq!(list.group_count("unknown", 7), 7, "falls back to the slot's own number");
+}
+
+#[test]
+fn ready_relationships_resolve_users_from_the_top_level_list() {
+    let mut data = ready_json();
+    data["relationships"] = json!([
+        { "id": "2", "type": 1 },
+        { "id": "3", "type": 3, "user": { "id": "3", "username": "bo" } },
+        { "id": "4", "type": 5 }
+    ]);
+    let mut store = Store::new();
+    store.apply(event("READY", data));
+
+    let friends = store.relationships(RelationshipKind::Friend);
+    assert_eq!(friends.len(), 1);
+    assert_eq!(friends[0].display_name(), "Ada");
+    // This one carried its user inline.
+    let pending = store.relationships(RelationshipKind::IncomingRequest);
+    assert_eq!(pending[0].username, "bo");
+    // Suggestions are not ties, and we never learned who 4 is anyway.
+    assert!(store.relationships(RelationshipKind::Implicit).is_empty());
+}
+
+#[test]
+fn accepting_a_request_moves_it_to_friends_and_removing_drops_it() {
+    let mut store = ready_store();
+    let added = store.apply(event(
+        "RELATIONSHIP_ADD",
+        json!({ "id": "3", "type": 3, "user": { "id": "3", "username": "bo" } }),
+    ));
+    assert!(added.relationships);
+    assert_eq!(store.relationship(id(3)), Some(RelationshipKind::IncomingRequest));
+
+    store.apply(event(
+        "RELATIONSHIP_ADD",
+        json!({ "id": "3", "type": 1, "user": { "id": "3", "username": "bo" } }),
+    ));
+    assert_eq!(store.relationships(RelationshipKind::Friend).len(), 1);
+    assert!(store.relationships(RelationshipKind::IncomingRequest).is_empty());
+
+    let removed = store.apply(event("RELATIONSHIP_REMOVE", json!({ "id": "3", "type": 1 })));
+    assert!(removed.relationships);
+    assert_eq!(store.relationship(id(3)), None);
+}
+
+#[test]
+fn an_open_dm_is_found_by_its_recipient() {
+    let mut store = ready_store();
+    assert_eq!(store.dm_with(id(ADA)), Some(id(50)));
+    assert_eq!(store.dm_with(id(3)), None);
+
+    store.apply(event(
+        "CHANNEL_CREATE",
+        json!({ "id": "51", "type": 1,
+                "recipients": [{ "id": "3", "username": "bo" }] }),
+    ));
+    assert_eq!(store.dm_with(id(3)), Some(id(51)));
 }

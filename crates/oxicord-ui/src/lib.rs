@@ -1,6 +1,7 @@
 mod app;
 pub mod backend;
 mod chat;
+mod friends;
 mod icons;
 mod login;
 mod main_view;
