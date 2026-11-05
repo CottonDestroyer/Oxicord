@@ -44,11 +44,11 @@ impl<'a> Field<'a> {
     pub fn fixed64s(&self) -> Result<Vec<u64>, Error> {
         match self.wire_type {
             1 | 2 => {
-                let chunks = self.value.chunks_exact(8);
-                if !chunks.remainder().is_empty() {
+                let (chunks, rest) = self.value.as_chunks::<8>();
+                if !rest.is_empty() {
                     return Err(Error::Malformed("bad fixed64 run"));
                 }
-                Ok(chunks.map(|c| u64::from_le_bytes(c.try_into().unwrap_or([0; 8]))).collect())
+                Ok(chunks.iter().map(|c| u64::from_le_bytes(*c)).collect())
             }
             _ => Err(Error::Malformed("expected fixed64 values")),
         }
