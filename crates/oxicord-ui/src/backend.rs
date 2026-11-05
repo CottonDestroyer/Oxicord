@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
 use crate::{AccountEvent, AccountRequest, Settings};
-use oxicord_model::{Channel, Emoji, Message, Profile, Snowflake, User};
+use oxicord_model::{Channel, Emoji, Message, Profile, SearchPage, Snowflake, User};
 
 /// Things the UI asks for.
 #[derive(Debug)]
@@ -55,6 +55,22 @@ pub enum Command {
     },
     /// Write the preferences to disk.
     SaveSettings(Settings),
+    /// The pinned messages of a channel. The answer arrives as [`Event::Pins`].
+    LoadPins(Snowflake),
+    /// Pin or unpin a message. The refreshed pins arrive as [`Event::Pins`].
+    SetPinned {
+        channel: Snowflake,
+        message: Snowflake,
+        pinned: bool,
+    },
+    /// Search messages in a server, or in a conversation when `guild` is
+    /// `None`. The answer arrives as [`Event::Search`].
+    Search {
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+        query: String,
+        offset: u32,
+    },
     /// Anything about the account: details, preferences, linked apps.
     Account(AccountRequest),
     /// Raise a desktop notification.
@@ -113,6 +129,15 @@ pub enum Event {
     },
     DmOpened(Result<Channel, String>),
     Account(AccountEvent),
+    Pins {
+        channel: Snowflake,
+        result: Result<Vec<Message>, String>,
+    },
+    Search {
+        query: String,
+        offset: u32,
+        result: Result<SearchPage, String>,
+    },
     Profile {
         user: Snowflake,
         result: Result<Profile, String>,

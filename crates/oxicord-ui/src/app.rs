@@ -118,6 +118,12 @@ impl AppView {
                     session.apply_history(channel, result, requested, cx)
                 });
             }
+            Event::Pins { channel, result } => {
+                self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
+            }
+            Event::Search { query, result, .. } => {
+                self.session.update(cx, |session, cx| session.apply_search(query, result, cx));
+            }
             Event::Account(event) => {
                 self.session.update(cx, |session, cx| session.apply_account(event, cx));
             }

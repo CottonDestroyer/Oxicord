@@ -32,7 +32,7 @@ use crate::{
     backend::{Backend, Command},
     icons::icon,
     media::{Media, avatar},
-    session::Session,
+    session::{PanelKind, Session},
     theme,
 };
 
@@ -707,6 +707,8 @@ impl ChatView {
         let can_reply = perms.contains(Permissions::SEND_MESSAGES);
         let can_delete = is_mine || perms.contains(Permissions::MANAGE_MESSAGES);
         let can_react = perms.contains(Permissions::ADD_REACTIONS);
+        let can_delete_others = perms.contains(Permissions::MANAGE_MESSAGES);
+        let in_dm = message.guild_id.is_none() && self.guild(cx).is_none();
 
         let prefs = self.view_prefs(cx);
         let author = message.author.display_name().to_owned();
@@ -779,6 +781,7 @@ impl ChatView {
             react: can_react,
             edit: is_mine,
             delete: can_delete,
+            pin: (can_delete_others || in_dm).then_some(message.pinned),
         };
         let bar = self.action_bar(id, allowed, confirming, cx);
 
@@ -866,6 +869,16 @@ impl ChatView {
                 ),
             );
         }
+        if let Some(pinned) = allowed.pin {
+            bar = bar.child(
+                action_button(
+                    ("pin", id.0),
+                    if pinned { "pin-off" } else { "pin" },
+                    theme::TEXT_MUTED,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| this.set_pinned(id, !pinned, cx))),
+            );
+        }
         if allowed.edit {
             bar = bar.child(
                 action_button(("edit", id.0), "pencil", theme::TEXT_MUTED).on_click(
@@ -932,11 +945,28 @@ impl ChatView {
                     .child(topic)
             }))
             .child(div().flex_1())
+            .child(
+                action_button("open-pins", "pin", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Pins, cx)),
+                )),
+            )
+            .child(
+                action_button("open-search", "search", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Search, cx)),
+                )),
+            )
             .children(has_members.then(|| {
                 let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
                 action_button("toggle-members", "users", color)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_members(cx)))
             }))
+    }
+
+    fn set_pinned(&mut self, message: Snowflake, pinned: bool, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let backend = self.backend.clone();
+        self.session
+            .update(cx, |s, cx| s.set_pinned(&backend, channel, message, pinned, cx));
     }
 
     fn toggle_members(&mut self, cx: &mut Context<Self>) {
@@ -1202,6 +1232,8 @@ struct Allowed {
     react: bool,
     edit: bool,
     delete: bool,
+    /// May pin or unpin, and whether the message is pinned now.
+    pin: Option<bool>,
 }
 
 /// A small square icon button. The caller attaches the click handler.

@@ -109,6 +109,16 @@ impl Store {
         changes
     }
 
+    /// Shows a message as pinned or unpinned ahead of the server's echo.
+    pub fn set_pinned(&mut self, channel: Snowflake, message: Snowflake, pinned: bool) -> Changes {
+        let mut changes = Changes::default();
+        if let Some(m) = self.timelines.get_mut(&channel).and_then(|t| t.get_mut(message)) {
+            m.pinned = pinned;
+            changes.messages.insert(channel);
+        }
+        changes
+    }
+
     /// Marks a channel read up to `message` ahead of the server's echo, so
     /// the unread badge clears without waiting a round trip.
     pub fn mark_read(&mut self, channel: Snowflake, message: Snowflake) -> Changes {

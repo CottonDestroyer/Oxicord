@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{Context, EventEmitter};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Channel, Message, Profile, Snowflake, gateway::DispatchEvent};
+use oxicord_model::{Channel, Message, Profile, SearchPage, Snowflake, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 use crate::{
@@ -22,6 +22,10 @@ pub struct Session {
     pub notice: Option<String>,
     pub settings: Settings,
     pub account: AccountState,
+    /// Pinned messages per channel, loaded when the panel asks.
+    pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
+    /// The latest search: what was asked and how it went.
+    pub search: Option<(String, Load<SearchPage>)>,
     /// The status we last chose, which the server won't echo back to us.
     pub status: ClientStatus,
     /// Profiles fetched so far, so reopening a card is instant.
@@ -31,6 +35,23 @@ pub struct Session {
 }
 
 impl EventEmitter<Changes> for Session {}
+
+/// Which list the side panel is showing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PanelKind {
+    Pins,
+    Search,
+}
+
+/// Someone asked to open the side panel.
+pub struct OpenPanel(pub PanelKind);
+
+impl EventEmitter<OpenPanel> for Session {}
+
+/// Someone picked a message in a list and wants to go to its channel.
+pub struct JumpTo(pub Snowflake);
+
+impl EventEmitter<JumpTo> for Session {}
 
 /// A conversation the user asked to open is ready to be shown.
 pub struct DmOpened(pub Snowflake);
@@ -55,10 +76,86 @@ impl Session {
             notice: None,
             settings,
             account: AccountState::default(),
+            pins: HashMap::new(),
+            search: None,
             status: ClientStatus::default(),
             profiles: HashMap::new(),
             profile_requested: HashSet::new(),
         }
+    }
+
+    pub fn open_panel(&mut self, kind: PanelKind, cx: &mut Context<Self>) {
+        cx.emit(OpenPanel(kind));
+    }
+
+    pub fn jump_to(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
+        cx.emit(JumpTo(channel));
+    }
+
+    pub fn request_pins(&mut self, backend: &Backend, channel: Snowflake, cx: &mut Context<Self>) {
+        self.pins.insert(channel, Load::Loading);
+        backend.send(Command::LoadPins(channel));
+        cx.notify();
+    }
+
+    pub fn apply_pins(
+        &mut self,
+        channel: Snowflake,
+        result: Result<Vec<Message>, String>,
+        cx: &mut Context<Self>,
+    ) {
+        let state = match result {
+            Ok(pins) => Load::Ready(pins),
+            Err(error) => Load::Failed(error),
+        };
+        self.pins.insert(channel, state);
+        cx.notify();
+    }
+
+    /// Starts a search. `guild` is `None` inside a conversation.
+    pub fn start_search(
+        &mut self,
+        backend: &Backend,
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+        query: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.search = Some((query.clone(), Load::Loading));
+        backend.send(Command::Search { guild, channel, query, offset: 0 });
+        cx.notify();
+    }
+
+    /// Ignores answers to a search the user has already replaced.
+    pub fn apply_search(
+        &mut self,
+        query: String,
+        result: Result<SearchPage, String>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.search.as_ref().is_some_and(|(asked, _)| *asked == query) {
+            let state = match result {
+                Ok(page) => Load::Ready(page),
+                Err(error) => Load::Failed(error),
+            };
+            self.search = Some((query, state));
+            cx.notify();
+        }
+    }
+
+    /// Pins or unpins a message, shown at once and sent in the background.
+    pub fn set_pinned(
+        &mut self,
+        backend: &Backend,
+        channel: Snowflake,
+        message: Snowflake,
+        pinned: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let changes = self.store.set_pinned(channel, message, pinned);
+        backend.send(Command::SetPinned { channel, message, pinned });
+        cx.emit(changes);
+        cx.notify();
     }
 
     pub fn apply_account(&mut self, event: AccountEvent, cx: &mut Context<Self>) {

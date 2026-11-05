@@ -19,8 +19,9 @@ use crate::{
     media::{Media, acronym, avatar},
     member_list::{MemberList, presence_dot},
     profile,
-    session::{DmOpened, Session, ShowProfile},
+    session::{DmOpened, JumpTo, OpenPanel, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
+    side_panel::{ClosePanel, SidePanel},
     theme,
 };
 
@@ -71,6 +72,8 @@ pub struct MainView {
     profile: Option<ShowProfile>,
     settings_open: bool,
     settings_view: Entity<SettingsView>,
+    panel: Entity<SidePanel>,
+    panel_open: bool,
     /// Whether the member list was showing at the last redraw, so turning it
     /// on asks the server for the list.
     members_shown: bool,
@@ -93,6 +96,10 @@ impl MainView {
         session.update(cx, |s, cx| {
             s.request_account(&backend, crate::AccountRequest::LoadSettings, cx);
         });
+        let panel = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| SidePanel::new(session, media, backend, window, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let subscriptions = vec![
             cx.observe(&session, |this, session, cx| {
@@ -106,6 +113,16 @@ impl MainView {
             cx.subscribe(&settings_view, |this, _, _: &CloseSettings, cx| {
                 this.settings_open = false;
                 cx.notify();
+            }),
+            cx.subscribe(&panel, |this, _, _: &ClosePanel, cx| {
+                this.panel_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenPanel, window, cx| {
+                this.open_panel(open.0, window, cx);
+            }),
+            cx.subscribe_in(&session, window, |this, _, jump: &JumpTo, window, cx| {
+                this.show_channel(jump.0, window, cx);
             }),
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&session, window, |this, _, opened: &DmOpened, window, cx| {
@@ -143,6 +160,8 @@ impl MainView {
             settings_open: false,
             settings_view,
             members_shown,
+            panel,
+            panel_open: false,
             _subscriptions: subscriptions,
         }
     }
@@ -176,6 +195,26 @@ impl MainView {
         }
         self.sync_chat(window, cx);
         cx.notify();
+    }
+
+    /// Opens the pins or search panel for the channel on screen.
+    fn open_panel(&mut self, kind: PanelKind, window: &mut Window, cx: &mut Context<Self>) {
+        let (guild, channel) = (self.guild, self.channel);
+        self.panel_open = true;
+        self.panel
+            .update(cx, |panel, cx| panel.show(kind, guild, channel, window, cx));
+        cx.notify();
+    }
+
+    /// Goes to any channel we know, for example from a search result.
+    fn show_channel(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        self.guild = self
+            .session
+            .read(cx)
+            .store
+            .channel(channel)
+            .and_then(|c| c.guild_id);
+        self.select_channel(channel, window, cx);
     }
 
     /// Goes to a direct message from wherever we are, for example after
@@ -266,6 +305,8 @@ impl MainView {
         let channel = self.channel;
         self.chat
             .update(cx, |chat, cx| chat.set_channel(channel, window, cx));
+        let (guild, channel) = (self.guild, self.channel);
+        self.panel.update(cx, |panel, cx| panel.follow(guild, channel, cx));
         self.sync_members(cx);
     }
 
@@ -809,8 +850,9 @@ impl Render for MainView {
         } else {
             self.chat.clone().into_any_element()
         };
-        let members = (self.guild.is_some() && self.session.read(cx).settings.show_members)
+        let members = (self.guild.is_some() && !self.panel_open && self.session.read(cx).settings.show_members)
             .then(|| self.members.clone());
+        let panel = self.panel_open.then(|| self.panel.clone());
         let profile = self.render_profile(cx);
         let settings = self.settings_open.then(|| self.settings_view.clone());
 
@@ -833,7 +875,8 @@ impl Render for MainView {
                     .border_color(rgb(theme::BORDER))
                     .child(sidebar)
                     .child(content)
-                    .children(members),
+                    .children(members)
+                    .children(panel),
             )
             .children(profile)
             .children(settings)

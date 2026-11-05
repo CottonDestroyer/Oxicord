@@ -691,3 +691,21 @@ fn an_open_dm_is_found_by_its_recipient() {
     ));
     assert_eq!(store.dm_with(id(3)), Some(id(51)));
 }
+
+#[test]
+fn pinning_flips_the_flag_on_a_loaded_message() {
+    let mut store = ready_store();
+    store.open_channel(id(11));
+    store.apply(event(
+        "MESSAGE_CREATE",
+        json!({ "id": "700", "channel_id": "11", "author": { "id": "2", "username": "ada" },
+                "content": "x", "timestamp": "2024-05-01T12:00:00.000000+00:00", "type": 0 }),
+    ));
+    assert!(!store.timeline(id(11)).unwrap().get(id(700)).unwrap().pinned);
+
+    let changes = store.set_pinned(id(11), id(700), true);
+    assert!(changes.messages.contains(&id(11)));
+    assert!(store.timeline(id(11)).unwrap().get(id(700)).unwrap().pinned);
+    // A message we never loaded changes nothing.
+    assert!(store.set_pinned(id(11), id(999), true).is_empty());
+}

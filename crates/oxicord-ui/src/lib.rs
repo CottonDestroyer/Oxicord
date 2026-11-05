@@ -12,6 +12,7 @@ mod member_list;
 mod profile;
 mod session;
 mod settings_view;
+mod side_panel;
 mod settings;
 pub mod theme;
 

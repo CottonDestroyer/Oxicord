@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
     ApiClient, ApiError, Credentials,
-    routes::{MessagePage, ReplyTarget, SendMessage, Upload},
+    routes::{MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
     super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
 use oxicord_media::Fetcher;
 use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, GatewayHandle};
-use oxicord_model::{Snowflake, User, gateway::DispatchEvent};
+use oxicord_model::{SearchPage, Snowflake, User, gateway::DispatchEvent};
 use oxicord_ui::{AccountEvent, AccountRequest, Backend, Command, Event};
 
 use crate::credentials;
@@ -221,6 +221,24 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::LoadPins(channel) => {
+            tokio::spawn(async move { send_pins(&api, channel, &events).await });
+        }
+        Command::SetPinned { channel, message, pinned } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_pinned(channel, message, pinned).await {
+                    notify(&events, "change that pin", &err).await;
+                }
+                send_pins(&api, channel, &events).await;
+            });
+        }
+        Command::Search { guild, channel, query, offset } => {
+            tokio::spawn(async move {
+                let scope = guild.map_or(SearchScope::Channel(channel), SearchScope::Guild);
+                let result = run_search(&api, scope, &query, offset).await;
+                let _ = events.send(Event::Search { query, offset, result }).await;
+            });
+        }
         Command::Account(request) => {
             tokio::spawn(async move { account_request(&api, request, &events).await });
         }
@@ -268,6 +286,36 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         | Command::Notify { .. }
         | Command::SaveSettings(_) => {}
     }
+}
+
+/// Loads a channel's pins and reports them, errors included.
+async fn send_pins(api: &ApiClient, channel: Snowflake, events: &Sender<Event>) {
+    let result = api.pins(channel).await.map_err(|err| {
+        tracing::warn!(?err, "could not load pins");
+        describe_request(&err)
+    });
+    let _ = events.send(Event::Pins { channel, result }).await;
+}
+
+/// A fresh server may still be building its search index. Wait out what
+/// Discord asks for a few times before giving up.
+async fn run_search(
+    api: &ApiClient,
+    scope: SearchScope,
+    query: &str,
+    offset: u32,
+) -> Result<SearchPage, String> {
+    for _ in 0..4 {
+        match api.search_messages(scope, query, offset).await {
+            Ok(SearchOutcome::Ready(page)) => return Ok(page),
+            Ok(SearchOutcome::Indexing(wait)) => tokio::time::sleep(wait).await,
+            Err(err) => {
+                tracing::warn!(?err, "search failed");
+                return Err(describe_request(&err));
+            }
+        }
+    }
+    Err("Discord is still indexing this server. Try again in a moment.".into())
 }
 
 /// Runs one account request and reports what the screens need to refresh.
