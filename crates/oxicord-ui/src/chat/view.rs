@@ -1467,9 +1467,9 @@ impl ChatView {
                     },
                 ))
             }))
-            .children(has_members.then(|| {
+            .children((has_members || in_dm).then(|| {
                 let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
-                action_button("toggle-members", "users", color)
+                action_button("toggle-members", if in_dm { "circle-user-round" } else { "users" }, color)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_members(cx)))
             }))
             .child(

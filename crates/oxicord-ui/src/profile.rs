@@ -1,3 +1,4 @@
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, FontWeight, InteractiveElement as _, IntoElement, Entity, StyledImage as _, img,
     ParentElement as _, StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb, rgba,
@@ -60,7 +61,7 @@ pub fn overlay(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    modal(body(card, media, on_message, window, cx), on_close)
+    modal(body(card, media, on_message, false, window, cx), on_close)
 }
 
 /// Dims everything behind `content` and closes when the dimmed part is
@@ -93,6 +94,7 @@ fn body(
     card: Card,
     media: &Entity<Media>,
     on_message: Box<Handler>,
+    inline: bool,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -164,10 +166,9 @@ fn body(
         .occlude()
         .relative()
         .w(px(340.))
-        .rounded(px(10.))
-        .overflow_hidden()
-        .border_1()
         .border_color(rgb(theme::BORDER))
+        .when(inline, |card| card.h_full().flex_none().overflow_y_scroll().border_l_1())
+        .when(!inline, |card| card.rounded(px(10.)).overflow_hidden().border_1())
         .bg(rgb(theme::BG_SIDEBAR))
         .child({
             let banner = div().h(px(100.)).w_full().bg(rgb(card.accent)).overflow_hidden();
@@ -300,4 +301,9 @@ fn section(title: &'static str, content: impl IntoElement) -> impl IntoElement {
                 .child(title.to_uppercase()),
         )
         .child(div().text_size(px(14.)).text_color(rgb(theme::TEXT)).child(content))
+}
+
+/// The same card docked beside a conversation instead of floating over it.
+pub fn column(card: Card, media: &Entity<Media>, on_message: Box<Handler>, window: &mut Window, cx: &mut App) -> AnyElement {
+    body(card, media, on_message, true, window, cx)
 }

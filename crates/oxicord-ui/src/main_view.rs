@@ -507,9 +507,8 @@ impl MainView {
         cx.notify();
     }
 
-    /// The card for the person we are looking at, over everything else.
-    fn render_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let (user, guild) = self.profile.as_ref().map(|p| (p.user, p.guild))?;
+    /// Gathers what a person's card shows. `guild` adds their nickname and roles there.
+    fn build_card(&self, user: Snowflake, guild: Option<Snowflake>, cx: &App) -> Option<profile::Card> {
         let card = {
             let session = self.session.read(cx);
             let store = &session.store;
@@ -571,6 +570,13 @@ impl MainView {
             let kind = self.session.read(cx).store.relationship(user);
             card.actions = self.relationship_actions(user, kind);
         }
+        Some(card)
+    }
+
+    /// The card for the person we are looking at, over everything else.
+    fn render_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (user, guild) = self.profile.as_ref().map(|p| (p.user, p.guild))?;
+        let card = self.build_card(user, guild, cx)?;
 
         let on_message =
             cx.listener(move |this, _: &ClickEvent, _, cx| this.message_from_card(user, cx));
@@ -697,6 +703,80 @@ impl MainView {
     }
 
     /// Points the message area at whatever channel is selected now.
+    /// Asks for the profile of the person on the other end of the open
+    /// conversation, which the docked card shows.
+    fn fetch_dm_profile(&mut self, cx: &mut Context<Self>) {
+        let Some(user) = self.dm_peer(cx) else { return };
+        if self.session.update(cx, |s, _| s.should_fetch_profile(user)) {
+            self.backend.send(Command::LoadProfile { user, guild: None });
+        }
+    }
+
+    /// The other person in a one-to-one conversation.
+    fn dm_peer(&self, cx: &App) -> Option<Snowflake> {
+        let channel = self.channel?;
+        let c = self.session.read(cx).store.channel(channel)?;
+        (c.kind == ChannelType::Dm).then(|| c.recipients.first().map(|r| r.id))?
+    }
+
+    /// The docked column beside a conversation: the person's card for a
+    /// one-to-one chat, the participants for a group.
+    fn render_dm_column(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let channel = self.channel?;
+        if let Some(user) = self.dm_peer(cx) {
+            let card = self.build_card(user, None, cx)?;
+            let on_message = cx.listener(move |this, _: &ClickEvent, _, cx| this.message_from_card(user, cx));
+            return Some(profile::column(card, &self.media, Box::new(on_message), window, cx));
+        }
+
+        let members: Vec<_> = {
+            let store = &self.session.read(cx).store;
+            let c = store.channel(channel).filter(|c| c.kind == ChannelType::GroupDm)?;
+            c.recipients
+                .iter()
+                .map(|u| (u.id, u.display_name().to_owned(), cdn::user_avatar(u.id, u.avatar.as_deref(), 64), store.presence(u.id)))
+                .collect()
+        };
+        let mut column = div()
+            .id("group-members")
+            .w(px(theme::MEMBERS_WIDTH))
+            .h_full()
+            .flex_none()
+            .overflow_y_scroll()
+            .bg(rgb(theme::BG_MEMBERS))
+            .border_l_1()
+            .border_color(rgb(theme::BORDER))
+            .child(
+                div()
+                    .px_4()
+                    .pt_4()
+                    .pb_1()
+                    .text_size(px(11.))
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(format!("MEMBERS \u{2014} {}", members.len() + 1)),
+            );
+        for (user, name, url, status) in members {
+            column = column.child(
+                div()
+                    .id(("group-member", user.0))
+                    .h(px(44.))
+                    .mx_2()
+                    .px_2()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, None, cx)))
+                    .child(div().relative().flex_none().child(avatar(&self.media, &url, 32., &name, cx)).child(presence_dot(status)))
+                    .child(div().flex_1().min_w_0().truncate().child(name)),
+            );
+        }
+        Some(column.into_any_element())
+    }
+
     fn sync_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let channel = self.channel;
         // A forum shows its posts, not a message timeline.
@@ -708,6 +788,7 @@ impl MainView {
         let (guild, channel) = (self.guild, self.channel);
         self.panel.update(cx, |panel, cx| panel.follow(guild, channel, cx));
         self.sync_members(cx);
+        self.fetch_dm_profile(cx);
     }
 
     /// Points the member list at the open guild and asks the server for it.
@@ -1536,6 +1617,15 @@ impl Render for MainView {
             && !self.panel_open
             && self.session.read(cx).settings.show_members)
             .then(|| self.members.clone());
+        let dm_column = if self.guild.is_none()
+            && self.channel.is_some()
+            && !self.panel_open
+            && self.session.read(cx).settings.show_members
+        {
+            self.render_dm_column(window, cx)
+        } else {
+            None
+        };
         let panel = self.panel_open.then(|| self.panel.clone());
         let profile = self.render_profile(window, cx);
         let settings = self.settings_open.then(|| self.settings_view.clone());
@@ -1577,6 +1667,7 @@ impl Render for MainView {
                     .child(sidebar)
                     .child(content)
                     .children(members)
+                    .children(dm_column)
                     .children(panel),
             )
             .children(profile)
