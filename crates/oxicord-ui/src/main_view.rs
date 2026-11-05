@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{
-    AnyElement, App, Context, Entity, ImageSource, InteractiveElement as _, IntoElement,
+    AnyElement, App, AppContext as _, Context, Entity, ImageSource, InteractiveElement as _,
+    IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, img, px, rgb,
 };
@@ -12,6 +13,7 @@ use oxicord_store::Unread;
 
 use crate::{
     backend::{Backend, Command},
+    chat::ChatView,
     icons::icon,
     media::{Media, acronym, avatar},
     session::Session,
@@ -48,6 +50,7 @@ struct DmItem {
 pub struct MainView {
     session: Entity<Session>,
     media: Entity<Media>,
+    chat: Entity<ChatView>,
     backend: Backend,
     /// `None` is the home screen with the direct messages.
     guild: Option<Snowflake>,
@@ -69,9 +72,14 @@ impl MainView {
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
         ];
+        let chat = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| ChatView::new(session, media, backend, cx))
+        };
         Self {
             session,
             media,
+            chat,
             backend,
             guild: None,
             channel: None,
@@ -94,6 +102,7 @@ impl MainView {
                     .map(|c| c.id)
             })
         });
+        self.sync_chat(cx);
         cx.notify();
     }
 
@@ -102,7 +111,14 @@ impl MainView {
         if let Some(guild) = self.guild {
             self.last_channel.insert(guild, channel);
         }
+        self.sync_chat(cx);
         cx.notify();
+    }
+
+    /// Points the message area at whatever channel is selected now.
+    fn sync_chat(&mut self, cx: &mut Context<Self>) {
+        let channel = self.channel;
+        self.chat.update(cx, |chat, cx| chat.set_channel(channel, cx));
     }
 
     fn toggle_category(&mut self, category: Snowflake, cx: &mut Context<Self>) {
@@ -475,64 +491,13 @@ impl MainView {
                     .child(icon("log-out", 18., theme::TEXT_MUTED)),
             )
     }
-
-    fn render_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let title: SharedString = self
-            .channel
-            .and_then(|id| {
-                let store = &self.session.read(cx).store;
-                let channel = store.channel(id)?;
-                Some(if channel.kind.is_dm() {
-                    store.dm_name(channel)
-                } else {
-                    channel.name.clone().unwrap_or_default()
-                })
-            })
-            .unwrap_or_default()
-            .into();
-        let has_channel = self.channel.is_some();
-
-        div()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .flex()
-            .flex_col()
-            .bg(rgb(theme::BG_CHAT))
-            .child(
-                div()
-                    .h(px(48.))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .px_4()
-                    .border_b_1()
-                    .border_color(rgb(theme::BORDER))
-                    .text_color(rgb(theme::TEXT_BRIGHT))
-                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                    .child(title),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(rgb(theme::TEXT_MUTED))
-                    .child(if has_channel {
-                        "Messages show up here."
-                    } else {
-                        "Pick a channel to get started."
-                    }),
-            )
-    }
 }
 
 impl Render for MainView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rail = self.render_rail(cx);
         let sidebar = self.render_sidebar(cx);
-        let content = self.render_content(cx);
+        let content = self.chat.clone();
 
         div()
             .size_full()

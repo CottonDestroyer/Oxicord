@@ -92,6 +92,15 @@ impl AppView {
                 let notice = self.notice.take();
                 self.screen = Screen::Login(Self::login_view(&self.backend, notice, window, cx));
             }
+            Event::History {
+                channel,
+                result,
+                requested,
+            } => {
+                self.session.update(cx, |session, cx| {
+                    session.apply_history(channel, result, requested, cx)
+                });
+            }
             Event::Image { url, bytes } => {
                 self.media.update(cx, |media, cx| media.on_image(url, bytes, cx));
             }

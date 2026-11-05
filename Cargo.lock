@@ -5269,11 +5269,13 @@ name = "oxicord-ui"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "chrono",
  "gpui-kit",
  "oxicord-gateway",
  "oxicord-media",
  "oxicord-model",
  "oxicord-store",
+ "serde_json",
 ]
 
 [[package]]

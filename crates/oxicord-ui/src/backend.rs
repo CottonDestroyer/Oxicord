@@ -6,7 +6,7 @@
 
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::GatewayEvent;
-use oxicord_model::User;
+use oxicord_model::{Message, Snowflake, User};
 
 /// Things the UI asks for.
 #[derive(Debug)]
@@ -18,6 +18,12 @@ pub enum Command {
     Logout,
     /// Download a picture. The answer arrives as [`Event::Image`].
     FetchImage(String),
+    /// Load a page of messages, the newest ones when `before` is `None`.
+    /// The answer arrives as [`Event::History`].
+    LoadHistory {
+        channel: Snowflake,
+        before: Option<Snowflake>,
+    },
 }
 
 /// Things the backend reports.
@@ -29,6 +35,13 @@ pub enum Event {
     Gateway(GatewayEvent),
     /// `None` when the download failed.
     Image { url: String, bytes: Option<Vec<u8>> },
+    /// A page of history, newest first. `requested` is the page size that
+    /// was asked for.
+    History {
+        channel: Snowflake,
+        result: Result<Vec<Message>, String>,
+        requested: usize,
+    },
 }
 
 #[derive(Clone)]

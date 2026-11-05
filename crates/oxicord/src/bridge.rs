@@ -2,11 +2,13 @@
 //! gpui has its own executor and reqwest and the gateway need tokio.
 
 use async_channel::{Receiver, Sender};
-use oxicord_api::{ApiClient, ApiError, Credentials, super_props::SuperProperties};
+use oxicord_api::{
+    ApiClient, ApiError, Credentials, routes::MessagePage, super_props::SuperProperties,
+};
 use oxicord_browser_login::{Capture, Identity, Outcome};
 use oxicord_media::Fetcher;
 use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, GatewayHandle};
-use oxicord_model::{User, gateway::DispatchEvent};
+use oxicord_model::{Snowflake, User, gateway::DispatchEvent};
 use oxicord_ui::{Backend, Command, Event};
 
 use crate::credentials;
@@ -41,7 +43,7 @@ async fn run(
     signed_in: Receiver<Capture>,
     events: Sender<Event>,
 ) {
-    let mut gateway: Option<GatewayHandle> = None;
+    let mut live: Option<Live> = None;
     let mut browser_open = false;
     let fetcher = Fetcher::new().expect("failed to build the image fetcher");
 
@@ -52,7 +54,7 @@ async fn run(
                 match command {
                     Command::Login(token) => {
                         browser_open = false;
-                        replace(&mut gateway, begin_login(token, None, &events).await);
+                        replace(&mut live, begin_login(token, None, &events).await);
                     }
                     Command::BrowserLogin => {
                         if !browser_open {
@@ -63,9 +65,14 @@ async fn run(
                     Command::FetchImage(url) => fetch_image(&fetcher, url, events.clone()),
                     Command::Logout => {
                         browser_open = false;
-                        replace(&mut gateway, None);
+                        replace(&mut live, None);
                         credentials::clear();
                         let _ = events.send(Event::LoggedOut).await;
+                    }
+                    other => {
+                        if let Some(live) = &live {
+                            act(live, other, &events);
+                        }
                     }
                 }
             }
@@ -73,7 +80,7 @@ async fn run(
                 let Ok(capture) = capture else { break };
                 browser_open = false;
                 let started = begin_login(capture.token, capture.identity, &events).await;
-                replace(&mut gateway, started);
+                replace(&mut live, started);
             }
         }
     }
@@ -95,10 +102,59 @@ fn fetch_image(fetcher: &Fetcher, url: String, events: Sender<Event>) {
     });
 }
 
-/// Swaps in a new gateway connection, closing the previous one.
-fn replace(slot: &mut Option<GatewayHandle>, new: Option<GatewayHandle>) {
+/// Everything that exists only while signed in.
+struct Live {
+    gateway: GatewayHandle,
+    api: ApiClient,
+}
+
+/// Swaps in a new session, closing the previous gateway connection.
+fn replace(slot: &mut Option<Live>, new: Option<Live>) {
     if let Some(old) = std::mem::replace(slot, new) {
-        old.shutdown();
+        old.gateway.shutdown();
+    }
+}
+
+const HISTORY_PAGE: u8 = 50;
+
+/// Runs a request on the API in the background and reports the outcome.
+fn act(live: &Live, command: Command, events: &Sender<Event>) {
+    let (api, events) = (live.api.clone(), events.clone());
+
+    match command {
+        Command::LoadHistory { channel, before } => {
+            tokio::spawn(async move {
+                let result = load_history(&api, channel, before).await;
+                let requested = usize::from(HISTORY_PAGE);
+                let _ = events.send(Event::History { channel, result, requested }).await;
+            });
+        }
+        // Handled before it gets here.
+        Command::Login(_) | Command::BrowserLogin | Command::Logout | Command::FetchImage(_) => {}
+    }
+}
+
+async fn load_history(
+    api: &ApiClient,
+    channel: Snowflake,
+    before: Option<Snowflake>,
+) -> Result<Vec<oxicord_model::Message>, String> {
+    let page = MessagePage {
+        before,
+        limit: HISTORY_PAGE,
+        ..MessagePage::default()
+    };
+    api.messages(channel, page).await.map_err(|err| {
+        tracing::warn!(?err, %channel, "could not load history");
+        describe_request(&err)
+    })
+}
+
+fn describe_request(err: &ApiError) -> String {
+    match err {
+        ApiError::Status { status: 403, .. } => "You don't have access to that.".into(),
+        ApiError::Status { status: 404, .. } => "That no longer exists.".into(),
+        other => format!("Request failed: {other}"),
     }
 }
 
@@ -142,7 +198,7 @@ async fn begin_login(
     token: String,
     identity: Option<Identity>,
     events: &Sender<Event>,
-) -> Option<GatewayHandle> {
+) -> Option<Live> {
     let shape = token_shape(&token);
     let (props, identity) = resolve_identity(&token, identity);
     tracing::info!(
@@ -153,16 +209,16 @@ async fn begin_login(
         "checking token over REST"
     );
 
-    let user = match validate(&token, &props).await {
-        Ok(user) if user.bot => {
+    let (api, user) = match validate(&token, &props).await {
+        Ok((_, user)) if user.bot => {
             tracing::warn!("REST accepted the token but it belongs to a bot");
             let message = "That is a bot token. Only user account tokens work here.";
             let _ = events.send(Event::LoginFailed(message.into())).await;
             return None;
         }
-        Ok(user) => {
+        Ok(pair) => {
             tracing::info!("REST accepted the token");
-            user
+            pair
         }
         Err(err) => {
             tracing::warn!(?err, %shape, "REST rejected the token");
@@ -173,7 +229,8 @@ async fn begin_login(
             return None;
         }
     };
-    Some(connect(token, props, identity, user, events.clone()))
+    let gateway = connect(token, props, identity, user, events.clone());
+    Some(Live { gateway, api })
 }
 
 /// Picks the identity to present with this token: the one the sign-in window
@@ -210,9 +267,13 @@ fn token_shape(token: &str) -> String {
     format!("{} chars, segments [{}]", token.len(), parts.join(", "))
 }
 
-async fn validate(token: &str, props: &SuperProperties) -> Result<User, ApiError> {
+async fn validate(
+    token: &str,
+    props: &SuperProperties,
+) -> Result<(ApiClient, User), ApiError> {
     let client = ApiClient::with_props(&Credentials::Token(token.to_owned()), props)?;
-    client.current_user().await
+    let user = client.current_user().await?;
+    Ok((client, user))
 }
 
 fn describe(err: &ApiError) -> String {

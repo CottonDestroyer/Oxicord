@@ -11,3 +11,7 @@ oxicord-store.workspace = true
 oxicord-gateway.workspace = true
 oxicord-media.workspace = true
 async-channel.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
