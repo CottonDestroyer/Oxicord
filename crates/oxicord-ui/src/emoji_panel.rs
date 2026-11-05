@@ -9,7 +9,7 @@ use gpui_kit::{
     component::input::{Input, InputEvent, InputState},
 };
 use oxicord_media::cdn;
-use oxicord_model::{Emoji, Gif, Snowflake};
+use oxicord_model::{Emoji, Gif, Snowflake, StickerItem};
 
 use crate::{
     account::Load,
@@ -36,11 +36,17 @@ pub struct PickedGif(pub Gif);
 
 impl EventEmitter<PickedGif> for EmojiPanel {}
 
-/// Emoji or GIFs.
+/// A sticker was chosen, to be sent on its own.
+pub struct PickedSticker(pub StickerItem);
+
+impl EventEmitter<PickedSticker> for EmojiPanel {}
+
+/// Which picker is showing.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Emoji,
     Gifs,
+    Stickers,
 }
 
 /// The panel wants to go away.
@@ -153,7 +159,11 @@ impl EmojiPanel {
     fn set_mode(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
         self.mode = mode;
         self.search.update(cx, |input, cx| {
-            let hint = if mode == Mode::Gifs { "Search GIFs" } else { "Search emoji" };
+            let hint = match mode {
+                Mode::Emoji => "Search emoji",
+                Mode::Gifs => "Search GIFs",
+                Mode::Stickers => "Search stickers",
+            };
             input.set_placeholder(hint, window, cx);
             input.set_value("", window, cx);
             input.focus(window, cx);
@@ -172,10 +182,10 @@ impl EmojiPanel {
         self.session.update(cx, |s, cx| s.request_gifs(&backend, query, cx));
     }
 
-    /// The Emoji and GIFs switch at the top.
+    /// The GIFs, Stickers and Emoji switch at the top, in Discord's order.
     fn render_modes(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut row = div().flex().gap_1();
-        for (mode, label) in [(Mode::Emoji, "Emoji"), (Mode::Gifs, "GIFs")] {
+        for (mode, label) in [(Mode::Gifs, "GIFs"), (Mode::Stickers, "Stickers"), (Mode::Emoji, "Emoji")] {
             let selected = self.mode == mode;
             row = row.child(
                 div()
@@ -231,6 +241,76 @@ impl EmojiPanel {
             Load::Failed(error) => note(format!("Could not load GIFs. {error}")),
             _ => note("Loading GIFs...".into()),
         }
+    }
+
+    /// The open server's stickers matching the search, three to a row. Ones
+    /// the server can no longer afford are shown faded and can't be picked.
+    fn render_stickers(&mut self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+        let note = |text: &str| {
+            div().p_2().text_color(rgb(theme::TEXT_MUTED)).child(text.to_owned()).into_any_element()
+        };
+        let Some(guild) = self.guild else {
+            return note("Stickers from a server can be sent inside that server.");
+        };
+        let query = self.search.read(cx).value().trim().to_lowercase();
+        let stickers: Vec<StickerItem> = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.stickers.clone())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| s.name.to_lowercase().contains(&query))
+            .collect();
+        if stickers.is_empty() {
+            return note(if query.is_empty() { "This server has no stickers." } else { "No stickers found." });
+        }
+
+        let mut grid = div().flex().flex_wrap().gap(px(4.));
+        for (i, sticker) in stickers.into_iter().enumerate() {
+            let cell = div()
+                .id(("sticker", i as u64))
+                .size(px(108.))
+                .p_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.))
+                .text_size(px(12.))
+                .text_color(rgb(theme::TEXT_MUTED));
+            let cell = if sticker.available {
+                cell.cursor_pointer().hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            } else {
+                cell.opacity(0.4)
+            };
+            let image = (!sticker.is_lottie()).then(|| {
+                let url = cdn::sticker(sticker.id, sticker.extension(), 160);
+                self.media.update(cx, |m, _| m.get(&url))
+            });
+            let cell = match image {
+                Some(image) => cell.children(image.map(|image| {
+                    img(gpui_kit::ImageSource::Image(image))
+                        .size_full()
+                        .object_fit(gpui_kit::ObjectFit::Contain)
+                })),
+                // A vector animation we cannot play, so it goes by name.
+                None => cell.child(sticker.name.clone()),
+            };
+            let cell = if sticker.available {
+                cell.on_click(cx.listener(move |_, _, _, cx| cx.emit(PickedSticker(sticker.clone()))))
+            } else {
+                cell
+            };
+            grid = grid.child(cell);
+        }
+        grid.into_any_element()
+    }
+
+    /// Opens straight onto the sticker grid, for the composer's sticker button.
+    pub fn show_stickers(&mut self, guild: Option<Snowflake>, window: &mut Window, cx: &mut Context<Self>) {
+        self.show(guild, window, cx);
+        self.set_mode(Mode::Stickers, window, cx);
     }
 
     /// Opens on the right tab for `guild` and focuses the search box.
@@ -363,8 +443,12 @@ impl Render for EmojiPanel {
             });
         }
 
-        let gifs_view = self.mode == Mode::Gifs;
-        let body = if gifs_view { self.render_gifs(cx) } else { grid.into_any_element() };
+        let emoji_view = self.mode == Mode::Emoji;
+        let body = match self.mode {
+            Mode::Emoji => grid.into_any_element(),
+            Mode::Gifs => self.render_gifs(cx),
+            Mode::Stickers => self.render_stickers(cx),
+        };
         let modes = self.render_modes(cx);
 
         div()
@@ -382,8 +466,8 @@ impl Render for EmojiPanel {
             .bg(rgb(theme::BG_PANEL))
             .child(modes)
             .child(Input::new(&self.search))
-            .children((!gifs_view).then_some(tabs))
-            .children((!gifs_view).then(|| {
+            .children(emoji_view.then_some(tabs))
+            .children(emoji_view.then(|| {
                 div()
                     .text_size(px(11.))
                     .font_weight(FontWeight::BOLD)

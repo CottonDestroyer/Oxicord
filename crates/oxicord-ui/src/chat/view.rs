@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
     backend::{Backend, Command},
-    emoji_panel::{ClosePicker, EmojiPanel, Picked, PickedGif},
+    emoji_panel::{ClosePicker, EmojiPanel, Picked, PickedGif, PickedSticker},
     icons::icon,
     media::{Media, avatar},
     context_menu::Target,
@@ -144,6 +144,9 @@ impl ChatView {
             }),
             cx.subscribe(&emoji, |this, _, picked: &PickedGif, cx| {
                 this.send_gif(&picked.0, cx);
+            }),
+            cx.subscribe(&emoji, |this, _, picked: &PickedSticker, cx| {
+                this.send_sticker(picked.0.id, cx);
             }),
             cx.subscribe(&emoji, |this, _, _: &ClosePicker, cx| {
                 this.emoji_for = None;
@@ -645,6 +648,30 @@ impl ChatView {
         cx.notify();
     }
 
+    fn open_stickers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let guild = self.guild(cx);
+        self.emoji_for = Some(EmojiTarget::Composer);
+        self.emoji.update(cx, |panel, cx| panel.show_stickers(guild, window, cx));
+        cx.notify();
+    }
+
+    /// Sends a sticker on its own, answering the reply being written if any.
+    fn send_sticker(&mut self, sticker: Snowflake, cx: &mut Context<Self>) {
+        self.emoji_for = None;
+        if let (Some(channel), true) = (self.channel, self.can_send(cx)) {
+            let guild = self.guild(cx);
+            self.backend.send(Command::SendMessage {
+                channel,
+                guild,
+                content: String::new(),
+                reply_to: self.reply_to.take(),
+                files: Vec::new(),
+                stickers: vec![sticker],
+            });
+        }
+        cx.notify();
+    }
+
     /// Posts a picked GIF: its address as the message, which Discord turns
     /// into an inline animation.
     fn send_gif(&mut self, gif: &oxicord_model::Gif, cx: &mut Context<Self>) {
@@ -657,6 +684,7 @@ impl ChatView {
                 content: gif.url.clone(),
                 reply_to: self.reply_to.take(),
                 files: Vec::new(),
+                stickers: Vec::new(),
             });
         }
         cx.notify();
@@ -728,6 +756,7 @@ impl ChatView {
                     content: text,
                     reply_to: self.reply_to.take(),
                     files: std::mem::take(&mut self.files),
+                    stickers: Vec::new(),
                 });
             }
         }
@@ -1749,6 +1778,11 @@ impl ChatView {
                     .child(
                         action_button("gif", "images", theme::TEXT_MUTED).on_click(cx.listener(
                             |this, _, window, cx| this.open_gifs(window, cx),
+                        )),
+                    )
+                    .child(
+                        action_button("sticker", "sticker", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, window, cx| this.open_stickers(window, cx),
                         )),
                     )
                     .child(

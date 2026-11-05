@@ -20,6 +20,8 @@ pub struct Guild {
     pub channels: Vec<Channel>,
     pub threads: Vec<Channel>,
     pub emojis: Vec<Emoji>,
+    /// Stickers this server offers.
+    pub stickers: Vec<crate::StickerItem>,
     /// 0 notify for every message, 1 only for mentions.
     pub default_message_notifications: u8,
     /// Only the members the server chose to include. For a user account
@@ -52,6 +54,8 @@ struct RawGuild {
     threads: Vec<Channel>,
     #[serde(default)]
     emojis: Vec<Emoji>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    stickers: Vec<crate::StickerItem>,
     #[serde(default)]
     default_message_notifications: Option<u8>,
     #[serde(default)]
@@ -92,6 +96,7 @@ impl From<RawGuild> for Guild {
             channels,
             threads,
             emojis: raw.emojis,
+            stickers: raw.stickers,
             default_message_notifications: raw
                 .default_message_notifications
                 .or(props.default_message_notifications)
@@ -136,6 +141,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(g.voice_states.len(), 1);
+    }
+
+    #[test]
+    fn stickers_are_read_and_a_bad_one_does_not_sink_the_guild() {
+        let g: Guild = serde_json::from_str(
+            r#"{"id":"1","stickers":[{"id":"2","name":"wave","format_type":1,"available":true,"tags":"wave"},{"name":"no id"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(g.stickers.len(), 1);
+        assert_eq!(g.stickers[0].name, "wave");
     }
 
     #[test]

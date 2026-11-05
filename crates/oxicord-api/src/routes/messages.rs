@@ -67,6 +67,9 @@ pub struct SendMessage {
     pub nonce: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_reference: Option<ReplyTarget>,
+    /// Stickers to send, which need no text.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sticker_ids: Vec<String>,
 }
 
 impl ApiClient {
@@ -239,6 +242,7 @@ mod tests {
                 channel_id: Snowflake(6),
                 guild_id: None,
             }),
+            ..Default::default()
         })
         .unwrap();
         assert_eq!(body["message_reference"]["message_id"], "5");

@@ -329,6 +329,13 @@ pub struct GuildEmojisUpdate {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct GuildStickersUpdate {
+    pub guild_id: Snowflake,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    pub stickers: Vec<crate::StickerItem>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct MessageAck {
     pub channel_id: Snowflake,
     pub message_id: Snowflake,
@@ -410,6 +417,7 @@ pub enum DispatchEvent {
     RecipientAdd(RecipientChange),
     RecipientRemove(RecipientChange),
     GuildEmojisUpdate(GuildEmojisUpdate),
+    GuildStickersUpdate(GuildStickersUpdate),
     ThreadListSync(ThreadListSync),
     ThreadMembersUpdate(ThreadMembersUpdate),
     ThreadMemberUpdate(ThreadMembersUpdate),
@@ -465,6 +473,7 @@ impl DispatchEvent {
             "THREAD_MEMBERS_UPDATE" => Self::ThreadMembersUpdate(de(data)?),
             "THREAD_MEMBER_UPDATE" => Self::ThreadMemberUpdate(de(data)?),
             "GUILD_EMOJIS_UPDATE" => Self::GuildEmojisUpdate(de(data)?),
+            "GUILD_STICKERS_UPDATE" => Self::GuildStickersUpdate(de(data)?),
             "TYPING_START" => Self::TypingStart(de(data)?),
             "GUILD_MEMBER_LIST_UPDATE" => Self::GuildMemberListUpdate(Box::new(de(data)?)),
             _ => Self::Unknown {
@@ -683,5 +692,27 @@ mod ready_tolerance {
         // Nonsense is ignored rather than rejected.
         assert!(ready(json!("surprise")).unwrap().user_guild_settings.is_none());
         assert!(ready(json!({ "entries": { "unexpected": true } })).unwrap().user_guild_settings.is_none());
+    }
+
+    #[test]
+    fn sticker_updates_keep_availability_and_skip_junk() {
+        let event = DispatchEvent::parse(
+            "GUILD_STICKERS_UPDATE",
+            json!({
+                "guild_id": "1",
+                "stickers": [
+                    { "id": "2", "name": "wave", "format_type": 1, "available": false },
+                    { "id": "3", "name": "nod", "format_type": 4 },
+                    "junk"
+                ]
+            }),
+        )
+        .unwrap();
+        let DispatchEvent::GuildStickersUpdate(update) = event else {
+            panic!("wrong variant");
+        };
+        assert_eq!(update.stickers.len(), 2);
+        assert!(!update.stickers[0].available);
+        assert!(update.stickers[1].available);
     }
 }

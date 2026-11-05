@@ -143,6 +143,14 @@ pub struct StickerItem {
     /// 1 PNG, 2 animated PNG, 3 Lottie, 4 GIF.
     #[serde(default)]
     pub format_type: u8,
+    /// False for a server sticker past the slots its boost level pays for.
+    /// Only server stickers carry it.
+    #[serde(default = "available")]
+    pub available: bool,
+}
+
+fn available() -> bool {
+    true
 }
 
 impl StickerItem {

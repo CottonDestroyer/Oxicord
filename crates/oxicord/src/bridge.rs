@@ -143,6 +143,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
             content,
             reply_to,
             files,
+            stickers,
         } => {
             tokio::spawn(async move {
                 let message = SendMessage {
@@ -153,6 +154,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                         channel_id: channel,
                         guild_id: guild,
                     }),
+                    sticker_ids: stickers.iter().map(ToString::to_string).collect(),
                 };
                 let sent = if files.is_empty() {
                     api.send_message(channel, &message).await

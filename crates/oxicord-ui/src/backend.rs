@@ -38,6 +38,7 @@ pub enum Command {
         reply_to: Option<Snowflake>,
         /// Local files to attach. Reading them is the backend's job.
         files: Vec<PathBuf>,
+        stickers: Vec<Snowflake>,
     },
     EditMessage {
         channel: Snowflake,

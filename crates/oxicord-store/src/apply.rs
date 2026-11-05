@@ -94,6 +94,11 @@ impl Store {
                     guild.emojis = e.emojis;
                 }
             }
+            DispatchEvent::GuildStickersUpdate(e) => {
+                if let Some(guild) = self.guilds.get_mut(&e.guild_id) {
+                    guild.stickers = e.stickers;
+                }
+            }
             DispatchEvent::ThreadListSync(sync) => self.on_thread_list_sync(sync, &mut changes),
             DispatchEvent::ThreadMembersUpdate(u) => self.on_thread_members(u, false, &mut changes),
             DispatchEvent::ThreadMemberUpdate(u) => self.on_thread_members(u, true, &mut changes),

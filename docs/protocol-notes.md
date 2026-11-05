@@ -119,3 +119,9 @@ that code is reproduced here or in the repository.
   animated copy is used for thumbnails.
 - **Invites**: `GET /invites/:code?with_counts=true` to look one up,
   `POST /invites/:code` with the session id to join.
+- **Stickers**: a server's stickers come on its READY or `GUILD_CREATE` object
+  (only because we identify without `client_state`; the official client gets
+  them through its cache sync instead) and are replaced wholesale by
+  `GUILD_STICKERS_UPDATE` (`guild_id`, `stickers`). Sending one is a normal
+  message with `sticker_ids` and may have empty `content`. `available: false`
+  marks one past the slots the server's boost level pays for.
