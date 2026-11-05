@@ -5235,6 +5235,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxicord-markdown"
+version = "0.1.0"
+dependencies = [
+ "oxicord-model",
+]
+
+[[package]]
 name = "oxicord-media"
 version = "0.1.0"
 dependencies = [
@@ -5272,6 +5279,7 @@ dependencies = [
  "chrono",
  "gpui-kit",
  "oxicord-gateway",
+ "oxicord-markdown",
  "oxicord-media",
  "oxicord-model",
  "oxicord-store",

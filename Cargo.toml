@@ -36,6 +36,7 @@ tracing-subscriber = "0.3"
 oxicord-api = { path = "crates/oxicord-api" }
 oxicord-browser-login = { path = "crates/oxicord-browser-login" }
 oxicord-media = { path = "crates/oxicord-media" }
+oxicord-markdown = { path = "crates/oxicord-markdown" }
 oxicord-gateway = { path = "crates/oxicord-gateway" }
 oxicord-store = { path = "crates/oxicord-store" }
 

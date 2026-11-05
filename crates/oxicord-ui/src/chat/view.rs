@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    rc::Rc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -12,12 +13,14 @@ use gpui_kit::{
     list, px, rgb,
     component::input::{InputEvent, Textarea, TextareaState},
 };
+use oxicord_markdown::Block;
 use oxicord_media::cdn;
 use oxicord_model::{Message, MessageType, Permissions, Snowflake};
 use oxicord_store::Changes;
 
 use super::{
     format,
+    markdown::{self, Names, Options, SpoilerHandler},
     rows::{Row, build_rows, diff},
     typing::typing_text,
 };
@@ -52,6 +55,8 @@ pub struct ChatView {
     editing: Option<Snowflake>,
     /// The message whose delete button was pressed once already.
     confirm_delete: Option<Snowflake>,
+    /// Spoilers the reader has clicked open, as (message, index in message).
+    revealed: HashSet<(Snowflake, usize)>,
 
     /// The newest message we have acknowledged per channel, so we don't ack
     /// the same one twice.
@@ -136,6 +141,7 @@ impl ChatView {
             reply_to: None,
             editing: None,
             confirm_delete: None,
+            revealed: HashSet::new(),
             acked: HashMap::new(),
             unread_after: None,
             last_typing_sent: None,
@@ -409,12 +415,87 @@ impl ChatView {
         cx.notify();
     }
 
-    fn render_row(&mut self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn toggle_spoiler(&mut self, message: Snowflake, index: usize, cx: &mut Context<Self>) {
+        self.revealed.insert((message, index));
+        cx.notify();
+    }
+
+    /// The message text, drawn as markdown.
+    fn render_content(
+        &mut self,
+        message: &Message,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let blocks = oxicord_markdown::parse(&message.content);
+        let names = self.names_for(message, &blocks, cx);
+        let revealed: HashSet<usize> = self
+            .revealed
+            .iter()
+            .filter(|(id, _)| *id == message.id)
+            .map(|(_, index)| *index)
+            .collect();
+
+        let (view, id) = (cx.weak_entity(), message.id);
+        let on_spoiler: SpoilerHandler =
+            Rc::new(move |index, _, cx| {
+                view.update(cx, |this, cx| this.toggle_spoiler(id, index, cx)).ok();
+            });
+
+        let options = Options {
+            names: &names,
+            revealed: &revealed,
+            media: &self.media,
+            now: Utc::now(),
+            offset: *Local::now().offset(),
+            edited: message.edited_timestamp.is_some(),
+            key: id.0,
+            on_spoiler,
+        };
+        markdown::render(&blocks, &options, window, cx)
+    }
+
+    /// Looks up the names a message's mentions refer to.
+    fn names_for(&self, message: &Message, blocks: &[Block], cx: &App) -> Names {
+        let ids = markdown::mention_ids(blocks);
+        let store = &self.session.read(cx).store;
+        let guild = self
+            .channel
+            .and_then(|c| store.channel(c))
+            .and_then(|c| c.guild_id)
+            .and_then(|g| store.guild(g));
+
+        let mut names = Names::default();
+        for id in ids.users {
+            let name = message
+                .mentions
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| u.display_name().to_owned())
+                .or_else(|| store.user(id).map(|u| u.display_name().to_owned()));
+            if let Some(name) = name {
+                names.users.insert(id, name);
+            }
+        }
+        for id in ids.roles {
+            if let Some(role) = guild.and_then(|g| g.roles.iter().find(|r| r.id == id)) {
+                names.roles.insert(id, (role.name.clone(), role.color));
+            }
+        }
+        for id in ids.channels {
+            if let Some(name) = store.channel(id).and_then(|c| c.name.clone()) {
+                names.channels.insert(id, name);
+            }
+        }
+        names
+    }
+
+    fn render_row(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.rows.get(ix).cloned() {
             Some(Row::Divider(day)) => divider(day).into_any_element(),
             Some(Row::NewMessages) => new_messages_line().into_any_element(),
             Some(Row::Message { id, grouped }) => match self.message(id, cx) {
-                Some(message) => self.render_message(message, grouped, cx),
+                Some(message) => self.render_message(message, grouped, window, cx),
                 None => div().into_any_element(),
             },
             None => div().into_any_element(),
@@ -425,6 +506,7 @@ impl ChatView {
         &mut self,
         message: Message,
         grouped: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let offset = *Local::now().offset();
@@ -474,7 +556,7 @@ impl ChatView {
         if let Some(reply) = reply_line(&message) {
             body = body.child(reply);
         }
-        body = body.child(content_text(&message));
+        body = body.child(self.render_content(&message, window, cx));
 
         let confirming = self.confirm_delete == Some(id);
         let bar = self.action_bar(id, can_reply, is_mine, can_delete, confirming, cx);
@@ -645,7 +727,7 @@ impl ChatView {
             });
         }
 
-        list(self.list.clone(), cx.processor(|this, ix, _, cx| this.render_row(ix, cx)))
+        list(self.list.clone(), cx.processor(|this, ix, window, cx| this.render_row(ix, window, cx)))
             .size_full()
             .into_any_element()
     }
@@ -918,20 +1000,6 @@ fn snippet(content: &str) -> String {
     } else {
         line.to_owned()
     }
-}
-
-fn content_text(message: &Message) -> impl IntoElement + use<> {
-    let edited = message.edited_timestamp.is_some();
-
-    div()
-        .text_color(rgb(theme::TEXT))
-        .child(message.content.clone())
-        .children(edited.then(|| {
-            div()
-                .text_size(px(11.))
-                .text_color(rgb(theme::TEXT_FAINT))
-                .child("(edited)")
-        }))
 }
 
 /// Joins, pins and other notices the server posts as messages.

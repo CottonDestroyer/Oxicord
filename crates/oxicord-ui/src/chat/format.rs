@@ -22,6 +22,44 @@ pub fn day_label(day: NaiveDate) -> String {
     day.format("%B %-d, %Y").to_string()
 }
 
+/// A `<t:unix:style>` timestamp as Discord renders it. The styles are t
+/// (short time), T (long time), d (short date), D (long date), f (date and
+/// time, the default), F (with the weekday) and R (relative).
+pub fn timestamp(unix: i64, style: char, now: DateTime<Utc>, offset: FixedOffset) -> String {
+    let Some(at) = DateTime::from_timestamp(unix, 0) else {
+        return "invalid date".to_owned();
+    };
+    let local = at.with_timezone(&offset);
+
+    match style {
+        't' => local.format("%H:%M"),
+        'T' => local.format("%H:%M:%S"),
+        'd' => local.format("%d/%m/%Y"),
+        'D' => local.format("%B %-d, %Y"),
+        'F' => local.format("%A, %B %-d, %Y %H:%M"),
+        'R' => return relative(at.timestamp() - now.timestamp()),
+        _ => local.format("%B %-d, %Y %H:%M"),
+    }
+    .to_string()
+}
+
+/// "3 hours ago" or "in 2 days". `delta` is seconds from now, negative for
+/// the past.
+fn relative(delta: i64) -> String {
+    let seconds = delta.unsigned_abs();
+    let unit = |n: u64, name: &str| format!("{n} {name}{}", if n == 1 { "" } else { "s" });
+
+    let span = match seconds {
+        0..=59 => "a few seconds".to_owned(),
+        60..=3599 => unit(seconds / 60, "minute"),
+        3600..=86_399 => unit(seconds / 3600, "hour"),
+        86_400..=2_591_999 => unit(seconds / 86_400, "day"),
+        2_592_000..=31_535_999 => unit(seconds / 2_592_000, "month"),
+        _ => unit(seconds / 31_536_000, "year"),
+    };
+    if delta < 0 { format!("{span} ago") } else { format!("in {span}") }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,6 +90,38 @@ mod tests {
             message_time(at("2024-05-10T20:00:00Z"), now, plus_two),
             "Yesterday at 22:00"
         );
+    }
+
+    #[test]
+    fn timestamp_styles() {
+        // 2023-11-14 22:13:20 UTC
+        let unix = 1_700_000_000;
+        let now = at("2023-11-14T22:13:20Z");
+        let t = |style| timestamp(unix, style, now, utc());
+
+        assert_eq!(t('t'), "22:13");
+        assert_eq!(t('T'), "22:13:20");
+        assert_eq!(t('d'), "14/11/2023");
+        assert_eq!(t('D'), "November 14, 2023");
+        assert_eq!(t('f'), "November 14, 2023 22:13");
+        assert_eq!(t('F'), "Tuesday, November 14, 2023 22:13");
+    }
+
+    #[test]
+    fn relative_timestamps_read_naturally() {
+        let now = at("2023-11-14T22:13:20Z");
+        let rel = |offset: i64| timestamp(1_700_000_000 + offset, 'R', now, utc());
+
+        assert_eq!(rel(-10), "a few seconds ago");
+        assert_eq!(rel(-90), "1 minute ago");
+        assert_eq!(rel(-3 * 3600), "3 hours ago");
+        assert_eq!(rel(2 * 86_400), "in 2 days");
+        assert_eq!(rel(-400 * 86_400), "1 year ago");
+    }
+
+    #[test]
+    fn nonsense_timestamps_do_not_panic() {
+        assert_eq!(timestamp(i64::MAX, 'f', at("2023-11-14T22:13:20Z"), utc()), "invalid date");
     }
 
     #[test]

@@ -10,6 +10,7 @@ oxicord-model.workspace = true
 oxicord-store.workspace = true
 oxicord-gateway.workspace = true
 oxicord-media.workspace = true
+oxicord-markdown.workspace = true
 async-channel.workspace = true
 chrono.workspace = true
 

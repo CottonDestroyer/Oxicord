@@ -1,0 +1,8 @@
+[package]
+name = "oxicord-markdown"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oxicord-model.workspace = true
