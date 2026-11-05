@@ -37,6 +37,9 @@ pub struct Store {
     /// Channel ids per guild, so listing a guild doesn't scan every channel
     /// we know about. Threads are left out, they don't appear in the sidebar.
     pub(crate) guild_channels: HashMap<Snowflake, Vec<Snowflake>>,
+    /// Thread ids per guild, kept apart from `guild_channels` because threads
+    /// hang off their parent channel instead of the top level list.
+    pub(crate) guild_threads: HashMap<Snowflake, Vec<Snowflake>>,
     /// A channel only has an entry once someone opened it.
     pub(crate) timelines: HashMap<Snowflake, Timeline>,
     pub(crate) read_states: HashMap<Snowflake, ReadState>,
@@ -361,6 +364,11 @@ impl Store {
             if !ids.contains(&channel.id) {
                 ids.push(channel.id);
             }
+        } else if let Some(guild) = channel.guild_id {
+            let ids = self.guild_threads.entry(guild).or_default();
+            if !ids.contains(&channel.id) {
+                ids.push(channel.id);
+            }
         }
         self.channels.insert(channel.id, channel);
     }
@@ -370,6 +378,12 @@ impl Store {
         if let Some(ids) = channel
             .guild_id
             .and_then(|g| self.guild_channels.get_mut(&g))
+        {
+            ids.retain(|c| *c != id);
+        }
+        if let Some(ids) = channel
+            .guild_id
+            .and_then(|g| self.guild_threads.get_mut(&g))
         {
             ids.retain(|c| *c != id);
         }

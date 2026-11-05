@@ -871,3 +871,71 @@ fn our_own_profile_updates_and_group_members_come_and_go() {
     ));
     assert_eq!(store.channel(id(50)).unwrap().recipients.len(), 1);
 }
+
+fn thread(id: &str, parent: &str, archived: bool) -> Value {
+    json!({ "id": id, "type": 11, "guild_id": "100", "parent_id": parent, "name": format!("t{id}"),
+            "last_message_id": id, "thread_metadata": { "archived": archived, "locked": false } })
+}
+
+#[test]
+fn threads_hang_off_their_parent_and_hide_when_archived() {
+    let mut store = ready_store();
+    store.apply(event("THREAD_CREATE", thread("301", "11", false)));
+    store.apply(event("THREAD_CREATE", thread("302", "11", false)));
+    store.apply(event("THREAD_CREATE", thread("303", "15", false)));
+
+    let open: Vec<_> = store.open_threads(id(11)).iter().map(|t| t.id).collect();
+    assert_eq!(open, vec![id(302), id(301)], "newest activity first");
+
+    store.apply(event("THREAD_UPDATE", thread("301", "11", true)));
+    assert_eq!(store.open_threads(id(11)).len(), 1);
+    // Threads never appear in the server's top level channel list.
+    let listed: usize = store.channel_groups(id(GUILD)).iter().map(|g| g.channels.len()).sum();
+    assert!(store.channel_groups(id(GUILD)).iter().flat_map(|g| &g.channels).all(|c| !c.kind.is_thread()));
+    assert!(listed > 0);
+
+    store.apply(event("THREAD_DELETE", json!({ "id": "302", "guild_id": "100", "parent_id": "11", "type": 11 })));
+    assert!(store.open_threads(id(11)).is_empty());
+}
+
+#[test]
+fn joining_is_tracked_and_survives_thread_updates() {
+    let mut store = ready_store();
+    let mut created = thread("301", "11", false);
+    created["member"] = json!({ "flags": 0 });
+    store.apply(event("THREAD_CREATE", created));
+    assert_eq!(store.joined_threads(id(11)).len(), 1);
+
+    // An update that omits `member` must not make us leave.
+    store.apply(event("THREAD_UPDATE", thread("301", "11", false)));
+    assert_eq!(store.joined_threads(id(11)).len(), 1);
+
+    store.apply(event(
+        "THREAD_MEMBERS_UPDATE",
+        json!({ "id": "301", "guild_id": "100", "member_count": 3, "removed_member_ids": ["1"] }),
+    ));
+    assert!(store.joined_threads(id(11)).is_empty());
+    assert_eq!(store.channel(id(301)).unwrap().member_count, Some(3));
+
+    store.apply(event("THREAD_MEMBER_UPDATE", json!({ "id": "301", "guild_id": "100", "flags": 0 })));
+    assert_eq!(store.joined_threads(id(11)).len(), 1);
+}
+
+#[test]
+fn a_thread_list_sync_replaces_the_threads_it_covers() {
+    let mut store = ready_store();
+    store.apply(event("THREAD_CREATE", thread("301", "11", false)));
+    store.apply(event("THREAD_CREATE", thread("303", "15", false)));
+
+    store.apply(event(
+        "THREAD_LIST_SYNC",
+        json!({ "guild_id": "100", "channel_ids": ["11"],
+                "threads": [thread("305", "11", false)],
+                "members": [{ "id": "305", "user_id": "1", "flags": 0 }] }),
+    ));
+    let under_11: Vec<_> = store.open_threads(id(11)).iter().map(|t| t.id).collect();
+    assert_eq!(under_11, vec![id(305)], "301 was not listed, so it is gone");
+    assert_eq!(store.joined_threads(id(11)).len(), 1);
+    // A parent the sync didn't cover keeps its threads.
+    assert_eq!(store.open_threads(id(15)).len(), 1);
+}

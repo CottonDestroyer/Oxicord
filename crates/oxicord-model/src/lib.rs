@@ -24,7 +24,9 @@ pub mod user;
 
 pub use account::{AccountDetails, AppInfo, AuthorizedApp, ClientInfo, Connection, LoginSession};
 pub use attachment::Attachment;
-pub use channel::{Channel, ChannelType, Overwrite, OverwriteKind};
+pub use channel::{
+    Channel, ChannelType, FLAG_PINNED, ForumTag, Overwrite, OverwriteKind, ThreadMember, ThreadMetadata,
+};
 pub use embed::Embed;
 pub use emoji::Emoji;
 pub use guild::Guild;

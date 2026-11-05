@@ -99,4 +99,67 @@ pub struct Channel {
     pub owner_id: Option<Snowflake>,
     #[serde(default)]
     pub icon: Option<String>,
+    /// Present on threads and forum posts.
+    #[serde(default)]
+    pub thread_metadata: Option<ThreadMetadata>,
+    /// Our own membership of a thread, absent when we haven't joined.
+    #[serde(default)]
+    pub member: Option<ThreadMember>,
+    #[serde(default)]
+    pub message_count: Option<u32>,
+    #[serde(default)]
+    pub member_count: Option<u32>,
+    /// Tags on a forum post, as ids into the forum's `available_tags`.
+    #[serde(default)]
+    pub applied_tags: Vec<Snowflake>,
+    /// The tags a forum offers.
+    #[serde(default)]
+    pub available_tags: Vec<ForumTag>,
+    #[serde(default)]
+    pub flags: u64,
+}
+
+/// Whether a thread is still open. An archived thread is hidden but can be
+/// reopened by posting in it.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct ThreadMetadata {
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub locked: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct ThreadMember {
+    #[serde(default)]
+    pub flags: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ForumTag {
+    pub id: Snowflake,
+    pub name: String,
+    #[serde(default)]
+    pub emoji_name: Option<String>,
+}
+
+/// Channel flag bit that pins a forum post to the top of its list.
+pub const FLAG_PINNED: u64 = 1 << 1;
+
+impl Channel {
+    pub fn archived(&self) -> bool {
+        self.thread_metadata.as_ref().is_some_and(|m| m.archived)
+    }
+
+    pub fn locked(&self) -> bool {
+        self.thread_metadata.as_ref().is_some_and(|m| m.locked)
+    }
+
+    pub fn joined(&self) -> bool {
+        self.member.is_some()
+    }
+
+    pub fn pinned_post(&self) -> bool {
+        self.flags & FLAG_PINNED != 0
+    }
 }

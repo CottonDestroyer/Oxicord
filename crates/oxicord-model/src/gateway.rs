@@ -255,6 +255,49 @@ pub struct RecipientChange {
     pub user: User,
 }
 
+/// THREAD_LIST_SYNC: every active thread under some channels, sent when we
+/// gain access to them.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ThreadListSync {
+    pub guild_id: Snowflake,
+    /// The parents the list covers. Absent means the whole server.
+    #[serde(default)]
+    pub channel_ids: Option<Vec<Snowflake>>,
+    #[serde(default)]
+    pub threads: Vec<Channel>,
+    #[serde(default)]
+    pub members: Vec<ThreadMemberRef>,
+}
+
+/// Someone's membership of a thread. `id` is the thread.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ThreadMemberRef {
+    #[serde(default)]
+    pub id: Option<Snowflake>,
+    #[serde(default)]
+    pub user_id: Option<Snowflake>,
+    #[serde(default)]
+    pub flags: u64,
+}
+
+/// THREAD_MEMBER_UPDATE, about ourselves, and THREAD_MEMBERS_UPDATE, about
+/// anyone. Both are folded into one shape.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ThreadMembersUpdate {
+    pub id: Snowflake,
+    #[serde(default)]
+    pub member_count: Option<u32>,
+    #[serde(default)]
+    pub added_members: Vec<ThreadMemberRef>,
+    #[serde(default)]
+    pub removed_member_ids: Vec<Snowflake>,
+    /// Set on THREAD_MEMBER_UPDATE, which describes our own membership.
+    #[serde(default)]
+    pub user_id: Option<Snowflake>,
+    #[serde(default)]
+    pub flags: u64,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct GuildEmojisUpdate {
     pub guild_id: Snowflake,
@@ -341,6 +384,9 @@ pub enum DispatchEvent {
     RecipientAdd(RecipientChange),
     RecipientRemove(RecipientChange),
     GuildEmojisUpdate(GuildEmojisUpdate),
+    ThreadListSync(ThreadListSync),
+    ThreadMembersUpdate(ThreadMembersUpdate),
+    ThreadMemberUpdate(ThreadMembersUpdate),
     GuildSettingsUpdate(Box<GuildNotificationSettings>),
     TypingStart(TypingStart),
     GuildMemberListUpdate(Box<MemberListUpdate>),
@@ -383,6 +429,12 @@ impl DispatchEvent {
             "CURRENT_USER_UPDATE" => Self::CurrentUserUpdate(Box::new(de(data)?)),
             "CHANNEL_RECIPIENT_ADD" => Self::RecipientAdd(de(data)?),
             "CHANNEL_RECIPIENT_REMOVE" => Self::RecipientRemove(de(data)?),
+            "THREAD_CREATE" => Self::ChannelCreate(Box::new(de(data)?)),
+            "THREAD_UPDATE" => Self::ChannelUpdate(Box::new(de(data)?)),
+            "THREAD_DELETE" => Self::ChannelDelete(Box::new(de(data)?)),
+            "THREAD_LIST_SYNC" => Self::ThreadListSync(de(data)?),
+            "THREAD_MEMBERS_UPDATE" => Self::ThreadMembersUpdate(de(data)?),
+            "THREAD_MEMBER_UPDATE" => Self::ThreadMemberUpdate(de(data)?),
             "GUILD_EMOJIS_UPDATE" => Self::GuildEmojisUpdate(de(data)?),
             "TYPING_START" => Self::TypingStart(de(data)?),
             "GUILD_MEMBER_LIST_UPDATE" => Self::GuildMemberListUpdate(Box::new(de(data)?)),

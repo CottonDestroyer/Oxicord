@@ -51,6 +51,10 @@ impl Store {
                     channel.last_message_id =
                         self.channels.get(&channel.id).and_then(|old| old.last_message_id);
                 }
+                // Thread updates leave out our own membership.
+                if channel.member.is_none() && let Some(old) = self.channels.get(&channel.id) {
+                    channel.member = old.member.clone();
+                }
                 let id = channel.id;
                 let guild = channel.guild_id;
                 self.ingest_channel(channel);
@@ -82,6 +86,9 @@ impl Store {
                     guild.emojis = e.emojis;
                 }
             }
+            DispatchEvent::ThreadListSync(sync) => self.on_thread_list_sync(sync, &mut changes),
+            DispatchEvent::ThreadMembersUpdate(u) => self.on_thread_members(u, false, &mut changes),
+            DispatchEvent::ThreadMemberUpdate(u) => self.on_thread_members(u, true, &mut changes),
             DispatchEvent::GuildSettingsUpdate(settings) => {
                 let guild = settings.guild_id;
                 self.set_guild_settings(*settings);
