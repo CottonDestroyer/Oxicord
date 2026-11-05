@@ -121,6 +121,12 @@ impl AppView {
             Event::Threads { channel, result, .. } => {
                 self.session.update(cx, |session, cx| session.apply_threads(channel, result, cx));
             }
+            Event::InvitePreview(result) => {
+                self.session.update(cx, |session, cx| session.apply_invite_preview(result, cx));
+            }
+            Event::InviteJoined(result) => {
+                self.session.update(cx, |session, cx| session.apply_invite_joined(result, cx));
+            }
             Event::FriendRequest { username, result } => {
                 self.session
                     .update(cx, |session, cx| session.apply_friend_request(username, result, cx));

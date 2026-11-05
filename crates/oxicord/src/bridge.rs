@@ -309,6 +309,18 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::ResolveInvite(code) => {
+            tokio::spawn(async move {
+                let result = api.resolve_invite(&code).await.map_err(|err| invite_failure(&err));
+                let _ = events.send(Event::InvitePreview(result)).await;
+            });
+        }
+        Command::JoinInvite { code, session_id } => {
+            tokio::spawn(async move {
+                let result = api.accept_invite(&code, &session_id).await.map_err(|err| invite_failure(&err));
+                let _ = events.send(Event::InviteJoined(result)).await;
+            });
+        }
         Command::JoinThread(thread) => {
             tokio::spawn(async move {
                 if let Err(err) = api.join_thread(thread).await {
@@ -564,6 +576,19 @@ async fn load_history(
         tracing::warn!(?err, %channel, "could not load history");
         describe_request(&err)
     })
+}
+
+/// Says why an invite lookup or join failed, in words a person can act on.
+fn invite_failure(err: &ApiError) -> String {
+    match err {
+        ApiError::Status { status: 404, .. } => "That invite is invalid or has expired.".into(),
+        ApiError::Status { message, status: 400, .. } if message.to_lowercase().contains("captcha") => {
+            "Discord wants a captcha to join this server, which this app can't show. Join from Discord's own app."
+                .into()
+        }
+        ApiError::Status { message, .. } if !message.is_empty() => message.clone(),
+        other => describe_request(other),
+    }
 }
 
 /// Says why a friend request by name didn't go through.

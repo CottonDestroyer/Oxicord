@@ -31,6 +31,10 @@ pub struct Session {
     pub archived_threads: HashMap<Snowflake, Load<ThreadPage>>,
     /// How the last friend request sent by name went, with who it was for.
     pub friend_request: Option<(String, Result<(), String>)>,
+    /// The invite being looked at in the join dialog.
+    pub invite: Load<oxicord_model::InvitePreview>,
+    /// Set once a join attempt has finished.
+    pub invite_joined: Option<Result<(), String>>,
     /// Opening message of each forum post we have seen, by post id.
     pub previews: HashMap<Snowflake, Message>,
     /// Posts whose preview was already asked for.
@@ -90,6 +94,8 @@ impl Session {
             search: None,
             archived_threads: HashMap::new(),
             friend_request: None,
+            invite: Load::Idle,
+            invite_joined: None,
             previews: HashMap::new(),
             preview_requested: HashSet::new(),
             status: ClientStatus::default(),
@@ -156,6 +162,19 @@ impl Session {
             self.search = Some((query, state));
             cx.notify();
         }
+    }
+
+    pub fn apply_invite_preview(&mut self, result: Result<oxicord_model::InvitePreview, String>, cx: &mut Context<Self>) {
+        self.invite = match result {
+            Ok(preview) => Load::Ready(preview),
+            Err(error) => Load::Failed(error),
+        };
+        cx.notify();
+    }
+
+    pub fn apply_invite_joined(&mut self, result: Result<(), String>, cx: &mut Context<Self>) {
+        self.invite_joined = Some(result);
+        cx.notify();
     }
 
     pub fn apply_friend_request(&mut self, username: String, result: Result<(), String>, cx: &mut Context<Self>) {

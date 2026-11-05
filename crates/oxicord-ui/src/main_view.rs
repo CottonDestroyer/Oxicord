@@ -17,6 +17,7 @@ use crate::{
     chat::ChatView,
     context_menu::{CloseMenu, ContextMenu, Target},
     forum::ForumView,
+    join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
     media::{Media, ViewImage, acronym, avatar},
@@ -85,6 +86,8 @@ pub struct MainView {
     menu_open: bool,
     /// The picture open in the full size viewer.
     viewer: Option<String>,
+    join: Entity<JoinServerView>,
+    join_open: bool,
     /// Whether the member list was showing at the last redraw, so turning it
     /// on asks the server for the list.
     members_shown: bool,
@@ -112,6 +115,10 @@ impl MainView {
             cx.new(|cx| SidePanel::new(session, media, backend, window, cx))
         };
         let menu = cx.new(|_| ContextMenu::new(session.clone(), backend.clone()));
+        let join = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| JoinServerView::new(session, media, backend, window, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let subscriptions = vec![
             cx.observe(&session, |this, session, cx| {
@@ -128,6 +135,10 @@ impl MainView {
             }),
             cx.subscribe(&media, |this, _, shown: &ViewImage, cx| {
                 this.viewer = Some(shown.0.clone());
+                cx.notify();
+            }),
+            cx.subscribe(&join, |this, _, _: &CloseJoin, cx| {
+                this.join_open = false;
                 cx.notify();
             }),
             cx.subscribe(&menu, |this, _, _: &CloseMenu, cx| {
@@ -190,6 +201,8 @@ impl MainView {
             menu,
             menu_open: false,
             viewer: None,
+            join,
+            join_open: false,
             _subscriptions: subscriptions,
         }
     }
@@ -608,6 +621,25 @@ impl MainView {
                     .w_full()
                     .overflow_y_scroll()
                     .child(list),
+            )
+            .child(
+                div()
+                    .id("add-server")
+                    .size(px(48.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(24.))
+                    .bg(rgb(theme::BG_CHAT))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_ACTIVE)).rounded(px(16.)))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.join_open = true;
+                        this.join.update(cx, |view, cx| view.opened(window, cx));
+                        cx.notify();
+                    }))
+                    .child(icon("plus", 22., theme::ONLINE)),
             )
     }
 
@@ -1035,6 +1067,7 @@ impl Render for MainView {
         let settings = self.settings_open.then(|| self.settings_view.clone());
         let menu = self.menu_open.then(|| self.menu.clone());
         let viewer = self.render_viewer(cx);
+        let join = self.join_open.then(|| self.join.clone());
 
         div()
             .size_full()
@@ -1061,6 +1094,7 @@ impl Render for MainView {
             .children(profile)
             .children(menu)
             .children(viewer)
+            .children(join)
             .children(settings)
     }
 }

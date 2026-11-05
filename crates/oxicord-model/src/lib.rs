@@ -11,6 +11,7 @@ pub mod embed;
 pub mod emoji;
 pub mod gateway;
 pub mod guild;
+pub mod invite;
 pub mod member;
 pub mod notification;
 pub mod message;
@@ -33,6 +34,7 @@ pub use channel::{
 pub use embed::Embed;
 pub use emoji::Emoji;
 pub use guild::Guild;
+pub use invite::{InvitePreview, invite_code};
 pub use member::{Member, MemberList};
 pub use notification::{
     ChannelOverride, GuildNotificationSettings, MuteConfig, NotificationSettingsList, NotifyLevel,

@@ -7,6 +7,7 @@ mod forum;
 mod context_menu;
 mod friends;
 mod icons;
+mod join_server;
 mod login;
 mod main_view;
 mod media;

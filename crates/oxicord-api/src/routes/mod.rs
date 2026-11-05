@@ -4,6 +4,7 @@ mod account;
 mod channels;
 mod guilds;
 mod interactions;
+mod invites;
 mod messages;
 mod reactions;
 mod search;
