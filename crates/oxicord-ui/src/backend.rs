@@ -104,6 +104,12 @@ pub enum Command {
         custom_id: String,
         values: Vec<String>,
     },
+    /// Set our votes on a poll to exactly these answers.
+    VotePoll {
+        channel: Snowflake,
+        message: Snowflake,
+        answers: Vec<u32>,
+    },
     JoinThread(Snowflake),
     LeaveThread(Snowflake),
     /// Start a thread on a message. The answer arrives as

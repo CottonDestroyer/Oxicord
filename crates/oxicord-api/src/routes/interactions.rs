@@ -49,6 +49,24 @@ pub fn click_body(click: &ComponentClick) -> Value {
 }
 
 impl ApiClient {
+    /// Sets our votes on a poll to exactly `answers`. An empty list removes
+    /// them.
+    pub async fn vote_poll(
+        &self,
+        channel: Snowflake,
+        message: Snowflake,
+        answers: &[u32],
+    ) -> Result<(), ApiError> {
+        let body = json!({ "answer_ids": answers.iter().map(u32::to_string).collect::<Vec<_>>() });
+        self.empty(
+            Method::PUT,
+            &format!("/channels/{channel}/polls/{message}/answers/@me"),
+            &format!("PUT /channels/{channel}/polls/:id/answers/@me"),
+            Some(&body),
+        )
+        .await
+    }
+
     /// Presses a button or picks from a menu. The app answers through the
     /// gateway, not in this response.
     pub async fn click_component(&self, click: &ComponentClick) -> Result<(), ApiError> {

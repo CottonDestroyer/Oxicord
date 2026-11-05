@@ -71,6 +71,8 @@ impl Store {
             }
             DispatchEvent::PresenceUpdate(p) => self.on_presence(p, &mut changes),
             DispatchEvent::RelationshipAdd(r) => self.on_relationship_add(*r, &mut changes),
+            DispatchEvent::PollVoteAdd(v) => self.on_poll_vote(v, true, &mut changes),
+            DispatchEvent::PollVoteRemove(v) => self.on_poll_vote(v, false, &mut changes),
             DispatchEvent::ReactionsCleared(e) => self.on_reactions_cleared(e, &mut changes),
             DispatchEvent::PassiveUpdate(p) => self.on_passive_update(p, &mut changes),
             DispatchEvent::CurrentUserUpdate(user) => {
@@ -401,6 +403,35 @@ impl Store {
             (None, false) => return,
         }
         changes.messages.insert(event.channel_id);
+    }
+
+    fn on_poll_vote(&mut self, vote: oxicord_model::gateway::PollVote, add: bool, changes: &mut Changes) {
+        let mine = Some(vote.user_id) == self.my_id();
+        let Some(poll) = self
+            .timelines
+            .get_mut(&vote.channel_id)
+            .and_then(|t| t.get_mut(vote.message_id))
+            .and_then(|m| m.poll.as_mut())
+        else {
+            return;
+        };
+        poll.apply_vote(vote.answer_id, add, mine);
+        changes.messages.insert(vote.channel_id);
+    }
+
+    /// Records our own votes at once, ahead of the server.
+    pub fn set_my_poll_votes(&mut self, channel: Snowflake, message: Snowflake, votes: &[u32]) -> Changes {
+        let mut changes = Changes::default();
+        if let Some(poll) = self
+            .timelines
+            .get_mut(&channel)
+            .and_then(|t| t.get_mut(message))
+            .and_then(|m| m.poll.as_mut())
+        {
+            poll.set_my_votes(votes);
+            changes.messages.insert(channel);
+        }
+        changes
     }
 
     fn on_reactions_cleared(&mut self, event: oxicord_model::gateway::ReactionsCleared, changes: &mut Changes) {

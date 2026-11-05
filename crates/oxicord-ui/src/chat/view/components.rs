@@ -3,7 +3,7 @@
 
 use gpui_kit::{
     AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px, relative, rgb,
 };
 use oxicord_model::{ButtonStyle, Component, MediaRef, Message, Snowflake, component::owner};
 
@@ -198,6 +198,124 @@ impl ChatView {
         }
     }
 
+    /// A message's poll: the question, each answer with its share of the
+    /// votes, and a line saying when it ends.
+    pub(super) fn render_poll(&mut self, message: &Message, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let poll = message.poll.as_ref()?;
+        let total = poll.total_votes();
+        let now = chrono::Utc::now();
+        let over = poll.finalized || poll.expiry.is_some_and(|e| e <= now);
+
+        let mut card = div()
+            .max_w(px(460.))
+            .mt_1()
+            .p_3()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .rounded(px(8.))
+            .bg(rgb(theme::BG_SIDEBAR))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(poll.question.clone()),
+            )
+            .child(
+                div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(if poll.multiselect {
+                    "Select one or more answers"
+                } else {
+                    "Select one answer"
+                }),
+            );
+
+        for answer in &poll.answers {
+            let tally = poll.votes(answer.id);
+            let share = if total == 0 { 0. } else { tally.count as f32 / total as f32 };
+            let (message_id, channel, answer_id) = (message.id, message.channel_id, answer.id);
+            let emoji = answer.emoji.as_ref().filter(|e| e.id.is_none()).and_then(|e| e.name.clone());
+            let label = match emoji {
+                Some(e) => format!("{e} {}", answer.text),
+                None => answer.text.clone(),
+            };
+
+            let mut row = div()
+                .id(SharedString::from(format!("poll-{message_id}-{answer_id}")))
+                .relative()
+                .h(px(40.))
+                .rounded(px(6.))
+                .overflow_hidden()
+                .border_1()
+                .border_color(rgb(if tally.me { theme::ACCENT } else { theme::BORDER }))
+                .bg(rgb(theme::BG_PANEL))
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .h_full()
+                        .w(relative(share))
+                        .bg(rgb(if tally.me { 0x3b4290 } else { theme::BG_ACTIVE })),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .size_full()
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .text_color(rgb(theme::TEXT_BRIGHT))
+                        .child(div().flex_1().min_w_0().truncate().child(label))
+                        .children(tally.me.then(|| icon("check", 14., theme::TEXT_BRIGHT)))
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(format!("{} \u{b7} {:.0}%", tally.count, share * 100.)),
+                        ),
+                );
+            if !over {
+                row = row.cursor_pointer().hover(|s| s.opacity(0.9)).on_click(cx.listener(
+                    move |this, _, _, cx| this.vote(channel, message_id, answer_id, cx),
+                ));
+            }
+            card = card.child(row);
+        }
+
+        let footer = match (over, poll.expiry) {
+            (true, _) => format!("{total} votes \u{b7} Poll closed"),
+            (false, Some(end)) => format!("{total} votes \u{b7} {}", ends_in(end - now)),
+            (false, None) => format!("{total} votes"),
+        };
+        Some(
+            card.child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(footer))
+                .into_any_element(),
+        )
+    }
+
+    /// Votes for `answer`: shown at once, then sent.
+    fn vote(&mut self, channel: Snowflake, message: Snowflake, answer: u32, cx: &mut Context<Self>) {
+        let backend = self.backend.clone();
+        self.session.update(cx, |session, cx| {
+            let Some(poll) = session
+                .store
+                .timeline(channel)
+                .and_then(|t| t.get(message))
+                .and_then(|m| m.poll.clone())
+            else {
+                return;
+            };
+            let answers = poll.votes_after_picking(answer);
+            let changes = session.store.set_my_poll_votes(channel, message, &answers);
+            backend.send(Command::VotePoll { channel, message, answers });
+            cx.emit(changes);
+            cx.notify();
+        });
+    }
+
     fn media_picture(
         &mut self,
         media: &MediaRef,
@@ -324,5 +442,29 @@ impl ChatView {
             custom_id,
             values,
         });
+    }
+}
+
+/// "Ends in 3 hours", with the largest sensible unit.
+fn ends_in(left: chrono::Duration) -> String {
+    let unit = |n: i64, name: &str| format!("Ends in {n} {name}{}", if n == 1 { "" } else { "s" });
+    match left.num_seconds() {
+        s if s < 60 => "Ends in under a minute".to_owned(),
+        s if s < 3600 => unit(s / 60, "minute"),
+        s if s < 86_400 => unit(s / 3600, "hour"),
+        s => unit(s / 86_400, "day"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_time_left_uses_the_largest_unit() {
+        assert_eq!(ends_in(chrono::Duration::seconds(20)), "Ends in under a minute");
+        assert_eq!(ends_in(chrono::Duration::minutes(1)), "Ends in 1 minute");
+        assert_eq!(ends_in(chrono::Duration::hours(5)), "Ends in 5 hours");
+        assert_eq!(ends_in(chrono::Duration::days(2)), "Ends in 2 days");
     }
 }

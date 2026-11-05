@@ -814,6 +814,9 @@ impl ChatView {
         {
             body = body.child(reactions);
         }
+        if let Some(poll) = self.render_poll(&message, cx) {
+            body = body.child(poll);
+        }
         if let Some(parts) = self.render_components(&message, window, cx) {
             body = body.child(parts);
         }

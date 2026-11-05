@@ -281,6 +281,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::VotePoll { channel, message, answers } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.vote_poll(channel, message, &answers).await {
+                    notify(&events, "cast that vote", &err).await;
+                }
+            });
+        }
         Command::JoinThread(thread) => {
             tokio::spawn(async move {
                 if let Err(err) = api.join_thread(thread).await {

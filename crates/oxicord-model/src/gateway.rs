@@ -312,6 +312,15 @@ pub struct ThreadMembersUpdate {
     pub flags: u64,
 }
 
+/// MESSAGE_POLL_VOTE_ADD and MESSAGE_POLL_VOTE_REMOVE.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PollVote {
+    pub user_id: Snowflake,
+    pub channel_id: Snowflake,
+    pub message_id: Snowflake,
+    pub answer_id: u32,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct GuildEmojisUpdate {
     pub guild_id: Snowflake,
@@ -393,6 +402,8 @@ pub enum DispatchEvent {
     RelationshipAdd(Box<Relationship>),
     RelationshipRemove(RelationshipRemove),
     ReactionsCleared(ReactionsCleared),
+    PollVoteAdd(PollVote),
+    PollVoteRemove(PollVote),
     PassiveUpdate(PassiveUpdate),
     CurrentUserUpdate(Box<User>),
     RecipientAdd(RecipientChange),
@@ -439,6 +450,8 @@ impl DispatchEvent {
             "MESSAGE_REACTION_REMOVE_ALL" | "MESSAGE_REACTION_REMOVE_EMOJI" => {
                 Self::ReactionsCleared(de(data)?)
             }
+            "MESSAGE_POLL_VOTE_ADD" => Self::PollVoteAdd(de(data)?),
+            "MESSAGE_POLL_VOTE_REMOVE" => Self::PollVoteRemove(de(data)?),
             "PASSIVE_UPDATE_V2" => Self::PassiveUpdate(de(data)?),
             "CURRENT_USER_UPDATE" => Self::CurrentUserUpdate(Box::new(de(data)?)),
             "CHANNEL_RECIPIENT_ADD" => Self::RecipientAdd(de(data)?),

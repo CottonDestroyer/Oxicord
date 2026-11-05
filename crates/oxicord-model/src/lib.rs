@@ -15,6 +15,7 @@ pub mod member;
 pub mod notification;
 pub mod message;
 pub mod permissions;
+pub mod poll;
 pub mod presence;
 pub mod read_state;
 pub mod relationship;
@@ -39,6 +40,7 @@ pub use notification::{
 };
 pub use message::{Message, MessageType, PartialMessage, Reaction};
 pub use permissions::Permissions;
+pub use poll::{Poll, PollAnswer, Tally};
 pub use presence::{Activity, Status};
 pub use read_state::ReadState;
 pub use relationship::{Relationship, RelationshipKind, RelationshipRemove};

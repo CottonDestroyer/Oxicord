@@ -939,3 +939,34 @@ fn a_thread_list_sync_replaces_the_threads_it_covers() {
     // A parent the sync didn't cover keeps its threads.
     assert_eq!(store.open_threads(id(15)).len(), 1);
 }
+
+#[test]
+fn poll_votes_arrive_live_and_our_own_apply_at_once() {
+    let mut store = ready_store();
+    store.open_channel(id(11));
+    store.apply(event(
+        "MESSAGE_CREATE",
+        json!({ "id": "820", "channel_id": "11", "guild_id": "100",
+                "author": { "id": "2", "username": "ada" }, "content": "",
+                "timestamp": "2024-05-01T12:00:00.000000+00:00", "type": 0,
+                "poll": { "question": { "text": "Q" }, "answers": [
+                    { "answer_id": 1, "poll_media": { "text": "A" } },
+                    { "answer_id": 2, "poll_media": { "text": "B" } } ] } }),
+    ));
+    let poll = |s: &Store| s.timeline(id(11)).unwrap().get(id(820)).unwrap().poll.clone().unwrap();
+
+    store.apply(event(
+        "MESSAGE_POLL_VOTE_ADD",
+        json!({ "user_id": "2", "channel_id": "11", "message_id": "820", "answer_id": 1 }),
+    ));
+    assert_eq!(poll(&store).votes(1).count, 1);
+
+    store.set_my_poll_votes(id(11), id(820), &[2]);
+    assert!(poll(&store).votes(2).me);
+    store.apply(event(
+        "MESSAGE_POLL_VOTE_REMOVE",
+        json!({ "user_id": "1", "channel_id": "11", "message_id": "820", "answer_id": 2 }),
+    ));
+    assert!(!poll(&store).votes(2).me);
+    assert_eq!(poll(&store).votes(2).count, 0);
+}

@@ -88,6 +88,8 @@ pub struct Message {
     /// Buttons, menus and layout a bot attached.
     #[serde(default, deserialize_with = "crate::component::components")]
     pub components: Vec<crate::Component>,
+    #[serde(default, deserialize_with = "crate::poll::poll")]
+    pub poll: Option<crate::Poll>,
     /// The app that sent an interaction response or webhook message.
     #[serde(default)]
     pub application_id: Option<Snowflake>,
