@@ -17,6 +17,7 @@ mod media;
 mod menus;
 mod notify;
 mod plain;
+mod popup;
 mod member_list;
 mod profile;
 mod rail;

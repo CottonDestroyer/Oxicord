@@ -53,6 +53,12 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// Mark everything from `message` on as unread. `message` is the one just
+    /// before the first that should count as new.
+    MarkUnread {
+        channel: Snowflake,
+        message: Snowflake,
+    },
     /// Write the preferences to disk.
     SaveSettings(Settings),
     /// The pinned messages of a channel. The answer arrives as [`Event::Pins`].

@@ -170,6 +170,18 @@ impl ApiClient {
     }
 
     /// Marks everything up to `message` as read.
+    /// Moves the read marker back to `message` by hand, which is how Mark
+    /// Unread works: the server keeps what follows as unread.
+    pub async fn mark_unread(&self, channel: Snowflake, message: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            &format!("/channels/{channel}/messages/{message}/ack"),
+            &format!("POST /channels/{channel}/messages/:id/ack"),
+            Some(&json!({ "manual": true, "mention_count": 0 })),
+        )
+        .await
+    }
+
     pub async fn ack_message(
         &self,
         channel: Snowflake,

@@ -27,8 +27,9 @@ use crate::{
     keys::QuickSwitch,
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
+    popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, OpenInbox, OpenMenu, OpenPanel, OpenPicker, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, OpenInbox, OpenMenu, OpenPanel, OpenPicker, OpenPopup, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     side_panel::{ClosePanel, SidePanel},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
@@ -99,6 +100,8 @@ pub struct MainView {
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
+    popup: Entity<PopupMenu>,
+    popup_open: bool,
     /// Folders opened in the rail.
     expanded: HashSet<u64>,
     picker_open: bool,
@@ -149,10 +152,21 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| Inbox::new(session, media, backend, cx))
         };
+        let popup = cx.new(|_| PopupMenu::default());
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let subscriptions = vec![
+            cx.subscribe(&popup, |this, _, _: &ClosePopup, cx| {
+                this.popup_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenPopup, cx| {
+                this.popup_open = true;
+                let (at, entries, pick) = (open.at, open.entries.clone(), open.pick.clone());
+                this.popup.update(cx, |popup, cx| popup.show(at, entries, pick, cx));
+                cx.notify();
+            }),
             cx.subscribe(&inbox, |this, _, _: &CloseInbox, cx| {
                 this.inbox_open = false;
                 cx.notify();
@@ -264,6 +278,8 @@ impl MainView {
             switcher,
             switcher_open: false,
             picker,
+            popup,
+            popup_open: false,
             expanded: HashSet::new(),
             picker_open: false,
             inbox,
@@ -1340,6 +1356,7 @@ impl Render for MainView {
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
+        let popup = self.popup_open.then(|| self.popup.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
 
         div()
@@ -1379,6 +1396,7 @@ impl Render for MainView {
             .children(join)
             .children(switcher)
             .children(picker)
+            .children(popup)
             .children(inbox)
             .children(settings)
     }

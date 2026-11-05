@@ -82,6 +82,15 @@ pub struct OpenMenu {
 
 impl EventEmitter<OpenMenu> for Session {}
 
+/// A view wants a menu of its own entries at a point on screen.
+pub struct OpenPopup {
+    pub at: gpui_kit::Point<gpui_kit::Pixels>,
+    pub entries: Vec<crate::popup::Entry>,
+    pub pick: crate::popup::Pick,
+}
+
+impl EventEmitter<OpenPopup> for Session {}
+
 /// The inbox button was pressed.
 pub struct OpenInbox;
 

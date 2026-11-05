@@ -197,6 +197,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::MarkUnread { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.mark_unread(channel, message).await {
+                    notify(&events, "mark that unread", &err).await;
+                }
+            });
+        }
         Command::Typing(channel) => {
             tokio::spawn(async move {
                 if let Err(err) = api.trigger_typing(channel).await {

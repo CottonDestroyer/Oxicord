@@ -8,7 +8,7 @@ use std::{
 use chrono::{Local, NaiveDate, Utc};
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ExternalPaths, FollowMode, FontWeight,
-    KeyDownEvent,
+    KeyDownEvent, MouseButton, MouseDownEvent,
     PathPromptOptions,
     Focusable as _,
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
@@ -46,6 +46,7 @@ const GUTTER: f32 = 40.;
 
 mod commands;
 mod components;
+mod menu;
 use super::autocomplete::{self, Suggestion};
 
 /// The message area for whichever channel is open: header, list, composer.
@@ -1218,6 +1219,10 @@ impl ChatView {
             .pt(px(if grouped { 1. } else { 16. }))
             .pb(px(1.))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| this.right_click_message(id, event, allowed, cx)),
+            )
             .child(left)
             .child(body)
             .child(bar);
@@ -1277,48 +1282,14 @@ impl ChatView {
                 );
         }
 
-        bar = bar
-            .child(
-                action_button(("copy-text", id.0), "copy", theme::TEXT_MUTED).on_click(cx.listener(
-                    move |this, _, _, cx| this.copy_text(id, cx),
-                )),
-            )
-            .child(
-                action_button(("copy-link", id.0), "link", theme::TEXT_MUTED).on_click(cx.listener(
-                    move |this, _, _, cx| this.copy_link(id, cx),
-                )),
-            );
-        if allowed.reply {
-            bar = bar.child(
-                action_button(("reply", id.0), "reply", theme::TEXT_MUTED).on_click(
-                    cx.listener(move |this, _, window, cx| this.start_reply(id, window, cx)),
-                ),
-            );
-        }
         if allowed.react {
             bar = bar.child(
-                action_button(("react", id.0), "sticker", theme::TEXT_MUTED).on_click(
+                action_button(("react", id.0), "face-slightly-smiling-plus", theme::TEXT_MUTED).on_click(
                     cx.listener(move |this, _, _, cx| {
                         this.picker_for = (this.picker_for != Some(id)).then_some(id);
                         cx.notify();
                     }),
                 ),
-            );
-        }
-        if allowed.thread {
-            bar = bar.child(
-                action_button(("thread", id.0), "messages-square", theme::TEXT_MUTED)
-                    .on_click(cx.listener(move |this, _, _, cx| this.start_thread(id, cx))),
-            );
-        }
-        if let Some(pinned) = allowed.pin {
-            bar = bar.child(
-                action_button(
-                    ("pin", id.0),
-                    if pinned { "pin-off" } else { "pin" },
-                    theme::TEXT_MUTED,
-                )
-                .on_click(cx.listener(move |this, _, _, cx| this.set_pinned(id, !pinned, cx))),
             );
         }
         if allowed.edit {
@@ -1328,17 +1299,21 @@ impl ChatView {
                 ),
             );
         }
-        if allowed.delete {
+        if allowed.reply {
             bar = bar.child(
-                action_button(("delete", id.0), "trash", theme::DANGER).on_click(cx.listener(
-                    move |this, _: &ClickEvent, _, cx| {
-                        this.confirm_delete = Some(id);
-                        cx.notify();
-                    },
-                )),
+                action_button(("reply", id.0), "reply", theme::TEXT_MUTED).on_click(
+                    cx.listener(move |this, _, window, cx| this.start_reply(id, window, cx)),
+                ),
             );
         }
-        bar
+        bar.child(
+            action_button(("more", id.0), "ellipsis", theme::TEXT_MUTED).on_click(cx.listener(
+                move |this, event: &ClickEvent, _, cx| {
+                    let at = gpui_kit::point(event.position().x - px(200.), event.position().y + px(14.));
+                    this.open_message_menu(id, at, allowed, cx);
+                },
+            )),
+        )
     }
 
     fn render_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
