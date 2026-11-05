@@ -13,7 +13,7 @@ use oxicord_browser_login::{Capture, Identity, Outcome};
 use oxicord_media::Fetcher;
 use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, GatewayHandle};
 use oxicord_model::{Snowflake, User, gateway::DispatchEvent};
-use oxicord_ui::{Backend, Command, Event};
+use oxicord_ui::{AccountEvent, AccountRequest, Backend, Command, Event};
 
 use crate::credentials;
 
@@ -221,6 +221,9 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::Account(request) => {
+            tokio::spawn(async move { account_request(&api, request, &events).await });
+        }
         Command::OpenDm(user) => {
             tokio::spawn(async move {
                 let result = api.open_dm(user).await.map_err(|err| {
@@ -264,6 +267,51 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         | Command::FetchImage(_)
         | Command::Notify { .. }
         | Command::SaveSettings(_) => {}
+    }
+}
+
+/// Runs one account request and reports what the screens need to refresh.
+async fn account_request(api: &ApiClient, request: AccountRequest, events: &Sender<Event>) {
+    let say = |event| async move {
+        let _ = events.send(Event::Account(event)).await;
+    };
+    let text = |err: ApiError| {
+        tracing::warn!(?err, "account request failed");
+        describe_request(&err)
+    };
+
+    match request {
+        AccountRequest::LoadDetails => say(AccountEvent::Details(api.account_details().await.map_err(text))).await,
+        AccountRequest::LoadSettings => say(AccountEvent::Settings(api.account_settings().await.map_err(text))).await,
+        AccountRequest::SaveSettings(patch) => {
+            if let Err(err) = api.update_account_settings(&patch).await {
+                notify(events, "save that setting", &err).await;
+            }
+            // Read back what the server holds, which also gives us the new
+            // data version the next change must be built against.
+            say(AccountEvent::Settings(api.account_settings().await.map_err(text))).await;
+        }
+        AccountRequest::LoadApps => say(AccountEvent::Apps(api.authorized_apps().await.map_err(text))).await,
+        AccountRequest::RevokeApp(token) => {
+            if let Err(err) = api.revoke_app(token).await {
+                notify(events, "remove that app", &err).await;
+            }
+            say(AccountEvent::Apps(api.authorized_apps().await.map_err(text))).await;
+        }
+        AccountRequest::LoadConnections => say(AccountEvent::Connections(api.connections().await.map_err(text))).await,
+        AccountRequest::LoadSessions => say(AccountEvent::Sessions(api.login_sessions().await.map_err(text))).await,
+        AccountRequest::SetDisplayName(name) => {
+            if let Err(err) = api.set_display_name(&name).await {
+                notify(events, "change your display name", &err).await;
+            }
+            say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
+        }
+        AccountRequest::EditProfile { bio, pronouns } => {
+            if let Err(err) = api.edit_profile(&bio, &pronouns).await {
+                notify(events, "save your profile", &err).await;
+            }
+            say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
+        }
     }
 }
 

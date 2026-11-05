@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 gpui-kit.workspace = true
 oxicord-model.workspace = true
+oxicord-settings.workspace = true
 oxicord-store.workspace = true
 oxicord-gateway.workspace = true
 oxicord-media.workspace = true

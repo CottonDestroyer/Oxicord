@@ -48,6 +48,10 @@ pub struct Options<'a> {
     pub media: &'a Entity<Media>,
     pub now: DateTime<Utc>,
     pub offset: FixedOffset,
+    /// Show clock times on a 12 hour clock.
+    pub hour12: bool,
+    /// Spoilers are drawn open without a click.
+    pub reveal_spoilers: bool,
     pub edited: bool,
     /// Keeps element ids unique across messages.
     pub key: u64,
@@ -365,7 +369,7 @@ fn flatten(
             Inline::Here => push(out, "@here".into(), mention(style)),
             Inline::Emoji { name, .. } => push(out, format!(":{name}:"), mention(style)),
             Inline::Timestamp { unix, style: kind } => push(out, 
-                format::timestamp(*unix, *kind, opts.now, opts.offset),
+                format::timestamp(*unix, *kind, opts.now, opts.offset, opts.hour12),
                 mention(style),
             ),
         }
@@ -448,7 +452,7 @@ fn text_element(
             actions.push(Action::Open(url));
         }
         if let Some(index) = style.spoiler {
-            if opts.revealed.contains(&index) {
+            if opts.reveal_spoilers || opts.revealed.contains(&index) {
                 run.background_color = Some(rgb(SPOILER_SHOWN).into());
             } else {
                 // Hidden: the text is painted the same color as its box.

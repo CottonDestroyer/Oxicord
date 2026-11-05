@@ -1,3 +1,4 @@
+mod account;
 mod app;
 pub mod backend;
 mod chat;
@@ -8,12 +9,13 @@ mod main_view;
 mod media;
 mod notify;
 mod member_list;
-mod preferences;
 mod profile;
 mod session;
+mod settings_view;
 mod settings;
 pub mod theme;
 
 pub use app::AppView;
+pub use account::{AccountEvent, AccountRequest};
 pub use backend::{Backend, Command, Event};
 pub use settings::Settings;

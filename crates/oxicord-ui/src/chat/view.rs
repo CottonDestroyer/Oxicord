@@ -18,6 +18,7 @@ use gpui_kit::{
 use oxicord_markdown::Block;
 use oxicord_media::cdn;
 use oxicord_model::{Emoji, Message, MessageType, Permissions, Snowflake};
+use oxicord_settings::Key;
 use oxicord_store::Changes;
 
 use super::{
@@ -589,6 +590,7 @@ impl ChatView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let blocks = oxicord_markdown::parse(&message.content);
+        let prefs = self.view_prefs(cx);
         let names = self.names_for(message, &blocks, cx);
         let revealed: HashSet<usize> = self
             .revealed
@@ -609,11 +611,32 @@ impl ChatView {
             media: &self.media,
             now: Utc::now(),
             offset: *Local::now().offset(),
+            hour12: prefs.hour12,
+            reveal_spoilers: prefs.reveal_spoilers,
             edited: message.edited_timestamp.is_some(),
             key: id.0,
             on_spoiler,
         };
         markdown::render(&blocks, &options, window, cx)
+    }
+
+    /// The reader's preferences that change how a message is drawn.
+    fn view_prefs(&self, cx: &App) -> ViewPrefs {
+        let account = &self.session.read(cx).account;
+        let spoilers = account.pref(Key::RenderSpoilers);
+        let reveal_spoilers = match spoilers.as_text() {
+            "ALWAYS" => true,
+            "IF_MODERATOR" => self.permissions(cx).contains(Permissions::MANAGE_MESSAGES),
+            _ => false,
+        };
+        ViewPrefs {
+            hour12: account.pref(Key::HourCycle).as_number() == 1,
+            embeds: account.pref(Key::RenderEmbeds).as_bool(),
+            embed_media: account.pref(Key::InlineEmbedMedia).as_bool(),
+            attachment_media: account.pref(Key::InlineAttachmentMedia).as_bool(),
+            reactions: account.pref(Key::RenderReactions).as_bool(),
+            reveal_spoilers,
+        }
     }
 
     /// Looks up the names a message's mentions refer to.
@@ -685,6 +708,7 @@ impl ChatView {
         let can_delete = is_mine || perms.contains(Permissions::MANAGE_MESSAGES);
         let can_react = perms.contains(Permissions::ADD_REACTIONS);
 
+        let prefs = self.view_prefs(cx);
         let author = message.author.display_name().to_owned();
         let url = cdn::user_avatar(message.author.id, message.author.avatar.as_deref(), 64);
 
@@ -724,7 +748,7 @@ impl ChatView {
                         div()
                             .text_size(px(12.))
                             .text_color(rgb(theme::TEXT_FAINT))
-                            .child(format::message_time(message.timestamp, Utc::now(), offset)),
+                            .child(format::message_time(message.timestamp, Utc::now(), offset, prefs.hour12)),
                     ),
             );
         }
@@ -732,13 +756,17 @@ impl ChatView {
             body = body.child(reply);
         }
         body = body.child(self.render_content(&message, window, cx));
-        if let Some(files) = render_attachments(&message, &self.media, cx) {
+        if let Some(files) = render_attachments(&message, &self.media, prefs.attachment_media, cx) {
             body = body.child(files);
         }
-        if let Some(embeds) = render_embeds(&message, &self.media, cx) {
+        if prefs.embeds
+            && let Some(embeds) = render_embeds(&message, &self.media, prefs.embed_media, cx)
+        {
             body = body.child(embeds);
         }
-        if let Some(reactions) = self.render_reactions(&message, can_react, cx) {
+        if prefs.reactions
+            && let Some(reactions) = self.render_reactions(&message, can_react, cx)
+        {
             body = body.child(reactions);
         }
         if self.picker_for == Some(id) {
@@ -1155,6 +1183,16 @@ impl Render for ChatView {
             .child(div().flex_1().min_h_0().child(body))
             .child(composer)
     }
+}
+
+/// Display preferences read from the account, resolved for one redraw.
+struct ViewPrefs {
+    hour12: bool,
+    embeds: bool,
+    embed_media: bool,
+    attachment_media: bool,
+    reactions: bool,
+    reveal_spoilers: bool,
 }
 
 /// What the reader may do to one message.

@@ -5,7 +5,11 @@ use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
 use oxicord_model::{Channel, Message, Profile, Snowflake, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
-use crate::{Settings, backend::{Backend, Command}};
+use crate::{
+    AccountEvent, AccountRequest, Settings,
+    account::{AccountState, Load},
+    backend::{Backend, Command},
+};
 
 /// The signed in client state. Views observe this entity and listen for the
 /// `Changes` it emits to redraw only what moved.
@@ -17,6 +21,7 @@ pub struct Session {
     /// The latest thing that went wrong, shown until dismissed.
     pub notice: Option<String>,
     pub settings: Settings,
+    pub account: AccountState,
     /// The status we last chose, which the server won't echo back to us.
     pub status: ClientStatus,
     /// Profiles fetched so far, so reopening a card is instant.
@@ -49,10 +54,44 @@ impl Session {
             history_errors: HashMap::new(),
             notice: None,
             settings,
+            account: AccountState::default(),
             status: ClientStatus::default(),
             profiles: HashMap::new(),
             profile_requested: HashSet::new(),
         }
+    }
+
+    pub fn apply_account(&mut self, event: AccountEvent, cx: &mut Context<Self>) {
+        self.account.apply(event);
+        cx.notify();
+    }
+
+    /// Asks the backend for a piece of account data, remembering that it is
+    /// on its way so screens can show a spinner.
+    pub fn request_account(&mut self, backend: &Backend, request: AccountRequest, cx: &mut Context<Self>) {
+        match &request {
+            AccountRequest::LoadDetails => self.account.details = Load::Loading,
+            AccountRequest::LoadSettings => self.account.settings = Load::Loading,
+            AccountRequest::LoadApps | AccountRequest::RevokeApp(_) => self.account.apps = Load::Loading,
+            AccountRequest::LoadConnections => self.account.connections = Load::Loading,
+            AccountRequest::LoadSessions => self.account.sessions = Load::Loading,
+            _ => {}
+        }
+        backend.send(Command::Account(request));
+        cx.notify();
+    }
+
+    /// Changes account preferences: shown at once, saved in the background.
+    pub fn change_prefs(
+        &mut self,
+        backend: &Backend,
+        changes: &[(oxicord_settings::Key, oxicord_settings::Value)],
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(patch) = self.account.change(changes) {
+            backend.send(Command::Account(AccountRequest::SaveSettings(patch)));
+        }
+        cx.notify();
     }
 
     /// Applies a change to the preferences and persists it.

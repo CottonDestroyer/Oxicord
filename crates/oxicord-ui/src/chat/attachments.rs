@@ -77,13 +77,18 @@ fn picture(
     }
 }
 
-pub fn render_attachments(message: &Message, media: &Entity<Media>, cx: &mut App) -> Option<AnyElement> {
+pub fn render_attachments(
+    message: &Message,
+    media: &Entity<Media>,
+    inline_images: bool,
+    cx: &mut App,
+) -> Option<AnyElement> {
     if message.attachments.is_empty() {
         return None;
     }
     let mut column = div().flex().flex_col().gap_1().mt_1();
     for attachment in &message.attachments {
-        column = column.child(if attachment.is_image() {
+        column = column.child(if inline_images && attachment.is_image() {
             image_attachment(attachment, message, media, cx)
         } else {
             file_card(attachment, message)
@@ -150,14 +155,24 @@ fn file_card(attachment: &Attachment, message: &Message) -> AnyElement {
         .into_any_element()
 }
 
-pub fn render_embeds(message: &Message, media: &Entity<Media>, cx: &mut App) -> Option<AnyElement> {
+pub fn render_embeds(
+    message: &Message,
+    media: &Entity<Media>,
+    link_images: bool,
+    cx: &mut App,
+) -> Option<AnyElement> {
     let visible: Vec<_> = message
         .embeds
         .iter()
         .enumerate()
         .filter(|(_, e)| !is_bare_image_link(e))
         .collect();
-    let images: Vec<_> = message.embeds.iter().filter(|e| is_bare_image_link(e)).collect();
+    // Picture links are the media; with those turned off only cards remain.
+    let images: Vec<_> = message
+        .embeds
+        .iter()
+        .filter(|e| link_images && is_bare_image_link(e))
+        .collect();
     if visible.is_empty() && images.is_empty() {
         return None;
     }

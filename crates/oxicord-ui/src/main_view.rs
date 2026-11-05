@@ -18,9 +18,9 @@ use crate::{
     icons::icon,
     media::{Media, acronym, avatar},
     member_list::{MemberList, presence_dot},
-    preferences, profile,
+    profile,
     session::{DmOpened, Session, ShowProfile},
-    settings::Settings,
+    settings_view::{CloseSettings, SettingsView},
     theme,
 };
 
@@ -70,6 +70,10 @@ pub struct MainView {
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
     settings_open: bool,
+    settings_view: Entity<SettingsView>,
+    /// Whether the member list was showing at the last redraw, so turning it
+    /// on asks the server for the list.
+    members_shown: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -81,8 +85,28 @@ impl MainView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let settings_view = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| SettingsView::new(session, media, backend, window, cx))
+        };
+        // The chat reads several preferences, so fetch them up front.
+        session.update(cx, |s, cx| {
+            s.request_account(&backend, crate::AccountRequest::LoadSettings, cx);
+        });
+        let members_shown = session.read(cx).settings.show_members;
         let subscriptions = vec![
-            cx.observe(&session, |_, _, cx| cx.notify()),
+            cx.observe(&session, |this, session, cx| {
+                let show = session.read(cx).settings.show_members;
+                if show && !this.members_shown {
+                    this.sync_members(cx);
+                }
+                this.members_shown = show;
+                cx.notify();
+            }),
+            cx.subscribe(&settings_view, |this, _, _: &CloseSettings, cx| {
+                this.settings_open = false;
+                cx.notify();
+            }),
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&session, window, |this, _, opened: &DmOpened, window, cx| {
                 this.show_dm(opened.0, window, cx);
@@ -117,6 +141,8 @@ impl MainView {
             status_menu_open: false,
             profile: None,
             settings_open: false,
+            settings_view,
+            members_shown,
             _subscriptions: subscriptions,
         }
     }
@@ -166,46 +192,6 @@ impl MainView {
         }
         self.profile = Some(ShowProfile { user, guild });
         cx.notify();
-    }
-
-    /// The settings panel, over everything else.
-    fn render_settings(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.settings_open {
-            return None;
-        }
-        let (account, settings) = {
-            let session = self.session.read(cx);
-            let me = session.store.me()?;
-            let account = preferences::Account {
-                name: me.display_name().to_owned(),
-                username: me.username.clone(),
-                avatar_url: cdn::user_avatar(me.id, me.avatar.as_deref(), 128),
-            };
-            (account, session.settings.clone())
-        };
-
-        let backend = self.backend.clone();
-        let callbacks = preferences::Callbacks {
-            close: Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.settings_open = false;
-                cx.notify();
-            })),
-            log_out: Box::new(move |_, _, _| backend.send(Command::Logout)),
-            toggle_notifications: Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.change_settings(|s| s.desktop_notifications = !s.desktop_notifications, cx);
-            })),
-            toggle_members: Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.change_settings(|s| s.show_members = !s.show_members, cx);
-                this.sync_members(cx);
-            })),
-        };
-        Some(preferences::panel(account, &settings, &self.media, callbacks, cx))
-    }
-
-    fn change_settings(&mut self, change: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
-        let backend = self.backend.clone();
-        self.session
-            .update(cx, |session, cx| session.change_settings(&backend, change, cx));
     }
 
     /// The card for the person we are looking at, over everything else.
@@ -793,6 +779,7 @@ impl MainView {
                     .hover(|s| s.bg(rgb(theme::BG_HOVER)))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.settings_open = true;
+                        this.settings_view.update(cx, |view, cx| view.opened(cx));
                         cx.notify();
                     }))
                     .child(icon("settings", 18., theme::TEXT_MUTED)),
@@ -825,7 +812,7 @@ impl Render for MainView {
         let members = (self.guild.is_some() && self.session.read(cx).settings.show_members)
             .then(|| self.members.clone());
         let profile = self.render_profile(cx);
-        let settings = self.render_settings(cx);
+        let settings = self.settings_open.then(|| self.settings_view.clone());
 
         div()
             .size_full()

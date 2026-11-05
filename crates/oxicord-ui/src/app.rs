@@ -118,6 +118,9 @@ impl AppView {
                     session.apply_history(channel, result, requested, cx)
                 });
             }
+            Event::Account(event) => {
+                self.session.update(cx, |session, cx| session.apply_account(event, cx));
+            }
             Event::Profile { user, result } => {
                 self.session
                     .update(cx, |session, cx| session.apply_profile(user, result, cx));

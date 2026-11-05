@@ -3,6 +3,7 @@
 
 mod serde_util;
 
+pub mod account;
 pub mod attachment;
 pub mod channel;
 pub mod embed;
@@ -19,6 +20,7 @@ pub mod role;
 pub mod snowflake;
 pub mod user;
 
+pub use account::{AccountDetails, AppInfo, AuthorizedApp, ClientInfo, Connection, LoginSession};
 pub use attachment::Attachment;
 pub use channel::{Channel, ChannelType, Overwrite, OverwriteKind};
 pub use embed::Embed;

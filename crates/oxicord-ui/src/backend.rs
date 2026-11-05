@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
-use crate::Settings;
+use crate::{AccountEvent, AccountRequest, Settings};
 use oxicord_model::{Channel, Emoji, Message, Profile, Snowflake, User};
 
 /// Things the UI asks for.
@@ -55,6 +55,8 @@ pub enum Command {
     },
     /// Write the preferences to disk.
     SaveSettings(Settings),
+    /// Anything about the account: details, preferences, linked apps.
+    Account(AccountRequest),
     /// Raise a desktop notification.
     Notify {
         title: String,
@@ -110,6 +112,7 @@ pub enum Event {
         requested: usize,
     },
     DmOpened(Result<Channel, String>),
+    Account(AccountEvent),
     Profile {
         user: Snowflake,
         result: Result<Profile, String>,
