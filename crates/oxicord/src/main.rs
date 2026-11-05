@@ -1,6 +1,7 @@
 mod bridge;
 mod credentials;
 mod logging;
+mod settings;
 
 use gpui_kit::{
     AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size,
@@ -28,6 +29,7 @@ fn main() {
 
     let backend = bridge::start();
     let saved_token = credentials::load().map(|saved| saved.token);
+    let settings = settings::load();
 
     gpui_kit::application()
         .with_assets(gpui_kit::assets::AllAssets)
@@ -56,7 +58,7 @@ fn main() {
             };
 
             gpui_kit::open_window(options, cx, move |window, cx| {
-                cx.new(|cx| AppView::new(backend, saved_token, window, cx))
+                cx.new(|cx| AppView::new(backend, saved_token, settings, window, cx))
             })
             .expect("failed to open the main window");
             cx.activate(true);

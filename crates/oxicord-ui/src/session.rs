@@ -5,6 +5,8 @@ use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
 use oxicord_model::{Channel, Message, Profile, Snowflake, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
+use crate::{Settings, backend::{Backend, Command}};
+
 /// The signed in client state. Views observe this entity and listen for the
 /// `Changes` it emits to redraw only what moved.
 pub struct Session {
@@ -14,8 +16,7 @@ pub struct Session {
     pub history_errors: HashMap<Snowflake, String>,
     /// The latest thing that went wrong, shown until dismissed.
     pub notice: Option<String>,
-    /// Whether the member list is showing beside the chat.
-    pub show_members: bool,
+    pub settings: Settings,
     /// The status we last chose, which the server won't echo back to us.
     pub status: ClientStatus,
     /// Profiles fetched so far, so reopening a card is instant.
@@ -41,17 +42,29 @@ pub struct ShowProfile {
 impl EventEmitter<ShowProfile> for Session {}
 
 impl Session {
-    pub fn new() -> Self {
+    pub fn new(settings: Settings) -> Self {
         Self {
             store: Store::new(),
             connection: ConnectionState::Connecting,
             history_errors: HashMap::new(),
             notice: None,
-            show_members: true,
+            settings,
             status: ClientStatus::default(),
             profiles: HashMap::new(),
             profile_requested: HashSet::new(),
         }
+    }
+
+    /// Applies a change to the preferences and persists it.
+    pub fn change_settings(
+        &mut self,
+        backend: &Backend,
+        change: impl FnOnce(&mut Settings),
+        cx: &mut Context<Self>,
+    ) {
+        change(&mut self.settings);
+        backend.send(Command::SaveSettings(self.settings.clone()));
+        cx.notify();
     }
 
     pub fn set_notice(&mut self, notice: Option<String>, cx: &mut Context<Self>) {

@@ -18,8 +18,9 @@ use crate::{
     icons::icon,
     media::{Media, acronym, avatar},
     member_list::{MemberList, presence_dot},
-    profile,
+    preferences, profile,
     session::{DmOpened, Session, ShowProfile},
+    settings::Settings,
     theme,
 };
 
@@ -68,6 +69,7 @@ pub struct MainView {
     status_menu_open: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
+    settings_open: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -114,6 +116,7 @@ impl MainView {
             collapsed: HashSet::new(),
             status_menu_open: false,
             profile: None,
+            settings_open: false,
             _subscriptions: subscriptions,
         }
     }
@@ -163,6 +166,46 @@ impl MainView {
         }
         self.profile = Some(ShowProfile { user, guild });
         cx.notify();
+    }
+
+    /// The settings panel, over everything else.
+    fn render_settings(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.settings_open {
+            return None;
+        }
+        let (account, settings) = {
+            let session = self.session.read(cx);
+            let me = session.store.me()?;
+            let account = preferences::Account {
+                name: me.display_name().to_owned(),
+                username: me.username.clone(),
+                avatar_url: cdn::user_avatar(me.id, me.avatar.as_deref(), 128),
+            };
+            (account, session.settings.clone())
+        };
+
+        let backend = self.backend.clone();
+        let callbacks = preferences::Callbacks {
+            close: Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.settings_open = false;
+                cx.notify();
+            })),
+            log_out: Box::new(move |_, _, _| backend.send(Command::Logout)),
+            toggle_notifications: Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.change_settings(|s| s.desktop_notifications = !s.desktop_notifications, cx);
+            })),
+            toggle_members: Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.change_settings(|s| s.show_members = !s.show_members, cx);
+                this.sync_members(cx);
+            })),
+        };
+        Some(preferences::panel(account, &settings, &self.media, callbacks, cx))
+    }
+
+    fn change_settings(&mut self, change: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
+        let backend = self.backend.clone();
+        self.session
+            .update(cx, |session, cx| session.change_settings(&backend, change, cx));
     }
 
     /// The card for the person we are looking at, over everything else.
@@ -245,7 +288,7 @@ impl MainView {
         let guild = self.guild;
         self.members.update(cx, |members, cx| members.set_guild(guild, cx));
 
-        let show = self.session.read(cx).show_members;
+        let show = self.session.read(cx).settings.show_members;
         if let (true, Some(guild), Some(channel)) = (show, self.guild, self.channel) {
             self.backend.send(Command::SubscribeMembers { guild, channel });
         }
@@ -740,6 +783,22 @@ impl MainView {
             )
             .child(
                 div()
+                    .id("open-settings")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.settings_open = true;
+                        cx.notify();
+                    }))
+                    .child(icon("settings", 18., theme::TEXT_MUTED)),
+            )
+            .child(
+                div()
                     .id("log-out")
                     .size(px(32.))
                     .flex()
@@ -763,9 +822,10 @@ impl Render for MainView {
         } else {
             self.chat.clone().into_any_element()
         };
-        let members = (self.guild.is_some() && self.session.read(cx).show_members)
+        let members = (self.guild.is_some() && self.session.read(cx).settings.show_members)
             .then(|| self.members.clone());
         let profile = self.render_profile(cx);
+        let settings = self.render_settings(cx);
 
         div()
             .size_full()
@@ -789,6 +849,7 @@ impl Render for MainView {
                     .children(members),
             )
             .children(profile)
+            .children(settings)
     }
 }
 

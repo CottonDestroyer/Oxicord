@@ -12,6 +12,7 @@ oxicord-gateway.workspace = true
 oxicord-media.workspace = true
 oxicord-markdown.workspace = true
 async-channel.workspace = true
+serde.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]

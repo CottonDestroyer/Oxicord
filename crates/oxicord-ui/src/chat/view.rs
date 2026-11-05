@@ -860,7 +860,7 @@ impl ChatView {
 
     fn render_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let has_members = self.guild(cx).is_some();
-        let showing = self.session.read(cx).show_members;
+        let showing = self.session.read(cx).settings.show_members;
         let (glyph, name, topic) = self
             .channel
             .and_then(|id| {
@@ -912,10 +912,10 @@ impl ChatView {
     }
 
     fn toggle_members(&mut self, cx: &mut Context<Self>) {
+        let backend = self.backend.clone();
         let showing = self.session.update(cx, |session, cx| {
-            session.show_members = !session.show_members;
-            cx.notify();
-            session.show_members
+            session.change_settings(&backend, |s| s.show_members = !s.show_members, cx);
+            session.settings.show_members
         });
         if let (true, Some(guild), Some(channel)) = (showing, self.guild(cx), self.channel) {
             self.backend.send(Command::SubscribeMembers { guild, channel });

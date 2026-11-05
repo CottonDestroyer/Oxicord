@@ -11,6 +11,7 @@ use crate::{
     main_view::MainView,
     media::Media,
     session::Session,
+    settings::Settings,
 };
 
 enum Screen {
@@ -35,10 +36,11 @@ impl AppView {
     pub fn new(
         backend: Backend,
         saved_token: Option<String>,
+        settings: Settings,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let session = cx.new(|_| Session::new());
+        let session = cx.new(|_| Session::new(settings));
         let media = cx.new(|_| Media::new(backend.clone()));
         let login = Self::login_view(&backend, None, window, cx);
         if let Some(token) = saved_token {
@@ -79,7 +81,9 @@ impl AppView {
     /// background. Do not disturb stays quiet, as it does elsewhere.
     fn notify(&self, message: &oxicord_model::Message, cx: &Context<Self>) {
         let session = self.session.read(cx);
-        if session.status == ClientStatus::Dnd || !session.store.is_notable(message) {
+        if !session.settings.desktop_notifications
+            || session.status == ClientStatus::Dnd
+            || !session.store.is_notable(message) {
             return;
         }
         let (title, body) = crate::notify::compose(&session.store, message);
@@ -100,7 +104,8 @@ impl AppView {
                 }
             }
             Event::LoggedOut => {
-                self.session = cx.new(|_| Session::new());
+                let settings = self.session.read(cx).settings.clone();
+                self.session = cx.new(|_| Session::new(settings));
                 let notice = self.notice.take();
                 self.screen = Screen::Login(Self::login_view(&self.backend, notice, window, cx));
             }

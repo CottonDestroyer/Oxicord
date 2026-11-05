@@ -5284,6 +5284,7 @@ dependencies = [
  "oxicord-media",
  "oxicord-model",
  "oxicord-store",
+ "serde",
  "serde_json",
 ]
 

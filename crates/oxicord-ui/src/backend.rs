@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use async_channel::{Receiver, Sender};
 use oxicord_gateway::{ClientStatus, GatewayEvent};
+use crate::Settings;
 use oxicord_model::{Channel, Emoji, Message, Profile, Snowflake, User};
 
 /// Things the UI asks for.
@@ -52,6 +53,8 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// Write the preferences to disk.
+    SaveSettings(Settings),
     /// Raise a desktop notification.
     Notify {
         title: String,

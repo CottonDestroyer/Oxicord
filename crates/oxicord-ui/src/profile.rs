@@ -28,7 +28,7 @@ pub struct Card {
     pub is_me: bool,
 }
 
-type Handler = dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static;
+pub type Handler = dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static;
 
 /// A dimmed overlay with the card centered on it. Clicking outside closes it.
 pub fn overlay(
@@ -38,6 +38,12 @@ pub fn overlay(
     on_close: Box<Handler>,
     cx: &mut App,
 ) -> AnyElement {
+    modal(body(card, media, on_message, cx), on_close)
+}
+
+/// Dims everything behind `content` and closes when the dimmed part is
+/// clicked. `content` should call `.occlude()` so clicks on it stay on it.
+pub fn modal(content: AnyElement, on_close: Box<Handler>) -> AnyElement {
     div()
         .id("profile-overlay")
         .absolute()
@@ -57,7 +63,7 @@ pub fn overlay(
                 .bg(rgba(0x0000_0099))
                 .on_click(on_close),
         )
-        .child(body(card, media, on_message, cx))
+        .child(content)
         .into_any_element()
 }
 

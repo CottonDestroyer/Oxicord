@@ -68,6 +68,9 @@ async fn run(
                     }
                     Command::FetchImage(url) => fetch_image(&fetcher, url, events.clone()),
                     Command::Notify { title, body } => show_notification(title, body),
+                    Command::SaveSettings(settings) => {
+                        tokio::task::spawn_blocking(move || crate::settings::save(&settings));
+                    }
                     Command::Logout => {
                         browser_open = false;
                         replace(&mut live, None);
@@ -259,7 +262,8 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         | Command::BrowserLogin
         | Command::Logout
         | Command::FetchImage(_)
-        | Command::Notify { .. } => {}
+        | Command::Notify { .. }
+        | Command::SaveSettings(_) => {}
     }
 }
 
