@@ -18,13 +18,17 @@ serde_repr = "0.1"
 bitflags = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 reqwest = { version = "0.13", features = ["json", "multipart"] }
-tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
+tokio = { version = "1", features = ["rt", "macros", "time", "sync", "net"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+flate2 = "1"
 thiserror = "2"
 tracing = "0.1"
 base64 = "0.22"
 percent-encoding = "2"
 
 oxicord-model = { path = "crates/oxicord-model" }
+oxicord-api = { path = "crates/oxicord-api" }
 
 oxicord-ui = { path = "crates/oxicord-ui" }
 
