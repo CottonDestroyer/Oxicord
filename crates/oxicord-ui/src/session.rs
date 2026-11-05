@@ -33,10 +33,14 @@ pub struct Session {
     pub friend_request: Option<(String, Result<(), String>)>,
     /// The invite being looked at in the join dialog.
     pub invite: Load<oxicord_model::InvitePreview>,
+    /// Slash commands per channel, with the names of the apps that own them.
+    pub commands: HashMap<Snowflake, Load<oxicord_model::CommandIndex>>,
     /// Set once a join attempt has finished.
     pub invite_joined: Option<Result<(), String>>,
     /// Opening message of each forum post we have seen, by post id.
     pub previews: HashMap<Snowflake, Message>,
+    /// People already looked up, so each is asked about once.
+    users_requested: HashSet<Snowflake>,
     /// Posts whose preview was already asked for.
     preview_requested: HashSet<Snowflake>,
     /// The status we last chose, which the server won't echo back to us.
@@ -95,8 +99,10 @@ impl Session {
             archived_threads: HashMap::new(),
             friend_request: None,
             invite: Load::Idle,
+            commands: HashMap::new(),
             invite_joined: None,
             previews: HashMap::new(),
+            users_requested: HashSet::new(),
             preview_requested: HashSet::new(),
             status: ClientStatus::default(),
             profiles: HashMap::new(),
@@ -164,6 +170,28 @@ impl Session {
         }
     }
 
+    /// Asks for a channel's slash commands the first time they are needed.
+    pub fn ensure_commands(&mut self, backend: &Backend, channel: Snowflake) {
+        if let std::collections::hash_map::Entry::Vacant(slot) = self.commands.entry(channel) {
+            slot.insert(Load::Loading);
+            backend.send(Command::LoadCommands(channel));
+        }
+    }
+
+    pub fn apply_commands(
+        &mut self,
+        channel: Snowflake,
+        result: Result<oxicord_model::CommandIndex, String>,
+        cx: &mut Context<Self>,
+    ) {
+        let state = match result {
+            Ok(index) => Load::Ready(index),
+            Err(error) => Load::Failed(error),
+        };
+        self.commands.insert(channel, state);
+        cx.notify();
+    }
+
     pub fn apply_invite_preview(&mut self, result: Result<oxicord_model::InvitePreview, String>, cx: &mut Context<Self>) {
         self.invite = match result {
             Ok(preview) => Load::Ready(preview),
@@ -223,6 +251,24 @@ impl Session {
         for chunk in fresh.chunks(25) {
             backend.send(Command::LoadForumPreviews { forum, posts: chunk.to_vec() });
         }
+    }
+
+    /// Asks for the people in `ids` that we haven't asked about yet.
+    pub fn request_users(&mut self, backend: &Backend, ids: Vec<Snowflake>) {
+        let fresh: Vec<Snowflake> = ids
+            .into_iter()
+            .filter(|id| self.store.user(*id).is_none() && self.users_requested.insert(*id))
+            .take(20)
+            .collect();
+        if !fresh.is_empty() {
+            backend.send(Command::FetchUsers(fresh));
+        }
+    }
+
+    pub fn apply_users(&mut self, users: Vec<oxicord_model::User>, cx: &mut Context<Self>) {
+        self.store.add_users(users);
+        cx.emit(Changes::full());
+        cx.notify();
     }
 
     pub fn apply_previews(&mut self, messages: Vec<Message>, cx: &mut Context<Self>) {

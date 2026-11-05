@@ -67,6 +67,99 @@ pub struct MentionIds {
     pub channels: Vec<Snowflake>,
 }
 
+/// One mention-like token of Discord's wire format, found in plain text.
+enum Token {
+    User(Snowflake),
+    Role(Snowflake),
+    Channel(Snowflake),
+    Emoji(String),
+}
+
+/// Reads the token that starts at the `<` of `text`, giving it and how many
+/// bytes it spans.
+fn token_at(text: &str) -> Option<(Token, usize)> {
+    let end = text.find('>')?;
+    if end > 80 {
+        return None;
+    }
+    let inner = &text[1..end];
+    let id = |s: &str| s.parse::<u64>().ok().map(Snowflake);
+    let token = if let Some(rest) = inner.strip_prefix("@&") {
+        Token::Role(id(rest)?)
+    } else if let Some(rest) = inner.strip_prefix('@') {
+        Token::User(id(rest.trim_start_matches('!'))?)
+    } else if let Some(rest) = inner.strip_prefix('#') {
+        Token::Channel(id(rest)?)
+    } else {
+        let mut parts = inner.trim_start_matches('a').splitn(3, ':');
+        let (empty, name, number) = (parts.next()?, parts.next()?, parts.next()?);
+        if !empty.is_empty() || name.is_empty() || id(number).is_none() {
+            return None;
+        }
+        Token::Emoji(name.to_owned())
+    };
+    Some((token, end + 1))
+}
+
+/// The users, roles and channels mentioned in plain text, such as an
+/// embed's description.
+pub fn text_mention_ids(text: &str) -> MentionIds {
+    let mut ids = MentionIds::default();
+    let mut rest = text;
+    while let Some(at) = rest.find('<') {
+        rest = &rest[at..];
+        match token_at(rest) {
+            Some((Token::User(id), n)) => {
+                ids.users.push(id);
+                rest = &rest[n..];
+            }
+            Some((Token::Role(id), n)) => {
+                ids.roles.push(id);
+                rest = &rest[n..];
+            }
+            Some((Token::Channel(id), n)) => {
+                ids.channels.push(id);
+                rest = &rest[n..];
+            }
+            Some((Token::Emoji(_), n)) => rest = &rest[n..],
+            None => rest = &rest[1..],
+        }
+    }
+    ids
+}
+
+/// Plain text with its mention tokens replaced by names: `@Ada`, `@Role`,
+/// `#general`, `:smile:`. What can't be resolved is left as it was.
+pub fn humanize(text: &str, names: &Names) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find('<') {
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let replaced = token_at(rest).and_then(|(token, n)| {
+            let shown = match token {
+                Token::User(id) => format!("@{}", names.users.get(&id)?),
+                Token::Role(id) => format!("@{}", names.roles.get(&id)?.0),
+                Token::Channel(id) => format!("#{}", names.channels.get(&id)?),
+                Token::Emoji(name) => format!(":{name}:"),
+            };
+            Some((shown, n))
+        });
+        match replaced {
+            Some((shown, n)) => {
+                out.push_str(&shown);
+                rest = &rest[n..];
+            }
+            None => {
+                out.push('<');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 pub fn mention_ids(blocks: &[Block]) -> MentionIds {
     fn inlines(list: &[Inline], out: &mut MentionIds) {
         for node in list {
@@ -497,6 +590,23 @@ mod tests {
         assert_eq!(ids.users, [Snowflake(1), Snowflake(4)]);
         assert_eq!(ids.roles, [Snowflake(2)]);
         assert_eq!(ids.channels, [Snowflake(3)]);
+    }
+
+    #[test]
+    fn plain_text_mentions_become_names() {
+        let mut names = Names::default();
+        names.users.insert(Snowflake(1), "Ada".into());
+        names.roles.insert(Snowflake(2), ("Mods".into(), 0));
+        names.channels.insert(Snowflake(3), "general".into());
+
+        let text = "closed by <@1> and <@!1>, ping <@&2> in <#3> <a:wave:9> <@99> 1 < 2";
+        assert_eq!(
+            humanize(text, &names),
+            "closed by @Ada and @Ada, ping @Mods in #general :wave: <@99> 1 < 2"
+        );
+        let ids = text_mention_ids(text);
+        assert_eq!(ids.users, [Snowflake(1), Snowflake(1), Snowflake(99)]);
+        assert_eq!((ids.roles.len(), ids.channels.len()), (1, 1));
     }
 
     #[test]

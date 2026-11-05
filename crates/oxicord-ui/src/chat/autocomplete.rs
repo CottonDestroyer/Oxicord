@@ -17,6 +17,8 @@ pub enum Kind {
     Mention,
     Channel,
     Emoji,
+    /// A slash command at the very start of the message.
+    Command,
 }
 
 /// The word being typed at the end of the text.
@@ -30,6 +32,13 @@ pub struct Trigger {
 
 /// Finds the `@`, `#` or `:` word the cursor sits at the end of.
 pub fn trigger(text: &str) -> Option<Trigger> {
+    // A command name may hold spaces ("settings view"), so it takes the whole
+    // first line rather than one word.
+    if let Some(rest) = text.strip_prefix('/')
+        && rest.lines().nth(1).is_none()
+    {
+        return Some(Trigger { kind: Kind::Command, query: rest.to_owned(), start: 0 });
+    }
     let start = text
         .rfind(|c: char| c.is_whitespace())
         .map_or(0, |i| i + text[i..].chars().next().map_or(1, char::len_utf8));
@@ -57,6 +66,8 @@ pub struct Suggestion {
     pub detail: String,
     /// What replaces the typed word when picked.
     pub insert: String,
+    /// For a command suggestion, which entry of the command list it is.
+    pub command: Option<usize>,
 }
 
 /// Ranks names against a query: those that start with it first, then those
@@ -82,10 +93,43 @@ pub fn suggest(
         Kind::Mention => mentions(store, guild, channel, &trigger.query),
         Kind::Channel => channels(store, guild, &trigger.query),
         Kind::Emoji => emoji(store, guild, &trigger.query),
+        // Commands come from the channel's own list, see `command_suggestions`.
+        Kind::Command => Vec::new(),
     };
     scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.label.cmp(&b.1.label)));
     scored.truncate(MAX_SUGGESTIONS);
     scored.into_iter().map(|(_, s)| s).collect()
+}
+
+/// Matches typed text against a channel's commands, most relevant first.
+pub fn command_suggestions(
+    commands: &[oxicord_model::SlashCommand],
+    apps: &[(Snowflake, String)],
+    query: &str,
+) -> Vec<Suggestion> {
+    let mut scored: Vec<(u8, usize)> = commands
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| rank(&c.name, query).map(|s| (s, i)))
+        .collect();
+    scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| commands[a.1].name.cmp(&commands[b.1].name)));
+    scored.truncate(MAX_SUGGESTIONS);
+    scored
+        .into_iter()
+        .map(|(_, i)| {
+            let c = &commands[i];
+            let app = apps.iter().find(|(id, _)| *id == c.application_id).map(|(_, n)| n.as_str());
+            Suggestion {
+                label: format!("/{}", c.name),
+                detail: match app {
+                    Some(app) => format!("{} · {app}", c.description),
+                    None => c.description.clone(),
+                },
+                insert: String::new(),
+                command: Some(i),
+            }
+        })
+        .collect()
 }
 
 fn mentions(
@@ -130,6 +174,7 @@ fn mentions(
                     label: shown,
                     detail: user.username.clone(),
                     insert: format!("<@{id}>"),
+                    command: None,
                 },
             ));
         }
@@ -144,6 +189,7 @@ fn mentions(
                         label: format!("@{special}"),
                         detail: "Notify everyone in the channel".into(),
                         insert: format!("@{special}"),
+                    command: None,
                     },
                 ));
             }
@@ -157,6 +203,7 @@ fn mentions(
                             label: format!("@{}", role.name),
                             detail: "Role".into(),
                             insert: format!("<@&{}>", role.id),
+                        command: None,
                         },
                     ));
                 }
@@ -181,6 +228,7 @@ fn channels(store: &Store, guild: Option<Snowflake>, query: &str) -> Vec<(u8, Su
                     label: format!("#{name}"),
                     detail: String::new(),
                     insert: format!("<#{}>", c.id),
+                command: None,
                 },
             ))
         })
@@ -199,6 +247,7 @@ fn emoji(store: &Store, guild: Option<Snowflake>, query: &str) -> Vec<(u8, Sugge
                         label: format!(":{name}:"),
                         detail: "Server emoji".into(),
                         insert: format!("<{}:{name}:{id}>", if e.animated { "a" } else { "" }),
+                    command: None,
                     },
                 ));
             }
@@ -212,6 +261,7 @@ fn emoji(store: &Store, guild: Option<Snowflake>, query: &str) -> Vec<(u8, Sugge
                     label: format!("{} :{code}:", e.as_str()),
                     detail: String::new(),
                     insert: e.as_str().to_owned(),
+                    command: None,
                 },
             ));
         }

@@ -42,6 +42,7 @@ use crate::{
 /// text lines up.
 const GUTTER: f32 = 40.;
 
+mod commands;
 mod components;
 use super::autocomplete::{self, Suggestion};
 
@@ -70,6 +71,11 @@ pub struct ChatView {
     revealed: HashSet<(Snowflake, usize)>,
     /// The message whose quick-reaction row is open.
     picker_for: Option<Snowflake>,
+    /// People mentioned on screen whose names we don't have yet. Filled while
+    /// drawing, so it sits behind a cell.
+    unknown_users: std::cell::RefCell<HashSet<Snowflake>>,
+    /// The option form of the slash command being filled in.
+    command_form: Option<commands::CommandForm>,
     /// What the word being typed could become, and which one is highlighted.
     suggestions: Vec<Suggestion>,
     suggest_start: usize,
@@ -188,6 +194,8 @@ impl ChatView {
             revealed: HashSet::new(),
             picker_for: None,
             open_menu: None,
+            unknown_users: std::cell::RefCell::new(HashSet::new()),
+            command_form: None,
             suggestions: Vec::new(),
             suggest_start: 0,
             suggest_selected: 0,
@@ -296,7 +304,11 @@ impl ChatView {
         self.suggest_selected = 0;
         if let (true, Some(channel), Some(trigger)) = (at_end, self.channel, autocomplete::trigger(&text)) {
             let guild = self.guild(cx);
-            self.suggestions = autocomplete::suggest(&self.session.read(cx).store, guild, channel, &trigger);
+            self.suggestions = if trigger.kind == autocomplete::Kind::Command {
+                self.command_suggestions(&trigger.query, cx)
+            } else {
+                autocomplete::suggest(&self.session.read(cx).store, guild, channel, &trigger)
+            };
             self.suggest_start = trigger.start;
         }
         cx.notify();
@@ -304,6 +316,11 @@ impl ChatView {
 
     fn apply_suggestion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(pick) = self.suggestions.get(self.suggest_selected).cloned() else { return };
+        // A command opens its option form instead of editing the text.
+        if pick.command.is_some() {
+            self.open_command_form(&pick, window, cx);
+            return;
+        }
         let mut text = self.input.read(cx).value().to_string();
         text.truncate(self.suggest_start.min(text.len()));
         text.push_str(&pick.insert);
@@ -849,7 +866,35 @@ impl ChatView {
 
     /// Looks up the names a message's mentions refer to.
     fn names_for(&self, message: &Message, blocks: &[Block], cx: &App) -> Names {
-        let ids = markdown::mention_ids(blocks);
+        self.resolve_names(markdown::mention_ids(blocks), message, cx)
+    }
+
+    /// Names for the mentions inside a message's embeds, which hold plain
+    /// text rather than parsed markdown.
+    pub(super) fn embed_names(&self, message: &Message, cx: &App) -> Names {
+        let mut text = String::new();
+        for embed in &message.embeds {
+            let parts = [
+                embed.title.as_deref(),
+                embed.description.as_deref(),
+                embed.footer.as_ref().map(|f| f.text.as_str()),
+                embed.author.as_ref().map(|a| a.name.as_str()),
+            ];
+            for part in parts.into_iter().flatten() {
+                text.push_str(part);
+                text.push(' ');
+            }
+            for field in &embed.fields {
+                text.push_str(&field.name);
+                text.push(' ');
+                text.push_str(&field.value);
+                text.push(' ');
+            }
+        }
+        self.resolve_names(markdown::text_mention_ids(&text), message, cx)
+    }
+
+    fn resolve_names(&self, ids: markdown::MentionIds, message: &Message, cx: &App) -> Names {
         let store = &self.session.read(cx).store;
         let guild = self
             .channel
@@ -865,8 +910,14 @@ impl ChatView {
                 .find(|u| u.id == id)
                 .map(|u| u.display_name().to_owned())
                 .or_else(|| store.user(id).map(|u| u.display_name().to_owned()));
-            if let Some(name) = name {
-                names.users.insert(id, name);
+            match name {
+                Some(name) => {
+                    names.users.insert(id, name);
+                }
+                // Someone we haven't met: ask for them once drawing is done.
+                None => {
+                    self.unknown_users.borrow_mut().insert(id);
+                }
             }
         }
         for id in ids.roles {
@@ -882,12 +933,26 @@ impl ChatView {
         names
     }
 
+    /// Looks up the people drawing found mentioned but couldn't name.
+    fn fetch_unknown_users(&mut self, cx: &mut Context<Self>) {
+        let ids: Vec<Snowflake> = self.unknown_users.borrow_mut().drain().collect();
+        if ids.is_empty() {
+            return;
+        }
+        let backend = self.backend.clone();
+        self.session.update(cx, |session, _| session.request_users(&backend, ids));
+    }
+
     fn render_row(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.rows.get(ix).cloned() {
             Some(Row::Divider(day)) => divider(day).into_any_element(),
             Some(Row::NewMessages) => new_messages_line().into_any_element(),
             Some(Row::Message { id, grouped }) => match self.message(id, cx) {
-                Some(message) => self.render_message(message, grouped, window, cx),
+                Some(message) => {
+                    let element = self.render_message(message, grouped, window, cx);
+                    self.fetch_unknown_users(cx);
+                    element
+                }
                 None => div().into_any_element(),
             },
             None => div().into_any_element(),
@@ -976,7 +1041,8 @@ impl ChatView {
             body = body.child(files);
         }
         if prefs.embeds
-            && let Some(embeds) = render_embeds(&message, &self.media, prefs.embed_media, cx)
+            && let Some(embeds) =
+                render_embeds(&message, &self.media, prefs.embed_media, &self.embed_names(&message, cx), cx)
         {
             body = body.child(embeds);
         }
@@ -1454,6 +1520,9 @@ impl ChatView {
 
         if let Some(list) = self.render_suggestions(cx) {
             column = column.child(list);
+        }
+        if let Some(form) = self.render_command_form(cx) {
+            column = column.child(form);
         }
         if let Some(bar) = self.compose_context_bar(cx) {
             column = column.child(bar);

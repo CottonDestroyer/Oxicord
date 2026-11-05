@@ -6,6 +6,7 @@ use gpui_kit::{
 };
 use oxicord_model::{Attachment, Embed, Message, embed::EmbedMedia};
 
+use super::markdown::{Names, humanize};
 use crate::{
     icons::icon,
     media::{Media, ViewImage},
@@ -165,6 +166,7 @@ pub fn render_embeds(
     message: &Message,
     media: &Entity<Media>,
     link_images: bool,
+    names: &Names,
     cx: &mut App,
 ) -> Option<AnyElement> {
     let visible: Vec<_> = message
@@ -185,7 +187,7 @@ pub fn render_embeds(
 
     let mut column = div().flex().flex_col().gap_1().mt_1();
     for (ix, embed) in visible {
-        column = column.child(embed_card(embed, message, ix, media, cx));
+        column = column.child(embed_card(embed, message, ix, media, names, cx));
     }
     for (ix, embed) in images.into_iter().enumerate() {
         if let Some(media_ref) = embed.image.as_ref().or(embed.thumbnail.as_ref()) {
@@ -230,6 +232,7 @@ fn embed_card(
     message: &Message,
     ix: usize,
     media: &Entity<Media>,
+    names: &Names,
     cx: &mut App,
 ) -> AnyElement {
     let accent = embed.color.unwrap_or(0x4e5058);
@@ -244,7 +247,7 @@ fn embed_card(
             div()
                 .text_size(px(13.))
                 .text_color(rgb(theme::TEXT_BRIGHT))
-                .child(author.name.clone()),
+                .child(humanize(&author.name, names)),
         );
     }
     if let Some(title) = embed.title.clone() {
@@ -253,7 +256,7 @@ fn embed_card(
             .id(SharedString::from(format!("embed-title-{}-{ix}", message.id)))
             .font_weight(gpui_kit::FontWeight::SEMIBOLD)
             .text_color(rgb(if link.is_some() { super::markdown::LINK_COLOR } else { theme::TEXT_BRIGHT }))
-            .child(title);
+            .child(humanize(&title, names));
         body = body.child(match link {
             Some(url) => heading.cursor_pointer().on_click(move |_, _, cx| cx.open_url(&url)).into_any_element(),
             None => heading.into_any_element(),
@@ -264,7 +267,7 @@ fn embed_card(
             div()
                 .text_size(px(14.))
                 .text_color(rgb(theme::TEXT))
-                .child(description),
+                .child(humanize(&description, names)),
         );
     }
     for field in &embed.fields {
@@ -277,9 +280,9 @@ fn embed_card(
                         .text_size(px(13.))
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(rgb(theme::TEXT_BRIGHT))
-                        .child(field.name.clone()),
+                        .child(humanize(&field.name, names)),
                 )
-                .child(div().text_size(px(14.)).child(field.value.clone())),
+                .child(div().text_size(px(14.)).child(humanize(&field.value, names))),
         );
     }
     if let Some(image) = embed.image.as_ref().filter(|i| i.proxy_url.is_some() || i.url.is_some()) {
@@ -295,7 +298,7 @@ fn embed_card(
         body = body.child(div().mt_1().child(picture(media, &resized(source, w, h), link, (w, h), id, cx)));
     }
     if let Some(footer) = &embed.footer {
-        body = body.child(small(footer.text.clone()));
+        body = body.child(small(humanize(&footer.text, names)));
     }
 
     let mut card = div()

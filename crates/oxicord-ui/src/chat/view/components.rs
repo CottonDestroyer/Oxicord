@@ -274,7 +274,7 @@ impl ChatView {
             if let Some(files) = crate::chat::attachments::render_attachments(&borrowed, &self.media, true, cx) {
                 card = card.child(files);
             }
-            if let Some(embeds) = crate::chat::attachments::render_embeds(&borrowed, &self.media, true, cx) {
+            if let Some(embeds) = crate::chat::attachments::render_embeds(&borrowed, &self.media, true, &self.embed_names(&borrowed, cx), cx) {
                 card = card.child(embeds);
             }
             if let Some(stickers) = self.render_stickers(&borrowed, cx) {

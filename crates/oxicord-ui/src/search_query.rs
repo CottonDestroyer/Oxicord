@@ -42,7 +42,7 @@ fn numeric_id(value: &str) -> Option<Snowflake> {
     digits.parse::<u64>().ok().filter(|n| *n > 1_000_000).map(Snowflake)
 }
 
-fn resolve_user(store: &Store, guild: Option<Snowflake>, channel: Snowflake, value: &str) -> Option<Snowflake> {
+pub(crate) fn resolve_user(store: &Store, guild: Option<Snowflake>, channel: Snowflake, value: &str) -> Option<Snowflake> {
     if let Some(id) = numeric_id(value) {
         return Some(id);
     }
@@ -77,7 +77,22 @@ fn resolve_user(store: &Store, guild: Option<Snowflake>, channel: Snowflake, val
     matches(true).or_else(|| matches(false))
 }
 
-fn resolve_channel(store: &Store, guild: Option<Snowflake>, value: &str) -> Option<Snowflake> {
+/// A role of the server by name (or `<@&id>`), for command options.
+pub(crate) fn resolve_role(store: &Store, guild: Option<Snowflake>, value: &str) -> Option<Snowflake> {
+    let digits = value.trim_start_matches("<@&").trim_end_matches('>');
+    if let Some(id) = digits.parse::<u64>().ok().filter(|n| *n > 1_000_000) {
+        return Some(Snowflake(id));
+    }
+    let wanted = value.trim_start_matches('@').to_lowercase();
+    store
+        .guild(guild?)?
+        .roles
+        .iter()
+        .find(|r| r.name.to_lowercase() == wanted)
+        .map(|r| r.id)
+}
+
+pub(crate) fn resolve_channel(store: &Store, guild: Option<Snowflake>, value: &str) -> Option<Snowflake> {
     if let Some(id) = numeric_id(value) {
         return Some(id);
     }

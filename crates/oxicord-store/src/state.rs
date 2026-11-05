@@ -62,6 +62,13 @@ impl Store {
         Self::default()
     }
 
+    /// Learns about people we only knew by id, such as a mention in an embed.
+    pub fn add_users(&mut self, users: Vec<User>) {
+        for user in users {
+            self.users.entry(user.id).or_insert(user);
+        }
+    }
+
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
     }

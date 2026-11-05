@@ -10,6 +10,11 @@ impl ApiClient {
             .await
     }
 
+    /// Another person's public details, for names we haven't met yet.
+    pub async fn user(&self, id: Snowflake) -> Result<User, ApiError> {
+        self.json(Method::GET, &format!("/users/{id}"), "GET /users/:id", None).await
+    }
+
     /// The details a profile card shows. `guild` picks up the per-server
     /// bio when the person has set one.
     pub async fn profile(

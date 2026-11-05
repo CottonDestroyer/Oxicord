@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
     ApiClient, ApiError, Credentials,
-    routes::{ComponentClick, MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
+    routes::{CommandRun, ComponentClick, IndexOutcome, MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
     super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
@@ -321,6 +321,34 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::InviteJoined(result)).await;
             });
         }
+        Command::LoadCommands(channel) => {
+            tokio::spawn(async move {
+                let result = load_commands(&api, channel).await;
+                let _ = events.send(Event::Commands { channel, result }).await;
+            });
+        }
+        Command::RunCommand { guild, channel, session_id, command, answers } => {
+            tokio::spawn(async move {
+                let run = CommandRun { guild, channel, session_id, command, answers, nonce: nonce() };
+                if let Err(err) = api.run_command(&run).await {
+                    notify(&events, "run that command", &err).await;
+                }
+            });
+        }
+        Command::FetchUsers(ids) => {
+            tokio::spawn(async move {
+                let mut found = Vec::new();
+                for id in ids {
+                    match api.user(id).await {
+                        Ok(user) => found.push(user),
+                        Err(err) => tracing::debug!(?err, %id, "could not look a user up"),
+                    }
+                }
+                if !found.is_empty() {
+                    let _ = events.send(Event::Users(found)).await;
+                }
+            });
+        }
         Command::JoinThread(thread) => {
             tokio::spawn(async move {
                 if let Err(err) = api.join_thread(thread).await {
@@ -576,6 +604,27 @@ async fn load_history(
         tracing::warn!(?err, %channel, "could not load history");
         describe_request(&err)
     })
+}
+
+/// Loads the commands of a channel. Discord answers 202 while it builds the
+/// list, so wait and ask again a few times.
+async fn load_commands(
+    api: &ApiClient,
+    channel: Snowflake,
+) -> Result<oxicord_model::CommandIndex, String> {
+    for _ in 0..4 {
+        match api.command_index(channel).await {
+            Ok(IndexOutcome::Ready { commands, apps }) => {
+                return Ok(oxicord_model::CommandIndex { commands, apps });
+            }
+            Ok(IndexOutcome::Pending) => tokio::time::sleep(std::time::Duration::from_secs(3)).await,
+            Err(err) => {
+                tracing::debug!(?err, "could not load commands");
+                return Err(describe_request(&err));
+            }
+        }
+    }
+    Err("Discord is still preparing the commands.".into())
 }
 
 /// Says why an invite lookup or join failed, in words a person can act on.

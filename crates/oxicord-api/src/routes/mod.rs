@@ -2,6 +2,7 @@
 
 mod account;
 mod channels;
+mod commands;
 mod guilds;
 mod interactions;
 mod invites;
@@ -14,5 +15,6 @@ mod users;
 
 pub use search::{SEARCH_PAGE, SearchOutcome, SearchScope};
 pub use interactions::{ComponentClick, click_body};
+pub use commands::{CommandRun, IndexOutcome, run_body};
 pub use messages::{MessagePage, ReplyTarget, SendMessage, Upload};
 pub use reactions::emoji_path_segment;

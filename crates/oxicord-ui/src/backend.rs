@@ -128,6 +128,20 @@ pub enum Command {
         code: String,
         session_id: String,
     },
+    /// Fetch the slash commands usable in a channel. The answer arrives as
+    /// [`Event::Commands`].
+    LoadCommands(Snowflake),
+    /// Run a slash command. A failure is reported as [`Event::Notice`].
+    RunCommand {
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+        session_id: String,
+        command: oxicord_model::SlashCommand,
+        answers: Vec<(String, u8, serde_json::Value)>,
+    },
+    /// Look up people we only know by id. The answer arrives as
+    /// [`Event::Users`].
+    FetchUsers(Vec<Snowflake>),
     JoinThread(Snowflake),
     LeaveThread(Snowflake),
     /// Start a thread on a message. The answer arrives as
@@ -215,6 +229,11 @@ pub enum Event {
         result: Result<ThreadPage, String>,
     },
     ThreadCreated(Result<Channel, String>),
+    Users(Vec<User>),
+    Commands {
+        channel: Snowflake,
+        result: Result<oxicord_model::CommandIndex, String>,
+    },
     InvitePreview(Result<oxicord_model::InvitePreview, String>),
     InviteJoined(Result<(), String>),
     /// Whether a friend request sent by name went through.
