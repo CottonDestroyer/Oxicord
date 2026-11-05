@@ -1197,7 +1197,7 @@ impl ChatView {
         }
         if prefs.embeds
             && let Some(embeds) =
-                render_embeds(&message, &self.media, prefs.embed_media, &self.embed_names(&message, cx), cx)
+                render_embeds(&message, &self.media, prefs.embed_media, &self.embed_names(&message, cx), window, cx)
         {
             body = body.child(embeds);
         }

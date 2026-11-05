@@ -2,7 +2,7 @@
 
 use gpui_kit::{
     AnyElement, App, Entity, ImageSource, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, div, img, px, rgb,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, img, px, rgb,
 };
 use oxicord_model::{Attachment, Embed, Message, embed::EmbedMedia};
 
@@ -167,6 +167,7 @@ pub fn render_embeds(
     media: &Entity<Media>,
     link_images: bool,
     names: &Names,
+    window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
     let visible: Vec<_> = message
@@ -187,7 +188,7 @@ pub fn render_embeds(
 
     let mut column = div().flex().flex_col().gap_1().mt_1();
     for (ix, embed) in visible {
-        column = column.child(embed_card(embed, message, ix, media, names, cx));
+        column = column.child(embed_card(embed, message, ix, media, names, window, cx));
     }
     for (ix, embed) in images.into_iter().enumerate() {
         if let Some(media_ref) = embed.image.as_ref().or(embed.thumbnail.as_ref()) {
@@ -233,6 +234,7 @@ fn embed_card(
     ix: usize,
     media: &Entity<Media>,
     names: &Names,
+    window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     let accent = embed.color.unwrap_or(0x4e5058);
@@ -267,10 +269,10 @@ fn embed_card(
             div()
                 .text_size(px(14.))
                 .text_color(rgb(theme::TEXT))
-                .child(humanize(&description, names)),
+                .child(rich(&description, message.id.0 ^ ((ix as u64 + 1) << 48), media, names, window, cx)),
         );
     }
-    for field in &embed.fields {
+    for (field_ix, field) in embed.fields.iter().enumerate() {
         body = body.child(
             div()
                 .flex()
@@ -282,7 +284,7 @@ fn embed_card(
                         .text_color(rgb(theme::TEXT_BRIGHT))
                         .child(humanize(&field.name, names)),
                 )
-                .child(div().text_size(px(14.)).child(humanize(&field.value, names))),
+                .child(div().text_size(px(14.)).child(rich(&field.value, message.id.0 ^ ((ix as u64 + 1) << 48) ^ ((field_ix as u64 + 1) << 40), media, names, window, cx))),
         );
     }
     if let Some(image) = embed.image.as_ref().filter(|i| i.proxy_url.is_some() || i.url.is_some()) {
@@ -379,4 +381,24 @@ mod tests {
             "https://media.discordapp.net/a.png?ex=1&hm=2&format=webp&width=400&height=300"
         );
     }
+}
+
+/// Embed text is markdown, like a message, so bold, links and lists show.
+/// Spoilers stay closed: there is no handler to open them from here.
+fn rich(text: &str, key: u64, media: &Entity<Media>, names: &Names, window: &mut Window, cx: &mut App) -> AnyElement {
+    let blocks = oxicord_markdown::parse(text);
+    let revealed = std::collections::HashSet::new();
+    let options = super::markdown::Options {
+        names,
+        revealed: &revealed,
+        media,
+        now: chrono::Utc::now(),
+        offset: *chrono::Local::now().offset(),
+        hour12: false,
+        reveal_spoilers: false,
+        edited: false,
+        key,
+        on_spoiler: std::rc::Rc::new(|_, _, _| {}),
+    };
+    super::markdown::render(&blocks, &options, window, cx)
 }
