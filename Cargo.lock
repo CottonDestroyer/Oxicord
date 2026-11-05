@@ -5183,6 +5183,7 @@ dependencies = [
  "oxicord-gateway",
  "oxicord-model",
  "oxicord-ui",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
@@ -5209,6 +5210,8 @@ name = "oxicord-browser-login"
 version = "0.1.0"
 dependencies = [
  "getrandom 0.4.3",
+ "serde",
+ "serde_json",
  "tao",
  "url",
  "wry",

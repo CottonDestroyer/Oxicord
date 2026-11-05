@@ -41,24 +41,23 @@ impl ApiClient {
         auth.set_sensitive(true);
         headers.insert(AUTHORIZATION, auth);
 
+        let identity = |value: &str| HeaderValue::from_str(value).map_err(|_| ApiError::BadIdentity);
+
         headers.insert(
             HeaderName::from_static("x-super-properties"),
-            HeaderValue::from_str(&props.to_header()).map_err(|_| ApiError::BadToken)?,
+            identity(props.to_header())?,
         );
         headers.insert(
             HeaderName::from_static("x-discord-locale"),
-            HeaderValue::from_str(&props.locale).map_err(|_| ApiError::BadToken)?,
+            identity(props.locale())?,
         );
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_str(&props.user_agent()).map_err(|_| ApiError::BadToken)?,
-        );
+        headers.insert(USER_AGENT, identity(props.user_agent())?);
 
         // The rest of what the web client sends on every call. A request
         // that has the super properties but lacks these looks scripted.
         headers.insert(
             HeaderName::from_static("x-discord-timezone"),
-            HeaderValue::from_static("UTC"),
+            identity(props.timezone())?,
         );
         headers.insert(
             ACCEPT_LANGUAGE,

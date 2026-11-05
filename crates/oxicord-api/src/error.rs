@@ -21,6 +21,9 @@ pub enum ApiError {
 
     #[error("invalid token: it contains characters that can't go in a header")]
     BadToken,
+
+    #[error("the client identity contains characters that can't go in a header")]
+    BadIdentity,
 }
 
 impl ApiError {

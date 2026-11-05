@@ -12,7 +12,7 @@ fn main() {
     logging::init();
 
     let backend = bridge::start();
-    let saved_token = credentials::load();
+    let saved_token = credentials::load().map(|saved| saved.token);
 
     gpui_kit::application()
         .with_assets(gpui_kit::assets::Assets)

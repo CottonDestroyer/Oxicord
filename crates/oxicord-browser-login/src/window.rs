@@ -26,7 +26,7 @@ pub(crate) fn run() -> Outcome {
 
 fn open() -> Result<Outcome, String> {
     let capability = new_capability()?;
-    let (token_tx, token_rx) = mpsc::channel::<String>();
+    let (token_tx, token_rx) = mpsc::channel::<handoff::Capture>();
 
     // `with_any_thread` because gpui already owns the main thread's loop.
     let mut event_loop = EventLoopBuilder::new().with_any_thread(true).build();
@@ -52,8 +52,8 @@ fn open() -> Result<Outcome, String> {
             if !handoff::is_discord_page(&request.uri().to_string()) {
                 return;
             }
-            if let Some(token) = handoff::read_message(request.body(), &expected) {
-                let _ = token_tx.send(token.to_owned());
+            if let Some(capture) = handoff::read_message(request.body(), &expected) {
+                let _ = token_tx.send(capture);
             }
         })
         .build(&window)
@@ -67,8 +67,8 @@ fn open() -> Result<Outcome, String> {
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + POLL);
 
-        if let Ok(token) = token_rx.try_recv() {
-            outcome = Outcome::Token(token);
+        if let Ok(capture) = token_rx.try_recv() {
+            outcome = Outcome::SignedIn(capture);
             *control_flow = ControlFlow::Exit;
         } else if Instant::now() >= deadline {
             outcome = Outcome::TimedOut;

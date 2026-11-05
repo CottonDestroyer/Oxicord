@@ -2,15 +2,23 @@
 //
 // Discord's own page does the whole login: password, captcha, MFA, QR. Once
 // the user is in, the page starts calling the API with an Authorization
-// header. We watch for that header on same-origin API calls and pass its
-// value to the app, once. Nothing else leaves the page.
+// header. We watch same-origin API calls for it and report, once, the token
+// together with the identity the page presents (user agent and the
+// X-Super-Properties header), because a token only keeps working when it is
+// used with the identity it was issued to. Nothing else leaves the page.
 (() => {
   if (window !== window.top || location.origin !== "https://discord.com") return;
 
   const capability = "__OXICORD_CAPABILITY__";
   const startedAt = Date.now();
   const TEN_MINUTES = 10 * 60 * 1000;
+  // How long to wait for a request that carries the identity as well, once
+  // we already have a token.
+  const IDENTITY_GRACE_MS = 5000;
+  const WANTED = ["authorization", "x-super-properties", "x-discord-locale", "x-discord-timezone"];
+
   let sent = false;
+  let pendingTimer = null;
 
   const isApiCall = (target) => {
     try {
@@ -21,33 +29,70 @@
     }
   };
 
-  const offer = (value) => {
-    if (sent || Date.now() - startedAt > TEN_MINUTES) return;
-    if (typeof value !== "string" || value.length < 16 || value.length > 2048) return;
-    if (/\s/.test(value)) return;
+  const deliver = (headers) => {
+    if (sent) return;
     sent = true;
-    window.ipc.postMessage(capability + value);
+    clearTimeout(pendingTimer);
+    window.ipc.postMessage(
+      capability +
+        JSON.stringify({
+          token: headers["authorization"],
+          superProperties: headers["x-super-properties"] ?? null,
+          userAgent: navigator.userAgent,
+          locale: headers["x-discord-locale"] ?? null,
+          timezone: headers["x-discord-timezone"] ?? null,
+        })
+    );
   };
 
-  const trackedRequests = new WeakMap();
+  const offer = (headers) => {
+    if (sent || Date.now() - startedAt > TEN_MINUTES) return;
+    const token = headers["authorization"];
+    if (typeof token !== "string" || token.length < 16 || token.length > 2048) return;
+    if (/\s/.test(token)) return;
+
+    if (headers["x-super-properties"]) {
+      deliver(headers);
+    } else if (pendingTimer === null) {
+      // The first call had no identity. Give a later one a moment to show
+      // it, then settle for the bare token.
+      pendingTimer = setTimeout(() => deliver(headers), IDENTITY_GRACE_MS);
+    }
+  };
+
+  const requests = new WeakMap();
   const nativeOpen = XMLHttpRequest.prototype.open;
   const nativeSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+  const nativeSend = XMLHttpRequest.prototype.send;
 
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-    trackedRequests.set(this, isApiCall(url));
+    requests.set(this, isApiCall(url) ? {} : null);
     return nativeOpen.call(this, method, url, ...rest);
   };
   XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-    if (trackedRequests.get(this) && String(name).toLowerCase() === "authorization") offer(value);
+    const bag = requests.get(this);
+    const key = String(name).toLowerCase();
+    if (bag && WANTED.includes(key)) bag[key] = String(value);
     return nativeSetHeader.call(this, name, value);
+  };
+  // Headers are only complete once the request is sent.
+  XMLHttpRequest.prototype.send = function (...args) {
+    const bag = requests.get(this);
+    if (bag) offer(bag);
+    return nativeSend.apply(this, args);
   };
 
   const nativeFetch = window.fetch;
   window.fetch = function (input, init) {
     const isRequest = input instanceof Request;
     if (isApiCall(isRequest ? input.url : input)) {
-      const headers = new Headers(init?.headers ?? (isRequest ? input.headers : undefined));
-      offer(headers.get("authorization"));
+      const source = new Headers(init?.headers ?? (isRequest ? input.headers : undefined));
+      const bag = {};
+      for (const key of WANTED) {
+        const value = source.get(key);
+        if (value) bag[key] = value;
+      }
+      offer(bag);
     }
     return nativeFetch.apply(this, arguments);
   };

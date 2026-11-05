@@ -2,8 +2,8 @@
 //! gpui has its own executor and reqwest and the gateway need tokio.
 
 use async_channel::{Receiver, Sender};
-use oxicord_api::{ApiClient, ApiError, Credentials};
-use oxicord_browser_login::Outcome;
+use oxicord_api::{ApiClient, ApiError, Credentials, super_props::SuperProperties};
+use oxicord_browser_login::{Capture, Identity, Outcome};
 use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, GatewayHandle};
 use oxicord_model::{User, gateway::DispatchEvent};
 use oxicord_ui::{Backend, Command, Event};
@@ -14,7 +14,8 @@ pub fn start() -> Backend {
     let (command_tx, command_rx) = async_channel::unbounded();
     let (event_tx, event_rx) = async_channel::unbounded();
 
-    let loopback = command_tx.clone();
+    // The sign-in window runs on a thread of its own and reports back here.
+    let (signin_tx, signin_rx) = async_channel::unbounded();
     std::thread::Builder::new()
         .name("oxicord-net".into())
         .spawn(move || {
@@ -23,7 +24,7 @@ pub fn start() -> Backend {
                 .enable_all()
                 .build()
                 .expect("failed to start the network runtime");
-            runtime.block_on(run(command_rx, loopback, event_tx));
+            runtime.block_on(run(command_rx, signin_tx, signin_rx, event_tx));
         })
         .expect("failed to spawn the network thread");
 
@@ -33,46 +34,67 @@ pub fn start() -> Backend {
     }
 }
 
-async fn run(commands: Receiver<Command>, loopback: Sender<Command>, events: Sender<Event>) {
+async fn run(
+    commands: Receiver<Command>,
+    signins: Sender<Capture>,
+    signed_in: Receiver<Capture>,
+    events: Sender<Event>,
+) {
     let mut gateway: Option<GatewayHandle> = None;
     let mut browser_open = false;
 
-    while let Ok(command) = commands.recv().await {
-        match command {
-            Command::Login(token) => {
-                browser_open = false;
-                if let Some(old) = gateway.take() {
-                    old.shutdown();
+    loop {
+        tokio::select! {
+            command = commands.recv() => {
+                let Ok(command) = command else { break };
+                match command {
+                    Command::Login(token) => {
+                        browser_open = false;
+                        replace(&mut gateway, begin_login(token, None, &events).await);
+                    }
+                    Command::BrowserLogin => {
+                        if !browser_open {
+                            browser_open = true;
+                            open_browser(signins.clone(), events.clone());
+                        }
+                    }
+                    Command::Logout => {
+                        browser_open = false;
+                        replace(&mut gateway, None);
+                        credentials::clear();
+                        let _ = events.send(Event::LoggedOut).await;
+                    }
                 }
-                gateway = begin_login(token, &events).await;
             }
-            Command::BrowserLogin => {
-                if browser_open {
-                    continue;
-                }
-                browser_open = true;
-                open_browser(loopback.clone(), events.clone());
-            }
-            Command::Logout => {
+            capture = signed_in.recv() => {
+                let Ok(capture) = capture else { break };
                 browser_open = false;
-                if let Some(old) = gateway.take() {
-                    old.shutdown();
-                }
-                credentials::clear();
-                let _ = events.send(Event::LoggedOut).await;
+                let started = begin_login(capture.token, capture.identity, &events).await;
+                replace(&mut gateway, started);
             }
         }
     }
 }
 
+/// Swaps in a new gateway connection, closing the previous one.
+fn replace(slot: &mut Option<GatewayHandle>, new: Option<GatewayHandle>) {
+    if let Some(old) = std::mem::replace(slot, new) {
+        old.shutdown();
+    }
+}
+
 /// Opens Discord's login page on a blocking thread, since the window owns
-/// that thread's message loop. A token goes back through the normal login
-/// path, anything else is reported as a failure.
-fn open_browser(commands: Sender<Command>, events: Sender<Event>) {
+/// that thread's message loop. What it captured goes back to the main loop
+/// to be logged in, anything else is reported as a failure.
+fn open_browser(signins: Sender<Capture>, events: Sender<Event>) {
     tokio::task::spawn_blocking(move || match oxicord_browser_login::sign_in() {
-        Outcome::Token(token) => {
-            tracing::info!(shape = %token_shape(&token), "sign-in window produced a token");
-            let _ = commands.send_blocking(Command::Login(token));
+        Outcome::SignedIn(capture) => {
+            tracing::info!(
+                shape = %token_shape(&capture.token),
+                identity_captured = capture.identity.is_some(),
+                "sign-in window produced a login"
+            );
+            let _ = signins.send_blocking(capture);
         }
         other => {
             tracing::info!(?other, "sign-in window ended without a token");
@@ -91,17 +113,28 @@ fn browser_failure(outcome: Outcome) -> String {
              Paste a token instead."
                 .into()
         }
-        Outcome::Token(_) => unreachable!("a token is not a failure"),
+        Outcome::SignedIn(_) => unreachable!("a sign-in is not a failure"),
     }
 }
 
 /// Checks the token over REST first, then opens the gateway. The login only
 /// counts once READY arrives, which is where the token gets saved.
-async fn begin_login(token: String, events: &Sender<Event>) -> Option<GatewayHandle> {
+async fn begin_login(
+    token: String,
+    identity: Option<Identity>,
+    events: &Sender<Event>,
+) -> Option<GatewayHandle> {
     let shape = token_shape(&token);
-    tracing::info!(%shape, "checking token over REST");
+    let (props, identity) = resolve_identity(&token, identity);
+    tracing::info!(
+        %shape,
+        user_agent = props.user_agent(),
+        build_number = props.build_number(),
+        from_browser = identity.is_some(),
+        "checking token over REST"
+    );
 
-    let user = match validate(&token).await {
+    let user = match validate(&token, &props).await {
         Ok(user) if user.bot => {
             tracing::warn!("REST accepted the token but it belongs to a bot");
             let message = "That is a bot token. Only user account tokens work here.";
@@ -121,7 +154,34 @@ async fn begin_login(token: String, events: &Sender<Event>) -> Option<GatewayHan
             return None;
         }
     };
-    Some(connect(token, user, events.clone()))
+    Some(connect(token, props, identity, user, events.clone()))
+}
+
+/// Picks the identity to present with this token: the one the sign-in window
+/// reported, else the one we saved for this very token, else the default.
+/// Returns the identity actually used, so it can be saved with the token.
+fn resolve_identity(token: &str, given: Option<Identity>) -> (SuperProperties, Option<Identity>) {
+    let candidate = given.or_else(|| {
+        credentials::load()
+            .filter(|saved| saved.token == token)
+            .and_then(|saved| saved.identity)
+    });
+
+    let Some(identity) = candidate else {
+        return (SuperProperties::default(), None);
+    };
+    match SuperProperties::from_browser(
+        &identity.user_agent,
+        &identity.super_properties,
+        identity.locale.as_deref(),
+        identity.timezone.as_deref(),
+    ) {
+        Ok(props) => (props, Some(identity)),
+        Err(err) => {
+            tracing::warn!(%err, "the captured identity was unusable, using the default");
+            (SuperProperties::default(), None)
+        }
+    }
 }
 
 /// Length and layout of a token, for the log. Enough to spot a truncated or
@@ -131,8 +191,8 @@ fn token_shape(token: &str) -> String {
     format!("{} chars, segments [{}]", token.len(), parts.join(", "))
 }
 
-async fn validate(token: &str) -> Result<User, ApiError> {
-    let client = ApiClient::new(&Credentials::Token(token.to_owned()))?;
+async fn validate(token: &str, props: &SuperProperties) -> Result<User, ApiError> {
+    let client = ApiClient::with_props(&Credentials::Token(token.to_owned()), props)?;
     client.current_user().await
 }
 
@@ -148,7 +208,7 @@ fn describe(err: &ApiError) -> String {
 
 /// A dead token shouldn't be retried at every launch.
 fn forget_if_saved(token: &str) {
-    if credentials::load().as_deref() == Some(token) {
+    if credentials::load().is_some_and(|saved| saved.token == token) {
         credentials::clear();
     }
 }
@@ -209,8 +269,18 @@ fn route(waiting: bool, event: &GatewayEvent) -> Routed {
 /// Starts the gateway and forwards what it produces to the UI. Until READY
 /// arrives the login is provisional: success saves the token and tells the
 /// UI, failure reports back to the login screen.
-fn connect(token: String, user: User, events: Sender<Event>) -> GatewayHandle {
-    let (handle, mut gateway_events) = oxicord_gateway::spawn(GatewayConfig::new(token.clone()));
+fn connect(
+    token: String,
+    props: SuperProperties,
+    identity: Option<Identity>,
+    user: User,
+    events: Sender<Event>,
+) -> GatewayHandle {
+    let config = GatewayConfig {
+        props,
+        ..GatewayConfig::new(token.clone())
+    };
+    let (handle, mut gateway_events) = oxicord_gateway::spawn(config);
 
     tokio::spawn(async move {
         let mut waiting = true;
@@ -223,7 +293,7 @@ fn connect(token: String, user: User, events: Sender<Event>) -> GatewayHandle {
             let routed = route(waiting, &event);
 
             if routed.save_token {
-                credentials::save(&token);
+                credentials::save(&token, identity.as_ref());
             }
             if routed.forget_token {
                 forget_if_saved(&token);
