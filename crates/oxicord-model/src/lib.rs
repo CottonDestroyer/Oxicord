@@ -38,7 +38,9 @@ pub use notification::{
     ChannelOverride, GuildNotificationSettings, MuteConfig, NotificationSettingsList, NotifyLevel,
     mute_active,
 };
-pub use message::{Message, MessageType, PartialMessage, Reaction};
+pub use message::{
+    Message, MessageSnapshot, MessageType, PartialMessage, Reaction, SnapshotMessage, StickerItem,
+};
 pub use permissions::Permissions;
 pub use poll::{Poll, PollAnswer, Tally};
 pub use presence::{Activity, Status};

@@ -985,6 +985,12 @@ impl ChatView {
         {
             body = body.child(reactions);
         }
+        if let Some(forwarded) = self.render_forwards(&message, window, cx) {
+            body = body.child(forwarded);
+        }
+        if let Some(stickers) = self.render_stickers(&message, cx) {
+            body = body.child(stickers);
+        }
         if let Some(poll) = self.render_poll(&message, cx) {
             body = body.child(poll);
         }

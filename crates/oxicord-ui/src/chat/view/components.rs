@@ -198,6 +198,93 @@ impl ChatView {
         }
     }
 
+    /// Stickers sent with a message. Lottie ones are vector animations we
+    /// cannot play, so they show their name instead.
+    pub(super) fn render_stickers(&mut self, message: &Message, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if message.sticker_items.is_empty() {
+            return None;
+        }
+        let mut row = div().mt_1().flex().flex_wrap().gap_2();
+        for (i, sticker) in message.sticker_items.iter().enumerate() {
+            if sticker.is_lottie() {
+                row = row.child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .rounded(px(6.))
+                        .bg(rgb(theme::BG_SIDEBAR))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .child(format!("Sticker: {}", sticker.name)),
+                );
+                continue;
+            }
+            let url = oxicord_media::cdn::sticker(sticker.id, sticker.extension(), 160);
+            let id = SharedString::from(format!("sticker-{}-{i}", message.id));
+            row = row.child(picture(&self.media, &url, &url, (160., 160.), id, cx));
+        }
+        Some(row.into_any_element())
+    }
+
+    /// Messages forwarded into this one, each in a quoted box.
+    pub(super) fn render_forwards(
+        &mut self,
+        message: &Message,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if message.message_snapshots.is_empty() {
+            return None;
+        }
+        let mut column = div().mt_1().flex().flex_col().gap_1();
+        for (i, snapshot) in message.message_snapshots.iter().enumerate() {
+            let inner = &snapshot.message;
+            // The shared renderers read a whole message, so lend them a copy
+            // of this one carrying the forwarded content.
+            let mut borrowed = message.clone();
+            borrowed.content = inner.content.clone();
+            borrowed.attachments = inner.attachments.clone();
+            borrowed.embeds = inner.embeds.clone();
+            borrowed.mentions = inner.mentions.clone();
+            borrowed.sticker_items = inner.sticker_items.clone();
+            borrowed.components.clear();
+            borrowed.poll = None;
+            borrowed.reactions.clear();
+
+            let mut card = div()
+                .max_w(px(520.))
+                .pl_3()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .border_l_2()
+                .border_color(rgb(theme::BORDER))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .text_size(px(12.))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .child(icon("forward", 12., theme::TEXT_MUTED))
+                        .child("Forwarded"),
+                );
+            if !borrowed.content.is_empty() {
+                card = card.child(self.render_text(&borrowed, &borrowed.content, 1000 + i as u64, false, window, cx));
+            }
+            if let Some(files) = crate::chat::attachments::render_attachments(&borrowed, &self.media, true, cx) {
+                card = card.child(files);
+            }
+            if let Some(embeds) = crate::chat::attachments::render_embeds(&borrowed, &self.media, true, cx) {
+                card = card.child(embeds);
+            }
+            if let Some(stickers) = self.render_stickers(&borrowed, cx) {
+                card = card.child(stickers);
+            }
+            column = column.child(card);
+        }
+        Some(column.into_any_element())
+    }
+
     /// A message's poll: the question, each answer with its share of the
     /// votes, and a line saying when it ends.
     pub(super) fn render_poll(&mut self, message: &Message, cx: &mut Context<Self>) -> Option<AnyElement> {

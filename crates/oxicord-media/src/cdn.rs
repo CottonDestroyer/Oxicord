@@ -27,6 +27,11 @@ pub fn group_icon(channel: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/channel-icons/{channel}/{hash}.png?size={size}")
 }
 
+/// A sticker's picture. `extension` is `png` or `gif`.
+pub fn sticker(id: Snowflake, extension: &str, size: u32) -> String {
+    format!("https://media.discordapp.net/stickers/{id}.{extension}?size={size}")
+}
+
 pub fn emoji(id: Snowflake, size: u32) -> String {
     format!("{CDN}/emojis/{id}.png?size={size}&quality=lossless")
 }
