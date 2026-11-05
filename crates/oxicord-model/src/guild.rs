@@ -20,6 +20,8 @@ pub struct Guild {
     pub channels: Vec<Channel>,
     pub threads: Vec<Channel>,
     pub emojis: Vec<Emoji>,
+    /// 0 notify for every message, 1 only for mentions.
+    pub default_message_notifications: u8,
     /// Only the members the server chose to include. For a user account
     /// that is usually just ourselves.
     pub members: Vec<Member>,
@@ -49,6 +51,8 @@ struct RawGuild {
     #[serde(default)]
     emojis: Vec<Emoji>,
     #[serde(default)]
+    default_message_notifications: Option<u8>,
+    #[serde(default)]
     members: Vec<Member>,
 }
 
@@ -59,6 +63,7 @@ struct GuildProperties {
     icon: Option<String>,
     owner_id: Option<Snowflake>,
     member_count: Option<u64>,
+    default_message_notifications: Option<u8>,
 }
 
 impl From<RawGuild> for Guild {
@@ -83,6 +88,10 @@ impl From<RawGuild> for Guild {
             channels,
             threads,
             emojis: raw.emojis,
+            default_message_notifications: raw
+                .default_message_notifications
+                .or(props.default_message_notifications)
+                .unwrap_or(0),
             members: raw.members,
         }
     }

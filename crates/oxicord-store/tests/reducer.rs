@@ -709,3 +709,165 @@ fn pinning_flips_the_flag_on_a_loaded_message() {
     // A message we never loaded changes nothing.
     assert!(store.set_pinned(id(11), id(999), true).is_empty());
 }
+
+fn ready_with_settings(settings: Value) -> Store {
+    let mut data = ready_json();
+    data["user_guild_settings"] = json!({ "entries": settings, "partial": false });
+    let mut store = Store::new();
+    store.apply(event("READY", data));
+    store
+}
+
+fn chat(channel: &str, content: &str, mention_everyone: bool) -> Message {
+    serde_json::from_value(json!({
+        "id": "9000", "channel_id": channel, "guild_id": if channel == "50" { Value::Null } else { json!("100") },
+        "author": { "id": "2", "username": "ada" }, "content": content,
+        "timestamp": "2024-05-01T12:00:00.000000+00:00", "type": 0,
+        "mention_everyone": mention_everyone
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_muted_server_never_shows_unread_but_still_counts_mentions() {
+    let store = ready_with_settings(json!([{ "guild_id": "100", "muted": true }]));
+    // Channel 11 has unread messages, but the server is muted.
+    assert!(!store.unread(id(11)).unread);
+    assert!(!store.guild_unread(id(GUILD)).unread);
+    assert!(store.guild_muted(id(GUILD)));
+}
+
+#[test]
+fn an_expired_mute_no_longer_applies() {
+    let store = ready_with_settings(json!([{
+        "guild_id": "100", "muted": true, "mute_config": { "end_time": "2020-01-01T00:00:00+00:00" }
+    }]));
+    assert!(!store.guild_muted(id(GUILD)));
+    assert!(store.unread(id(11)).unread);
+}
+
+#[test]
+fn a_channel_override_beats_the_server_setting() {
+    let store = ready_with_settings(json!([{
+        "guild_id": "100", "message_notifications": 0,
+        "channel_overrides": [{ "channel_id": "11", "muted": true }]
+    }]));
+    let general = store.channel(id(11)).unwrap();
+    assert!(store.is_muted(general));
+    assert!(!store.is_notable(&chat("11", "hello", false)));
+    // Another channel in the same server is not muted and notifies on all.
+    assert!(store.is_notable(&chat("15", "hello", false)));
+}
+
+#[test]
+fn levels_gate_which_messages_notify() {
+    let store = ready_with_settings(json!([{ "guild_id": "100", "message_notifications": 1 }]));
+    assert!(!store.is_notable(&chat("11", "just chatting", false)));
+    assert!(store.is_notable(&chat("11", "@everyone", true)));
+
+    let silent = ready_with_settings(json!([{ "guild_id": "100", "message_notifications": 2 }]));
+    assert!(!silent.is_notable(&chat("11", "@everyone", true)));
+
+    // Our own messages never notify, and a DM always does by default.
+    assert!(ready_store().is_notable(&chat("50", "hi", false)));
+}
+
+#[test]
+fn suppressing_everyone_stops_it_counting_as_a_mention() {
+    let mut store = ready_with_settings(json!([{ "guild_id": "100", "suppress_everyone": true }]));
+    store.open_channel(id(11));
+    store.apply(event(
+        "MESSAGE_CREATE",
+        json!({ "id": "9100", "channel_id": "11", "guild_id": "100",
+                "author": { "id": "2", "username": "ada" }, "content": "@everyone",
+                "mention_everyone": true,
+                "timestamp": "2024-05-01T12:00:00.000000+00:00", "type": 0 }),
+    ));
+    assert_eq!(store.unread(id(11)).mentions, 0);
+}
+
+#[test]
+fn settings_updates_replace_one_servers_entry() {
+    let mut store = ready_store();
+    assert!(!store.guild_muted(id(GUILD)));
+    let changes = store.apply(event(
+        "USER_GUILD_SETTINGS_UPDATE",
+        json!({ "guild_id": "100", "muted": true }),
+    ));
+    assert!(store.guild_muted(id(GUILD)));
+    assert!(changes.guild_list && changes.channel_lists.contains(&id(GUILD)));
+}
+
+fn with_reactions() -> Store {
+    let mut store = ready_store();
+    store.open_channel(id(11));
+    store.apply(event(
+        "MESSAGE_CREATE",
+        json!({ "id": "800", "channel_id": "11", "guild_id": "100",
+                "author": { "id": "2", "username": "ada" }, "content": "x",
+                "timestamp": "2024-05-01T12:00:00.000000+00:00", "type": 0,
+                "reactions": [
+                    { "count": 2, "me": false, "emoji": { "name": "👍" } },
+                    { "count": 1, "me": true, "emoji": { "name": "🎉" } } ] }),
+    ));
+    store
+}
+
+#[test]
+fn clearing_one_emoji_leaves_the_others() {
+    let mut store = with_reactions();
+    store.apply(event(
+        "MESSAGE_REACTION_REMOVE_EMOJI",
+        json!({ "channel_id": "11", "message_id": "800", "emoji": { "name": "👍" } }),
+    ));
+    let reactions = &store.timeline(id(11)).unwrap().get(id(800)).unwrap().reactions;
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(reactions[0].emoji.name.as_deref(), Some("🎉"));
+}
+
+#[test]
+fn clearing_all_removes_every_reaction() {
+    let mut store = with_reactions();
+    let changes = store.apply(event(
+        "MESSAGE_REACTION_REMOVE_ALL",
+        json!({ "channel_id": "11", "message_id": "800" }),
+    ));
+    assert!(changes.messages.contains(&id(11)));
+    assert!(store.timeline(id(11)).unwrap().get(id(800)).unwrap().reactions.is_empty());
+}
+
+#[test]
+fn passive_updates_light_up_channels_in_big_servers() {
+    let mut store = ready_store();
+    assert!(!store.unread(id(15)).unread);
+    let changes = store.apply(event(
+        "PASSIVE_UPDATE_V2",
+        json!({ "guild_id": "100", "updated_channels": [{ "id": "15", "last_message_id": "9999" }] }),
+    ));
+    assert!(changes.guild_list);
+    assert_eq!(store.channel(id(15)).unwrap().last_message_id, Some(id(9999)));
+    // An older id never moves the marker back.
+    store.apply(event(
+        "PASSIVE_UPDATE_V2",
+        json!({ "guild_id": "100", "updated_channels": [{ "id": "15", "last_message_id": "5" }] }),
+    ));
+    assert_eq!(store.channel(id(15)).unwrap().last_message_id, Some(id(9999)));
+}
+
+#[test]
+fn our_own_profile_updates_and_group_members_come_and_go() {
+    let mut store = ready_store();
+    store.apply(event("CURRENT_USER_UPDATE", json!({ "id": "1", "username": "me", "global_name": "New Me" })));
+    assert_eq!(store.me().unwrap().display_name(), "New Me");
+
+    store.apply(event(
+        "CHANNEL_RECIPIENT_ADD",
+        json!({ "channel_id": "50", "user": { "id": "7", "username": "cy" } }),
+    ));
+    assert_eq!(store.channel(id(50)).unwrap().recipients.len(), 2);
+    store.apply(event(
+        "CHANNEL_RECIPIENT_REMOVE",
+        json!({ "channel_id": "50", "user": { "id": "7", "username": "cy" } }),
+    ));
+    assert_eq!(store.channel(id(50)).unwrap().recipients.len(), 1);
+}

@@ -5,6 +5,7 @@
 mod apply;
 mod changes;
 mod member_list;
+mod notifications;
 pub mod perms;
 mod state;
 mod timeline;

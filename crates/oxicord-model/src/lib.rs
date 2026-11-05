@@ -11,6 +11,7 @@ pub mod emoji;
 pub mod gateway;
 pub mod guild;
 pub mod member;
+pub mod notification;
 pub mod message;
 pub mod permissions;
 pub mod presence;
@@ -28,6 +29,10 @@ pub use embed::Embed;
 pub use emoji::Emoji;
 pub use guild::Guild;
 pub use member::{Member, MemberList};
+pub use notification::{
+    ChannelOverride, GuildNotificationSettings, MuteConfig, NotificationSettingsList, NotifyLevel,
+    mute_active,
+};
 pub use message::{Message, MessageType, PartialMessage, Reaction};
 pub use permissions::Permissions;
 pub use presence::{Activity, Status};

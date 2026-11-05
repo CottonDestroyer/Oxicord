@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use oxicord_model::{
-    Channel, ChannelType, Guild, Member, Permissions, ReadState, Relationship, RelationshipKind,
-    Role, Snowflake, Status, User,
+    Channel, ChannelType, Guild, GuildNotificationSettings, Member, Permissions, ReadState,
+    Relationship, RelationshipKind, Role, Snowflake, Status, User,
 };
 
 use crate::{
@@ -47,6 +47,9 @@ pub struct Store {
     pub(crate) typing: HashMap<Snowflake, HashMap<Snowflake, u64>>,
     /// Friends, requests and blocks, keyed by the other person.
     pub(crate) relationships: HashMap<Snowflake, Relationship>,
+    /// Notification settings per server, `None` holding the one for direct
+    /// messages.
+    pub(crate) notifications: HashMap<Option<Snowflake>, GuildNotificationSettings>,
 }
 
 impl Store {
@@ -226,7 +229,8 @@ impl Store {
             return Unread::default();
         };
         Unread {
-            unread: chan.last_message_id > read.last_message_id,
+            // A muted channel still counts mentions but never lights up as unread.
+            unread: chan.last_message_id > read.last_message_id && !self.is_muted(chan),
             mentions: read.mention_count,
         }
     }

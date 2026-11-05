@@ -67,6 +67,30 @@ impl Store {
             }
             DispatchEvent::PresenceUpdate(p) => self.on_presence(p, &mut changes),
             DispatchEvent::RelationshipAdd(r) => self.on_relationship_add(*r, &mut changes),
+            DispatchEvent::ReactionsCleared(e) => self.on_reactions_cleared(e, &mut changes),
+            DispatchEvent::PassiveUpdate(p) => self.on_passive_update(p, &mut changes),
+            DispatchEvent::CurrentUserUpdate(user) => {
+                self.users.insert(user.id, (*user).clone());
+                self.me = Some(*user);
+                changes.dm_list = true;
+                changes.guild_list = true;
+            }
+            DispatchEvent::RecipientAdd(e) => self.on_recipient(e, true, &mut changes),
+            DispatchEvent::RecipientRemove(e) => self.on_recipient(e, false, &mut changes),
+            DispatchEvent::GuildEmojisUpdate(e) => {
+                if let Some(guild) = self.guilds.get_mut(&e.guild_id) {
+                    guild.emojis = e.emojis;
+                }
+            }
+            DispatchEvent::GuildSettingsUpdate(settings) => {
+                let guild = settings.guild_id;
+                self.set_guild_settings(*settings);
+                changes.guild_list = true;
+                changes.dm_list = true;
+                if let Some(guild) = guild {
+                    changes.channel_lists.insert(guild);
+                }
+            }
             DispatchEvent::RelationshipRemove(r) => {
                 self.relationships.remove(&r.id);
                 changes.relationships = true;
@@ -152,6 +176,12 @@ impl Store {
 
         for channel in ready.private_channels {
             self.ingest_channel(channel);
+        }
+
+        if let Some(list) = ready.user_guild_settings {
+            for entry in list.entries {
+                self.set_guild_settings(entry);
+            }
         }
 
         for relationship in ready.relationships {
@@ -362,6 +392,47 @@ impl Store {
         changes.messages.insert(event.channel_id);
     }
 
+    fn on_reactions_cleared(&mut self, event: oxicord_model::gateway::ReactionsCleared, changes: &mut Changes) {
+        let Some(message) = self
+            .timelines
+            .get_mut(&event.channel_id)
+            .and_then(|t| t.get_mut(event.message_id))
+        else {
+            return;
+        };
+        match &event.emoji {
+            Some(emoji) => message.reactions.retain(|r| !same_emoji(&r.emoji, emoji)),
+            None => message.reactions.clear(),
+        }
+        changes.messages.insert(event.channel_id);
+    }
+
+    /// Moves channels' last message forward so unread markers appear for
+    /// servers too big to send every message to us.
+    fn on_passive_update(&mut self, update: oxicord_model::gateway::PassiveUpdate, changes: &mut Changes) {
+        for activity in update.updated_channels {
+            let Some(channel) = self.channels.get_mut(&activity.id) else { continue };
+            if activity.last_message_id > channel.last_message_id {
+                channel.last_message_id = activity.last_message_id;
+                changes.channel_lists.insert(update.guild_id);
+                changes.guild_list = true;
+            }
+        }
+    }
+
+    fn on_recipient(&mut self, event: oxicord_model::gateway::RecipientChange, add: bool, changes: &mut Changes) {
+        let Some(channel) = self.channels.get_mut(&event.channel_id) else { return };
+        if add {
+            if !channel.recipients.iter().any(|u| u.id == event.user.id) {
+                self.users.insert(event.user.id, event.user.clone());
+                channel.recipients.push(event.user);
+            }
+        } else {
+            channel.recipients.retain(|u| u.id != event.user.id);
+        }
+        changes.dm_list = true;
+    }
+
     fn on_guild_update(&mut self, update: oxicord_model::Guild, changes: &mut Changes) {
         let Some(guild) = self.guilds.get_mut(&update.id) else {
             return;
@@ -474,13 +545,7 @@ impl Store {
         changes.typing.insert(typing.channel_id);
     }
 
-    /// Whether a message from someone else is worth interrupting for: a
-    /// DM, or a mention of us, our roles or everyone.
-    pub fn is_notable(&self, message: &Message) -> bool {
-        Some(message.author.id) != self.my_id() && self.mentions_me(message)
-    }
-
-    fn mentions_me(&self, message: &Message) -> bool {
+    pub(crate) fn mentions_me(&self, message: &Message) -> bool {
         let Some(me) = self.my_id() else {
             return false;
         };
@@ -494,9 +559,10 @@ impl Store {
             None => true,
             Some(guild) => {
                 let roles = self.my_roles(guild);
-                message.mention_everyone
+                let (no_everyone, no_roles) = self.suppresses(guild);
+                (message.mention_everyone && !no_everyone)
                     || message.mentions.iter().any(|u| u.id == me)
-                    || message.mention_roles.iter().any(|r| roles.contains(r))
+                    || (!no_roles && message.mention_roles.iter().any(|r| roles.contains(r)))
             }
         }
     }

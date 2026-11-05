@@ -37,6 +37,7 @@ struct ChannelItem {
     name: String,
     kind: ChannelType,
     unread: Unread,
+    muted: bool,
 }
 
 struct GroupItem {
@@ -388,6 +389,7 @@ impl MainView {
                         name: c.name.clone().unwrap_or_default(),
                         kind: c.kind,
                         unread: store.unread(c.id),
+                        muted: store.is_muted(c),
                     })
                     .collect(),
             })
@@ -581,6 +583,8 @@ impl MainView {
         };
         let color = if selected || channel.unread.unread {
             theme::TEXT_BRIGHT
+        } else if channel.muted {
+            theme::TEXT_FAINT
         } else {
             theme::TEXT_MUTED
         };

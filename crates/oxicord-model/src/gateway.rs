@@ -2,8 +2,9 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    Activity, Channel, Emoji, Guild, MemberList, Message, PartialMessage, ReadState,
-    Relationship, RelationshipRemove, Role, Snowflake, Status, User,
+    Activity, Channel, Emoji, Guild, GuildNotificationSettings, MemberList, Message,
+    NotificationSettingsList, PartialMessage, ReadState, Relationship, RelationshipRemove, Role,
+    Snowflake, Status, User,
 };
 
 pub mod op {
@@ -61,6 +62,8 @@ pub struct Ready {
     pub merged_members: Vec<MemberList>,
     #[serde(default)]
     pub relationships: Vec<Relationship>,
+    #[serde(default)]
+    pub user_guild_settings: Option<NotificationSettingsList>,
 }
 
 /// Follows READY with data that didn't fit in it. All we use is
@@ -219,6 +222,46 @@ pub struct ReactionEvent {
     pub emoji: Emoji,
 }
 
+/// MESSAGE_REACTION_REMOVE_ALL and _EMOJI. The emoji is only present on the
+/// second kind.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReactionsCleared {
+    pub channel_id: Snowflake,
+    pub message_id: Snowflake,
+    #[serde(default)]
+    pub emoji: Option<Emoji>,
+}
+
+/// Large servers send channel activity in bulk instead of one event per
+/// message, so unread state depends on this.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PassiveUpdate {
+    pub guild_id: Snowflake,
+    #[serde(default)]
+    pub updated_channels: Vec<ChannelActivity>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ChannelActivity {
+    pub id: Snowflake,
+    #[serde(default)]
+    pub last_message_id: Option<Snowflake>,
+}
+
+/// A person joining or leaving a group DM.
+#[derive(Clone, Debug, Deserialize)]
+pub struct RecipientChange {
+    pub channel_id: Snowflake,
+    pub user: User,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GuildEmojisUpdate {
+    pub guild_id: Snowflake,
+    #[serde(default)]
+    pub emojis: Vec<Emoji>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct MessageAck {
     pub channel_id: Snowflake,
@@ -292,6 +335,13 @@ pub enum DispatchEvent {
     PresenceUpdate(PresenceUpdate),
     RelationshipAdd(Box<Relationship>),
     RelationshipRemove(RelationshipRemove),
+    ReactionsCleared(ReactionsCleared),
+    PassiveUpdate(PassiveUpdate),
+    CurrentUserUpdate(Box<User>),
+    RecipientAdd(RecipientChange),
+    RecipientRemove(RecipientChange),
+    GuildEmojisUpdate(GuildEmojisUpdate),
+    GuildSettingsUpdate(Box<GuildNotificationSettings>),
     TypingStart(TypingStart),
     GuildMemberListUpdate(Box<MemberListUpdate>),
     Unknown { name: String, data: Value },
@@ -325,6 +375,15 @@ impl DispatchEvent {
             "PRESENCE_UPDATE" => Self::PresenceUpdate(de(data)?),
             "RELATIONSHIP_ADD" => Self::RelationshipAdd(Box::new(de(data)?)),
             "RELATIONSHIP_REMOVE" => Self::RelationshipRemove(de(data)?),
+            "USER_GUILD_SETTINGS_UPDATE" => Self::GuildSettingsUpdate(Box::new(de(data)?)),
+            "MESSAGE_REACTION_REMOVE_ALL" | "MESSAGE_REACTION_REMOVE_EMOJI" => {
+                Self::ReactionsCleared(de(data)?)
+            }
+            "PASSIVE_UPDATE_V2" => Self::PassiveUpdate(de(data)?),
+            "CURRENT_USER_UPDATE" => Self::CurrentUserUpdate(Box::new(de(data)?)),
+            "CHANNEL_RECIPIENT_ADD" => Self::RecipientAdd(de(data)?),
+            "CHANNEL_RECIPIENT_REMOVE" => Self::RecipientRemove(de(data)?),
+            "GUILD_EMOJIS_UPDATE" => Self::GuildEmojisUpdate(de(data)?),
             "TYPING_START" => Self::TypingStart(de(data)?),
             "GUILD_MEMBER_LIST_UPDATE" => Self::GuildMemberListUpdate(Box::new(de(data)?)),
             _ => Self::Unknown {
