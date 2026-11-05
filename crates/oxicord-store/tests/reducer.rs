@@ -455,6 +455,25 @@ fn presence_tracks_status_and_forgets_offline_users() {
 }
 
 #[test]
+fn activities_follow_presence_and_go_with_it() {
+    let mut store = ready_store();
+    let update = |status: &str, activities: serde_json::Value| event("PRESENCE_UPDATE", json!({
+        "user": { "id": "2" }, "status": status, "activities": activities
+    }));
+
+    store.apply(update("online", json!([{ "name": "Minecraft", "type": 0 }, { "broken": true }])));
+    assert_eq!(store.activities(id(ADA)).len(), 1);
+    assert_eq!(store.activities(id(ADA))[0].name, "Minecraft");
+
+    store.apply(update("online", json!(null)));
+    assert!(store.activities(id(ADA)).is_empty());
+
+    store.apply(update("online", json!([{ "name": "Minecraft", "type": 0 }])));
+    store.apply(update("offline", json!([{ "name": "Minecraft", "type": 0 }])));
+    assert!(store.activities(id(ADA)).is_empty());
+}
+
+#[test]
 fn ready_wipes_state_from_the_previous_session() {
     let mut store = ready_store();
     store.open_channel(id(11));

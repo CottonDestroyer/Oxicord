@@ -51,7 +51,7 @@ pub use message::{
 };
 pub use permissions::Permissions;
 pub use poll::{Poll, PollAnswer, Tally};
-pub use presence::{Activity, Status};
+pub use presence::{Activity, ActivityTimestamps, ActivityType, Status};
 pub use read_state::ReadState;
 pub use relationship::{Relationship, RelationshipKind, RelationshipRemove};
 pub use role::Role;

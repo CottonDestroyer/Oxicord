@@ -1,5 +1,5 @@
 use oxicord_model::{
-    Emoji, Message, PartialMessage, Reaction, ReadState, Relationship, Snowflake, Status,
+    Activity, Emoji, Message, PartialMessage, Reaction, ReadState, Relationship, Snowflake, Status,
     gateway::{
         DispatchEvent, GuildDelete, GuildMemberUpdate, GuildRoleDelete, GuildRoleEvent,
         MemberListUpdate, MessageAck, MessageDelete, MessageDeleteBulk, PresenceUpdate,
@@ -249,7 +249,7 @@ impl Store {
 
         for member in state.apply(update) {
             if let Some(presence) = member.presence {
-                self.set_presence(member.user.id, presence.status);
+                self.set_presence(member.user.id, presence.status, presence.activities);
                 changes.presences = true;
             }
             self.users.insert(member.user.id, member.user);
@@ -258,11 +258,17 @@ impl Store {
     }
 
     /// Presence is per user, so one entry serves every place they appear.
-    fn set_presence(&mut self, user: Snowflake, status: Status) {
+    fn set_presence(&mut self, user: Snowflake, status: Status, activities: Vec<Activity>) {
         if status == Status::Offline {
             self.presences.remove(&user);
         } else {
             self.presences.insert(user, status);
+        }
+        // Someone who went offline or invisible is doing nothing we may see.
+        if status == Status::Offline || activities.is_empty() {
+            self.activities.remove(&user);
+        } else {
+            self.activities.insert(user, activities);
         }
     }
 
@@ -274,7 +280,7 @@ impl Store {
 
         if let Some(presences) = &extra.merged_presences {
             for entry in &presences.friends {
-                self.set_presence(entry.user_id, entry.status);
+                self.set_presence(entry.user_id, entry.status, entry.activities.clone());
             }
             changes.presences = true;
             changes.dm_list = true;
@@ -613,7 +619,7 @@ impl Store {
     }
 
     fn on_presence(&mut self, update: PresenceUpdate, changes: &mut Changes) {
-        self.set_presence(update.user.id, update.status);
+        self.set_presence(update.user.id, update.status, update.activities);
         changes.presences = true;
     }
 

@@ -5,7 +5,7 @@ use gpui_kit::{
     component::input::{Input, InputState},
 };
 use oxicord_media::cdn;
-use oxicord_model::{RelationshipKind, Snowflake, Status};
+use oxicord_model::{Activity, ActivityType, RelationshipKind, Snowflake, Status};
 use oxicord_store::Changes;
 
 use crate::{
@@ -48,11 +48,31 @@ struct Person {
     avatar: String,
     status: Status,
     kind: RelationshipKind,
+    custom_status: Option<String>,
 }
 
 struct Section {
     title: &'static str,
     people: Vec<Person>,
+}
+
+/// What a friend is up to, as drawn on an Active Now card.
+enum Doing {
+    Activity(Activity),
+    /// In a voice channel, with the channel and server names.
+    Voice { channel: String, guild: String },
+}
+
+/// The Active Now column needs room the friend list can spare.
+const ACTIVE_NOW_MIN_WINDOW: f32 = 1100.;
+const ACTIVE_NOW_WIDTH: f32 = 360.;
+
+/// The words a custom status shows, its emoji first when it has a plain one.
+fn custom_status(activities: &[Activity]) -> Option<String> {
+    let custom = activities.iter().find(|a| a.is_custom_status())?;
+    let glyph = custom.emoji.as_ref().filter(|e| e.id.is_none()).and_then(|e| e.name.clone());
+    let text = [glyph, custom.state.clone()].into_iter().flatten().collect::<Vec<_>>().join(" ");
+    (!text.is_empty()).then_some(text)
 }
 
 /// The home screen: everyone you have a tie with, split into tabs.
@@ -97,14 +117,197 @@ impl FriendsView {
     }
 
     fn person(&self, user: &oxicord_model::User, kind: RelationshipKind, cx: &gpui_kit::App) -> Person {
+        let store = &self.session.read(cx).store;
         Person {
             id: user.id,
             name: user.display_name().to_owned(),
             username: user.username.clone(),
             avatar: cdn::user_avatar(user.id, user.avatar.as_deref(), 64),
-            status: self.session.read(cx).store.presence(user.id),
+            status: store.presence(user.id),
             kind,
+            custom_status: custom_status(store.activities(user.id)),
         }
+    }
+
+    /// Friends doing something worth showing: a game, music, a stream, or
+    /// sitting in voice. A custom status alone does not count.
+    fn active_now(&self, cx: &gpui_kit::App) -> Vec<(Person, Doing)> {
+        let store = &self.session.read(cx).store;
+        store
+            .relationships(RelationshipKind::Friend)
+            .into_iter()
+            .filter(|user| store.presence(user.id) != Status::Offline)
+            .filter_map(|user| {
+                let activity = store.activities(user.id).iter().find(|a| a.verb().is_some()).cloned();
+                let doing = match activity {
+                    Some(activity) => Doing::Activity(activity),
+                    None => {
+                        let voice = store.voice_of(user.id)?;
+                        let channel = store.channel(voice.channel_id?)?;
+                        let guild = channel.guild_id.and_then(|g| store.guild(g)).map(|g| g.name.clone());
+                        Doing::Voice {
+                            channel: channel.name.clone().unwrap_or_default(),
+                            guild: guild.unwrap_or_default(),
+                        }
+                    }
+                };
+                Some((self.person(user, RelationshipKind::Friend, cx), doing))
+            })
+            .collect()
+    }
+
+    fn render_active_now(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let active = self.active_now(cx);
+        let mut list = div().id("active-now").flex_1().min_h_0().overflow_y_scroll().flex().flex_col().gap_2();
+        if active.is_empty() {
+            list = list.child(
+                div()
+                    .pt_4()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_1()
+                    .text_center()
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child("It's quiet for now..."),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child("When a friend starts a game, plays music or joins voice, it shows up here."),
+                    ),
+            );
+        }
+        for (person, doing) in active {
+            list = list.child(self.render_active_card(person, doing, cx));
+        }
+
+        div()
+            .w(px(ACTIVE_NOW_WIDTH))
+            .h_full()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .p_4()
+            .border_l_1()
+            .border_color(rgb(theme::BORDER))
+            .child(
+                div()
+                    .text_size(px(20.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("Active Now"),
+            )
+            .child(list)
+            .into_any_element()
+    }
+
+    fn render_active_card(&mut self, person: Person, doing: Doing, cx: &mut Context<Self>) -> AnyElement {
+        let id = person.id;
+        let (summary, glyph, title, lines): (String, &str, String, Vec<String>) = match doing {
+            Doing::Activity(a) => {
+                let glyph = match a.kind {
+                    ActivityType::Listening => "music",
+                    ActivityType::Watching => "tv",
+                    ActivityType::Streaming => "radio",
+                    ActivityType::Competing => "trophy",
+                    _ => "gamepad-2",
+                };
+                let summary = format!("{} {}", a.verb().unwrap_or_default(), a.name);
+                (summary, glyph, a.name, [a.details, a.state].into_iter().flatten().collect())
+            }
+            Doing::Voice { channel, guild } => {
+                ("In voice".to_owned(), "volume-2", channel, vec![guild].into_iter().filter(|g| !g.is_empty()).collect())
+            }
+        };
+
+        div()
+            .id(("active-now", id.0))
+            .p_3()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .bg(rgb(theme::BG_SIDEBAR))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_click(cx.listener(move |this, _, _, cx| this.message(id, cx)))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .relative()
+                            .flex_none()
+                            .child(avatar(&self.media, &person.avatar, 32., &person.name, cx))
+                            .child(presence_dot(person.status)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .truncate()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(theme::TEXT_BRIGHT))
+                                    .child(person.name),
+                            )
+                            .child(
+                                div().truncate().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(summary),
+                            ),
+                    ),
+            )
+            .child(
+                div()
+                    .p_2()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .rounded(px(6.))
+                    .bg(rgb(theme::BG_PANEL))
+                    .child(
+                        div()
+                            .size(px(40.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(8.))
+                            .bg(rgb(theme::BG_ACTIVE))
+                            .child(icon(glyph, 22., theme::TEXT_MUTED)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(theme::TEXT))
+                                    .child(title),
+                            )
+                            .children(lines.into_iter().map(|line| {
+                                div().truncate().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(line)
+                            })),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn people(&self, kind: RelationshipKind, cx: &gpui_kit::App) -> Vec<Person> {
@@ -305,6 +508,9 @@ impl FriendsView {
             RelationshipKind::IncomingRequest => "Incoming friend request".into(),
             RelationshipKind::OutgoingRequest => "Outgoing friend request".into(),
             RelationshipKind::Blocked => "Blocked".into(),
+            _ if person.custom_status.is_some() && person.status != Status::Offline => {
+                person.custom_status.clone().unwrap_or_default().into()
+            }
             _ => match person.status {
                 Status::Online => "Online",
                 Status::Idle => "Idle",
@@ -429,13 +635,12 @@ impl FriendsView {
 }
 
 impl Render for FriendsView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let header = self.render_tabs(cx);
-        let sections = self.sections(cx);
-
-        let mut body = div().id("friends-body").flex_1().min_h_0().overflow_y_scroll().pb_4();
-        if self.tab == Tab::Add {
-            return div()
+        let active_now = (window.viewport_size().width >= px(ACTIVE_NOW_MIN_WINDOW))
+            .then(|| self.render_active_now(cx));
+        let page = |main: AnyElement| {
+            div()
                 .flex_1()
                 .min_w_0()
                 .h_full()
@@ -443,9 +648,22 @@ impl Render for FriendsView {
                 .flex_col()
                 .bg(rgb(theme::BG_CHAT))
                 .child(header)
-                .child(self.render_add_form(cx))
-                .into_any_element();
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .flex()
+                        .child(div().flex_1().min_w_0().h_full().flex().flex_col().child(main))
+                        .children(active_now),
+                )
+                .into_any_element()
+        };
+        if self.tab == Tab::Add {
+            return page(self.render_add_form(cx));
         }
+
+        let sections = self.sections(cx);
+        let mut body = div().id("friends-body").flex_1().min_h_0().overflow_y_scroll().pb_4();
         if sections.is_empty() {
             body = body.child(
                 div()
@@ -486,16 +704,7 @@ impl Render for FriendsView {
             }
         }
 
-        div()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .flex()
-            .flex_col()
-            .bg(rgb(theme::BG_CHAT))
-            .child(header)
-            .child(body)
-            .into_any_element()
+        page(body.into_any_element())
     }
 }
 

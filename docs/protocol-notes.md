@@ -125,3 +125,8 @@ that code is reproduced here or in the repository.
   `GUILD_STICKERS_UPDATE` (`guild_id`, `stickers`). Sending one is a normal
   message with `sticker_ids` and may have empty `content`. `available: false`
   marks one past the slots the server's boost level pays for.
+- **Activities**: `READY_SUPPLEMENTAL` `merged_presences.friends` entries carry
+  `activities` beside `status`, as do `PRESENCE_UPDATE` and member list
+  presences. Type 4 is the custom status (`state` plus an optional `emoji`).
+  Any of these lists may be `null` or hold entries we cannot read, so they are
+  parsed leniently.

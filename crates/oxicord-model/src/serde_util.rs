@@ -27,13 +27,14 @@ pub(crate) fn u64_from_str_or_num<'de, D: Deserializer<'de>>(d: D) -> Result<u64
 }
 
 /// A list where an entry we cannot read is dropped instead of failing the
-/// whole payload. For optional enrichment that must never block a login.
+/// whole payload. For optional enrichment that must never block a login. A null
+/// reads as empty.
 pub(crate) fn lenient_vec<'de, D, T>(d: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: serde::de::DeserializeOwned,
 {
     use serde::Deserialize as _;
-    let raw = Vec::<serde_json::Value>::deserialize(d)?;
+    let raw = Option::<Vec<serde_json::Value>>::deserialize(d)?.unwrap_or_default();
     Ok(raw.into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect())
 }

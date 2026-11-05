@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use oxicord_model::{
-    Channel, ChannelType, Guild, GuildNotificationSettings, Member, Permissions, ReadState,
+    Activity, Channel, ChannelType, Guild, GuildNotificationSettings, Member, Permissions, ReadState,
     Relationship, RelationshipKind, Role, Snowflake, Status, User, VoiceState,
 };
 
@@ -46,6 +46,8 @@ pub struct Store {
     pub(crate) timelines: HashMap<Snowflake, Timeline>,
     pub(crate) read_states: HashMap<Snowflake, ReadState>,
     pub(crate) presences: HashMap<Snowflake, Status>,
+    /// What people are doing, only kept while they have something going.
+    pub(crate) activities: HashMap<Snowflake, Vec<Activity>>,
     /// The member list the server last sent for each guild we subscribed to.
     pub(crate) member_lists: HashMap<Snowflake, MemberListState>,
     /// Channel to user to the unix second the indicator expires.
@@ -85,6 +87,16 @@ impl Store {
 
     pub fn presence(&self, user: Snowflake) -> Status {
         self.presences.get(&user).copied().unwrap_or_default()
+    }
+
+    /// Games, music and the like, with any custom status among them.
+    pub fn activities(&self, user: Snowflake) -> &[Activity] {
+        self.activities.get(&user).map_or(&[], Vec::as_slice)
+    }
+
+    /// The voice channel a person sits in, if we can see it.
+    pub fn voice_of(&self, user: Snowflake) -> Option<&VoiceState> {
+        self.voice.values().flatten().find(|v| v.user_id == user)
     }
 
     /// Guilds in the order the server listed them.

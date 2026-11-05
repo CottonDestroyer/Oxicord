@@ -114,6 +114,8 @@ pub struct PresenceEntry {
     pub user_id: Snowflake,
     #[serde(default)]
     pub status: Status,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    pub activities: Vec<Activity>,
 }
 
 /// One slot of a guild's member list: a group header or a member.
@@ -147,7 +149,7 @@ pub struct ListMember {
 pub struct ListPresence {
     #[serde(default)]
     pub status: Status,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
     pub activities: Vec<Activity>,
 }
 
@@ -355,7 +357,7 @@ pub struct PresenceUpdate {
     pub guild_id: Option<Snowflake>,
     #[serde(default)]
     pub status: Status,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
     pub activities: Vec<Activity>,
 }
 
@@ -635,12 +637,17 @@ mod tests {
         let event = DispatchEvent::parse(
             "READY_SUPPLEMENTAL",
             json!({ "guilds": [], "merged_presences": {
-                "friends": [{ "user_id": "7", "status": "dnd" }], "guilds": [[]] } }),
+                "friends": [
+                    { "user_id": "7", "status": "dnd", "activities": [{ "name": "Minecraft", "type": 0 }, { "odd": 1 }] },
+                    { "user_id": "8", "status": "idle", "activities": null }
+                ], "guilds": [[]] } }),
         )
         .unwrap();
         let DispatchEvent::ReadySupplemental(s) = event else { panic!("wrong variant") };
         let friends = s.merged_presences.unwrap().friends;
         assert_eq!(friends[0].status, Status::Dnd);
+        assert_eq!(friends[0].activities.len(), 1);
+        assert!(friends[1].activities.is_empty());
     }
 
     #[test]
