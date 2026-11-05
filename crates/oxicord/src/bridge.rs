@@ -71,9 +71,11 @@ async fn run(commands: Receiver<Command>, loopback: Sender<Command>, events: Sen
 fn open_browser(commands: Sender<Command>, events: Sender<Event>) {
     tokio::task::spawn_blocking(move || match oxicord_browser_login::sign_in() {
         Outcome::Token(token) => {
+            tracing::info!(shape = %token_shape(&token), "sign-in window produced a token");
             let _ = commands.send_blocking(Command::Login(token));
         }
         other => {
+            tracing::info!(?other, "sign-in window ended without a token");
             let _ = events.send_blocking(Event::LoginFailed(browser_failure(other)));
         }
     });
@@ -96,14 +98,22 @@ fn browser_failure(outcome: Outcome) -> String {
 /// Checks the token over REST first, then opens the gateway. The login only
 /// counts once READY arrives, which is where the token gets saved.
 async fn begin_login(token: String, events: &Sender<Event>) -> Option<GatewayHandle> {
+    let shape = token_shape(&token);
+    tracing::info!(%shape, "checking token over REST");
+
     let user = match validate(&token).await {
         Ok(user) if user.bot => {
+            tracing::warn!("REST accepted the token but it belongs to a bot");
             let message = "That is a bot token. Only user account tokens work here.";
             let _ = events.send(Event::LoginFailed(message.into())).await;
             return None;
         }
-        Ok(user) => user,
+        Ok(user) => {
+            tracing::info!("REST accepted the token");
+            user
+        }
         Err(err) => {
+            tracing::warn!(?err, %shape, "REST rejected the token");
             if err.is_unauthorized() {
                 forget_if_saved(&token);
             }
@@ -112,6 +122,13 @@ async fn begin_login(token: String, events: &Sender<Event>) -> Option<GatewayHan
         }
     };
     Some(connect(token, user, events.clone()))
+}
+
+/// Length and layout of a token, for the log. Enough to spot a truncated or
+/// wrong value (a stray quote, the wrong header) without revealing any of it.
+fn token_shape(token: &str) -> String {
+    let parts: Vec<String> = token.split('.').map(|p| p.len().to_string()).collect();
+    format!("{} chars, segments [{}]", token.len(), parts.join(", "))
 }
 
 async fn validate(token: &str) -> Result<User, ApiError> {
@@ -200,6 +217,9 @@ fn connect(token: String, user: User, events: Sender<Event>) -> GatewayHandle {
         let mut user = Some(user);
 
         while let Some(event) = gateway_events.recv().await {
+            if let GatewayEvent::State(state) = &event {
+                tracing::info!(?state, waiting_for_ready = waiting, "gateway state");
+            }
             let routed = route(waiting, &event);
 
             if routed.save_token {
@@ -247,6 +267,13 @@ mod tests {
         )
         .unwrap();
         GatewayEvent::Dispatch(ready)
+    }
+
+    #[test]
+    fn token_shape_reveals_layout_but_never_content() {
+        let shape = token_shape("abcd.efg.hijklm");
+        assert_eq!(shape, "15 chars, segments [4, 3, 6]");
+        assert!(!shape.contains("abcd") && !shape.contains("hijklm"));
     }
 
     #[test]

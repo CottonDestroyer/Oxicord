@@ -1,5 +1,6 @@
 mod bridge;
 mod credentials;
+mod logging;
 
 use gpui_kit::{
     AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size,
@@ -8,9 +9,7 @@ use gpui_kit::{
 use oxicord_ui::AppView;
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    logging::init();
 
     let backend = bridge::start();
     let saved_token = credentials::load();

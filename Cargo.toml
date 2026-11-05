@@ -29,6 +29,7 @@ percent-encoding = "2"
 
 oxicord-model = { path = "crates/oxicord-model" }
 async-channel = "2"
+dirs = "6"
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 tracing-subscriber = "0.3"
 

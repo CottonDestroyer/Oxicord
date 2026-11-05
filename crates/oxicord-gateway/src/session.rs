@@ -161,6 +161,7 @@ impl Runtime {
                 return RECONNECT;
             }
         };
+        tracing::info!(resuming = self.persist.session_id.is_some(), "gateway socket open");
         let (sink, mut stream) = ws.split();
 
         let mut conn = Conn {
@@ -205,7 +206,9 @@ impl Runtime {
                         },
                         Message::Text(text) => text.as_bytes().to_vec(),
                         Message::Close(frame) => {
-                            return self.on_close(frame.map(|f| u16::from(f.code)));
+                            let code = frame.as_ref().map(|f| u16::from(f.code));
+                            let reason = frame.map(|f| f.reason.to_string()).unwrap_or_default();
+                            return self.on_close(code, &reason);
                         }
                         _ => continue,
                     };
@@ -254,9 +257,10 @@ impl Runtime {
         }
     }
 
-    fn on_close(&self, code: Option<u16>) -> Exit {
-        tracing::info!(?code, "gateway closed the connection");
-        match protocol::close_action(code) {
+    fn on_close(&self, code: Option<u16>, reason: &str) -> Exit {
+        let action = protocol::close_action(code);
+        tracing::info!(?code, reason, ?action, "gateway closed the connection");
+        match action {
             CloseAction::Resume => Exit::Reconnect { resumable: true },
             CloseAction::Reidentify => Exit::Reconnect { resumable: false },
             CloseAction::Fatal if code == Some(4004) => Exit::Fatal(ConnectionState::AuthFailed),
@@ -338,6 +342,7 @@ impl Runtime {
 
         let connected = match &event {
             DispatchEvent::Ready(ready) => {
+                tracing::info!(guilds = ready.guilds.len(), "READY received");
                 self.persist.session_id = Some(ready.session_id.clone());
                 self.persist.resume_url = ready.resume_gateway_url.clone();
                 true

@@ -5175,6 +5175,7 @@ name = "oxicord"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "dirs 6.0.0",
  "gpui-kit",
  "keyring",
  "oxicord-api",
