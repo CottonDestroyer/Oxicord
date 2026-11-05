@@ -37,6 +37,7 @@ fn main() {
             gpui_kit::init(cx);
             Theme::change(ThemeMode::Dark, None, cx);
             apply_accent(cx);
+            oxicord_ui::bind_keys(cx);
 
             // Without this the process lingers after the last window closes.
             cx.on_window_closed(|cx, _| {

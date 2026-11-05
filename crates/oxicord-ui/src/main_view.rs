@@ -4,7 +4,7 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb,
+    FocusHandle, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
@@ -20,12 +20,14 @@ use crate::{
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
+    keys::QuickSwitch,
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot},
     profile,
     session::{DmOpened, JumpTo, OpenMenu, OpenPanel, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     side_panel::{ClosePanel, SidePanel},
+    switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
     theme,
 };
 
@@ -88,6 +90,10 @@ pub struct MainView {
     viewer: Option<String>,
     join: Entity<JoinServerView>,
     join_open: bool,
+    switcher: Entity<QuickSwitcher>,
+    switcher_open: bool,
+    /// Held by the root so shortcuts work when nothing else has focus.
+    focus: FocusHandle,
     /// Whether the member list was showing at the last redraw, so turning it
     /// on asks the server for the list.
     members_shown: bool,
@@ -119,8 +125,21 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| JoinServerView::new(session, media, backend, window, cx))
         };
+        let switcher = {
+            let (session, media) = (session.clone(), media.clone());
+            cx.new(|cx| QuickSwitcher::new(session, media, window, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
         let subscriptions = vec![
+            cx.subscribe(&switcher, |this, _, _: &CloseSwitcher, cx| {
+                this.switcher_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&switcher, window, |this, _, chosen: &Chosen, window, cx| {
+                this.go_to(chosen.0, window, cx);
+            }),
             cx.observe(&session, |this, session, cx| {
                 let show = session.read(cx).settings.show_members;
                 if show && !this.members_shown {
@@ -206,6 +225,9 @@ impl MainView {
             viewer: None,
             join,
             join_open: false,
+            switcher,
+            switcher_open: false,
+            focus,
             _subscriptions: subscriptions,
         }
     }
@@ -238,6 +260,25 @@ impl MainView {
             self.last_channel.insert(guild, channel);
         }
         self.sync_chat(window, cx);
+        cx.notify();
+    }
+
+    fn open_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.switcher_open = true;
+        self.switcher.update(cx, |s, cx| s.opened(window, cx));
+        cx.notify();
+    }
+
+    /// Follows a quick switcher result.
+    fn go_to(&mut self, goal: Goal, window: &mut Window, cx: &mut Context<Self>) {
+        self.switcher_open = false;
+        match goal {
+            Goal::Dm(channel) => self.show_dm(channel, window, cx),
+            Goal::Channel(channel) => self.show_channel(channel, None, window, cx),
+            Goal::Guild(guild) => self.select_guild(Some(guild), window, cx),
+            // The conversation opens through `DmOpened` once it exists.
+            Goal::User(user) => self.backend.send(Command::OpenDm(user)),
+        }
         cx.notify();
     }
 
@@ -698,7 +739,6 @@ impl MainView {
                     .flex()
                     .items_center()
                     .justify_between()
-                    .px_4()
                     .border_b_1()
                     .border_color(rgb(theme::BORDER))
                     .text_color(rgb(theme::TEXT_BRIGHT))
@@ -710,8 +750,29 @@ impl MainView {
                             }),
                         )
                     })
-                    .child(div().flex_1().min_w_0().truncate().child(title))
-                    .children(self.guild.map(|_| icon("chevron-down", 16., theme::TEXT_MUTED))),
+                    .when(self.guild.is_none(), |header| {
+                        header.px_2().child(
+                            div()
+                                .id("find-conversation")
+                                .w_full()
+                                .h(px(30.))
+                                .px_2()
+                                .flex()
+                                .items_center()
+                                .rounded(px(4.))
+                                .cursor_pointer()
+                                .bg(rgb(theme::BG_PANEL))
+                                .text_size(px(13.))
+                                .font_weight(gpui_kit::FontWeight::NORMAL)
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .on_click(cx.listener(|this, _, window, cx| this.open_switcher(window, cx)))
+                                .child("Find or start a conversation"),
+                        )
+                    })
+                    .when(self.guild.is_some(), |header| header.px_4().child(
+                        div().flex_1().min_w_0().truncate().child(title),
+                    ))
+                    .children(self.guild.map(|_| icon("chevron-down", 16., theme::TEXT_MUTED).mr_4()))
             )
             .child(
                 div()
@@ -1080,10 +1141,20 @@ impl Render for MainView {
         let menu = self.menu_open.then(|| self.menu.clone());
         let viewer = self.render_viewer(cx);
         let join = self.join_open.then(|| self.join.clone());
+        let switcher = self.switcher_open.then(|| self.switcher.clone());
 
         div()
             .size_full()
             .relative()
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|this, _: &QuickSwitch, window, cx| this.open_switcher(window, cx)))
+            // A click on bare background parks focus here, so Ctrl+K still
+            // works afterwards.
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                if window.focused(cx).is_none() {
+                    window.focus(&this.focus, cx);
+                }
+            }))
             .flex()
             .bg(rgb(theme::BG_RAIL))
             .text_color(rgb(theme::TEXT))
@@ -1107,6 +1178,7 @@ impl Render for MainView {
             .children(menu)
             .children(viewer)
             .children(join)
+            .children(switcher)
             .children(settings)
     }
 }
