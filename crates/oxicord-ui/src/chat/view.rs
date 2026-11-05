@@ -30,6 +30,7 @@ use super::{
 };
 use crate::{
     backend::{Backend, Command},
+    emoji_panel::{ClosePicker, EmojiPanel, Picked},
     icons::icon,
     media::{Media, avatar},
     session::{PanelKind, Session},
@@ -67,6 +68,9 @@ pub struct ChatView {
     revealed: HashSet<(Snowflake, usize)>,
     /// The message whose quick-reaction row is open.
     picker_for: Option<Snowflake>,
+    /// The emoji picker, and what a pick from it is for.
+    emoji: Entity<EmojiPanel>,
+    emoji_for: Option<EmojiTarget>,
     /// The drop-down menu of a bot message that is open, as (message, custom id).
     open_menu: Option<(Snowflake, String)>,
     /// What was last chosen in each menu, so it shows the choice.
@@ -112,7 +116,19 @@ impl ChatView {
                 .placeholder("Message")
         });
 
+        let emoji = {
+            let (session, media) = (session.clone(), media.clone());
+            cx.new(|cx| EmojiPanel::new(session, media, window, cx))
+        };
+
         let subscriptions = vec![
+            cx.subscribe_in(&emoji, window, |this, _, picked: &Picked, window, cx| {
+                this.on_emoji(&picked.0, window, cx);
+            }),
+            cx.subscribe(&emoji, |this, _, _: &ClosePicker, cx| {
+                this.emoji_for = None;
+                cx.notify();
+            }),
             cx.subscribe(&session, |this, _, changes: &Changes, cx| {
                 this.on_changes(changes, cx)
             }),
@@ -159,6 +175,8 @@ impl ChatView {
             revealed: HashSet::new(),
             picker_for: None,
             open_menu: None,
+            emoji,
+            emoji_for: None,
             picked: HashMap::new(),
             acked: HashMap::new(),
             unread_after: None,
@@ -368,6 +386,39 @@ impl ChatView {
             .unwrap_or_default()
     }
 
+    fn open_emoji(&mut self, target: EmojiTarget, window: &mut Window, cx: &mut Context<Self>) {
+        if self.emoji_for == Some(target) {
+            self.emoji_for = None;
+        } else {
+            let guild = self.guild(cx);
+            self.emoji_for = Some(target);
+            self.emoji.update(cx, |panel, cx| panel.show(guild, window, cx));
+        }
+        cx.notify();
+    }
+
+    /// An emoji was picked: into the composer, or as a reaction.
+    fn on_emoji(&mut self, emoji: &Emoji, window: &mut Window, cx: &mut Context<Self>) {
+        match self.emoji_for.take() {
+            Some(EmojiTarget::Composer) => {
+                let text = match (emoji.id, emoji.name.as_deref()) {
+                    (Some(id), Some(name)) => {
+                        format!("<{}:{name}:{id}> ", if emoji.animated { "a" } else { "" })
+                    }
+                    (_, Some(glyph)) => glyph.to_owned(),
+                    _ => String::new(),
+                };
+                self.input.update(cx, |input, cx| {
+                    input.insert(text, window, cx);
+                    input.focus(window, cx);
+                });
+            }
+            Some(EmojiTarget::Reaction(message)) => self.react(message, emoji.clone(), true, cx),
+            None => {}
+        }
+        cx.notify();
+    }
+
     /// Whether we may post here. Threads have their own permission.
     fn can_send(&self, cx: &App) -> bool {
         let in_thread = self
@@ -574,6 +625,22 @@ impl ChatView {
             .bg(rgb(theme::BG_SIDEBAR))
             .w(px(340.));
 
+        row = row.child(
+            div()
+                .id(SharedString::from(format!("quick-more-{message}")))
+                .size(px(30.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.))
+                .cursor_pointer()
+                .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.picker_for = None;
+                    this.open_emoji(EmojiTarget::Reaction(message), window, cx);
+                }))
+                .child(icon("face-slightly-smiling-plus", 18., theme::TEXT_MUTED)),
+        );
         for (ix, glyph) in QUICK.into_iter().enumerate() {
             let emoji = Emoji {
                 name: Some(glyph.to_owned()),
@@ -1282,6 +1349,11 @@ impl ChatView {
                             .child(Textarea::new(&self.input).appearance(false).bordered(false)),
                     )
                     .child(
+                        action_button("emoji", "face-slightly-smiling", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, window, cx| this.open_emoji(EmojiTarget::Composer, window, cx),
+                        )),
+                    )
+                    .child(
                         action_button("send", "send", theme::TEXT_MUTED).on_click(cx.listener(
                             |this, _, window, cx| this.submit(window, cx),
                         )),
@@ -1378,6 +1450,7 @@ impl ChatView {
 
 impl Render for ChatView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let picker = self.emoji_for.is_some().then(|| self.emoji.clone());
         let header = self.render_header(cx);
         let body = self.render_body(cx);
         let composer = self.render_composer(cx);
@@ -1388,11 +1461,22 @@ impl Render for ChatView {
             .h_full()
             .flex()
             .flex_col()
+            .relative()
             .bg(rgb(theme::BG_CHAT))
             .child(header)
             .child(div().flex_1().min_h_0().child(body))
             .child(composer)
+            .children(picker.map(|panel| {
+                div().absolute().bottom(px(72.)).right(px(16.)).child(panel)
+            }))
     }
+}
+
+/// What the emoji picker is currently choosing for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EmojiTarget {
+    Composer,
+    Reaction(Snowflake),
 }
 
 /// Display preferences read from the account, resolved for one redraw.
