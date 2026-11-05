@@ -78,6 +78,19 @@ pub enum Command {
         archived: bool,
         offset: u32,
     },
+    /// Fetch the opening messages of forum posts for the list. The answer
+    /// arrives as [`Event::ForumPreviews`].
+    LoadForumPreviews {
+        forum: Snowflake,
+        posts: Vec<Snowflake>,
+    },
+    /// Start a forum post. The answer arrives as [`Event::ThreadCreated`].
+    CreateForumPost {
+        forum: Snowflake,
+        title: String,
+        content: String,
+        tags: Vec<Snowflake>,
+    },
     JoinThread(Snowflake),
     LeaveThread(Snowflake),
     /// Start a thread on a message. The answer arrives as
@@ -161,6 +174,7 @@ pub enum Event {
         result: Result<ThreadPage, String>,
     },
     ThreadCreated(Result<Channel, String>),
+    ForumPreviews(Vec<Message>),
     Profile {
         user: Snowflake,
         result: Result<Profile, String>,

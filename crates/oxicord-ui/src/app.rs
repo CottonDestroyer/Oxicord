@@ -121,6 +121,9 @@ impl AppView {
             Event::Threads { channel, result, .. } => {
                 self.session.update(cx, |session, cx| session.apply_threads(channel, result, cx));
             }
+            Event::ForumPreviews(messages) => {
+                self.session.update(cx, |session, cx| session.apply_previews(messages, cx));
+            }
             Event::ThreadCreated(result) => {
                 self.session.update(cx, |session, cx| session.apply_new_thread(result, cx));
             }

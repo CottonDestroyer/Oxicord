@@ -2,6 +2,7 @@ mod account;
 mod app;
 pub mod backend;
 mod chat;
+mod forum;
 mod friends;
 mod icons;
 mod login;

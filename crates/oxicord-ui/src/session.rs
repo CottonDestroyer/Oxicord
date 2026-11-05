@@ -29,6 +29,10 @@ pub struct Session {
     /// The thread list last asked for per channel: open threads and, once
     /// loaded, archived ones.
     pub archived_threads: HashMap<Snowflake, Load<ThreadPage>>,
+    /// Opening message of each forum post we have seen, by post id.
+    pub previews: HashMap<Snowflake, Message>,
+    /// Posts whose preview was already asked for.
+    preview_requested: HashSet<Snowflake>,
     /// The status we last chose, which the server won't echo back to us.
     pub status: ClientStatus,
     /// Profiles fetched so far, so reopening a card is instant.
@@ -83,6 +87,8 @@ impl Session {
             pins: HashMap::new(),
             search: None,
             archived_threads: HashMap::new(),
+            previews: HashMap::new(),
+            preview_requested: HashSet::new(),
             status: ClientStatus::default(),
             profiles: HashMap::new(),
             profile_requested: HashSet::new(),
@@ -164,6 +170,9 @@ impl Session {
     ) {
         let state = match result {
             Ok(page) => {
+                for message in &page.first_messages {
+                    self.previews.insert(message.channel_id, message.clone());
+                }
                 for thread in &page.threads {
                     let joined = page.joined.contains(&thread.id);
                     self.store.add_thread(thread.clone(), joined);
@@ -173,6 +182,25 @@ impl Session {
             Err(error) => Load::Failed(error),
         };
         self.archived_threads.insert(channel, state);
+        cx.notify();
+    }
+
+    /// Asks for the previews of posts we haven't asked about yet.
+    pub fn request_previews(&mut self, backend: &Backend, forum: Snowflake, posts: &[Snowflake]) {
+        let fresh: Vec<Snowflake> = posts
+            .iter()
+            .copied()
+            .filter(|p| !self.previews.contains_key(p) && self.preview_requested.insert(*p))
+            .collect();
+        for chunk in fresh.chunks(25) {
+            backend.send(Command::LoadForumPreviews { forum, posts: chunk.to_vec() });
+        }
+    }
+
+    pub fn apply_previews(&mut self, messages: Vec<Message>, cx: &mut Context<Self>) {
+        for message in messages {
+            self.previews.insert(message.channel_id, message);
+        }
         cx.notify();
     }
 

@@ -14,6 +14,7 @@ use oxicord_store::Unread;
 use crate::{
     backend::{Backend, Command},
     chat::ChatView,
+    forum::ForumView,
     friends::FriendsView,
     icons::icon,
     media::{Media, acronym, avatar},
@@ -62,6 +63,7 @@ pub struct MainView {
     media: Entity<Media>,
     chat: Entity<ChatView>,
     friends: Entity<FriendsView>,
+    forum: Entity<ForumView>,
     members: Entity<MemberList>,
     backend: Backend,
     /// `None` is the home screen with the direct messages.
@@ -147,11 +149,16 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| FriendsView::new(session, media, backend, cx))
         };
+        let forum = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| ForumView::new(session, media, backend, window, cx))
+        };
         Self {
             session,
             media,
             chat,
             friends,
+            forum,
             members,
             backend,
             guild: None,
@@ -303,11 +310,23 @@ impl MainView {
         cx.notify();
     }
 
+    fn is_forum(&self, channel: Snowflake, cx: &App) -> bool {
+        self.session
+            .read(cx)
+            .store
+            .channel(channel)
+            .is_some_and(|c| matches!(c.kind, ChannelType::GuildForum | ChannelType::GuildMedia))
+    }
+
     /// Points the message area at whatever channel is selected now.
     fn sync_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let channel = self.channel;
+        // A forum shows its posts, not a message timeline.
+        let forum = channel.filter(|c| self.is_forum(*c, cx));
+        self.forum.update(cx, |view, cx| view.set_forum(forum, cx));
+        let timeline = if forum.is_some() { None } else { channel };
         self.chat
-            .update(cx, |chat, cx| chat.set_channel(channel, window, cx));
+            .update(cx, |chat, cx| chat.set_channel(timeline, window, cx));
         let (guild, channel) = (self.guild, self.channel);
         self.panel.update(cx, |panel, cx| panel.follow(guild, channel, cx));
         self.sync_members(cx);
@@ -859,10 +878,16 @@ impl Render for MainView {
         let sidebar = self.render_sidebar(cx);
         let content = if self.guild.is_none() && self.channel.is_none() {
             self.friends.clone().into_any_element()
+        } else if self.channel.is_some_and(|c| self.is_forum(c, cx)) {
+            self.forum.clone().into_any_element()
         } else {
             self.chat.clone().into_any_element()
         };
-        let members = (self.guild.is_some() && !self.panel_open && self.session.read(cx).settings.show_members)
+        let in_forum = self.channel.is_some_and(|c| self.is_forum(c, cx));
+        let members = (self.guild.is_some()
+            && !in_forum
+            && !self.panel_open
+            && self.session.read(cx).settings.show_members)
             .then(|| self.members.clone());
         let panel = self.panel_open.then(|| self.panel.clone());
         let profile = self.render_profile(cx);

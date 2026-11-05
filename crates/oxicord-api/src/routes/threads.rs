@@ -90,3 +90,60 @@ impl ApiClient {
         .await
     }
 }
+
+/// What a forum post list needs about each post: its opening message.
+#[derive(Deserialize)]
+struct PostData {
+    #[serde(default)]
+    threads: std::collections::HashMap<String, PostEntry>,
+}
+
+#[derive(Deserialize)]
+struct PostEntry {
+    #[serde(default)]
+    first_message: Option<Message>,
+}
+
+impl ApiClient {
+    /// The opening messages of some posts of a forum, which the list shows as
+    /// previews. Each returned message belongs to its post's channel.
+    pub async fn forum_previews(
+        &self,
+        forum: Snowflake,
+        posts: &[Snowflake],
+    ) -> Result<Vec<Message>, ApiError> {
+        let body = json!({ "thread_ids": posts.iter().map(Snowflake::to_string).collect::<Vec<_>>() });
+        let data: PostData = self
+            .json(
+                Method::POST,
+                &format!("/channels/{forum}/post-data"),
+                &format!("POST /channels/{forum}/post-data"),
+                Some(&body),
+            )
+            .await?;
+        Ok(data.threads.into_values().filter_map(|e| e.first_message).collect())
+    }
+
+    /// Starts a forum post: a thread together with its opening message.
+    pub async fn create_forum_post(
+        &self,
+        forum: Snowflake,
+        title: &str,
+        content: &str,
+        tags: &[Snowflake],
+    ) -> Result<Channel, ApiError> {
+        let body = json!({
+            "name": title,
+            "auto_archive_duration": 4320,
+            "applied_tags": tags.iter().map(Snowflake::to_string).collect::<Vec<_>>(),
+            "message": { "content": content },
+        });
+        self.json(
+            Method::POST,
+            &format!("/channels/{forum}/threads?use_nested_fields=true"),
+            &format!("POST /channels/{forum}/threads"),
+            Some(&body),
+        )
+        .await
+    }
+}

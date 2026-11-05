@@ -230,6 +230,28 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::Threads { channel, archived, offset, result }).await;
             });
         }
+        Command::LoadForumPreviews { forum, posts } => {
+            tokio::spawn(async move {
+                match api.forum_previews(forum, &posts).await {
+                    Ok(messages) => {
+                        let _ = events.send(Event::ForumPreviews(messages)).await;
+                    }
+                    Err(err) => tracing::debug!(?err, "could not load post previews"),
+                }
+            });
+        }
+        Command::CreateForumPost { forum, title, content, tags } => {
+            tokio::spawn(async move {
+                let result = api
+                    .create_forum_post(forum, &title, &content, &tags)
+                    .await
+                    .map_err(|err| {
+                        tracing::warn!(?err, "could not create a post");
+                        describe_request(&err)
+                    });
+                let _ = events.send(Event::ThreadCreated(result)).await;
+            });
+        }
         Command::JoinThread(thread) => {
             tokio::spawn(async move {
                 if let Err(err) = api.join_thread(thread).await {
