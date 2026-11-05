@@ -464,6 +464,12 @@ impl Store {
         changes.typing.insert(typing.channel_id);
     }
 
+    /// Whether a message from someone else is worth interrupting for: a
+    /// DM, or a mention of us, our roles or everyone.
+    pub fn is_notable(&self, message: &Message) -> bool {
+        Some(message.author.id) != self.my_id() && self.mentions_me(message)
+    }
+
     fn mentions_me(&self, message: &Message) -> bool {
         let Some(me) = self.my_id() else {
             return false;

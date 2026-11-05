@@ -52,6 +52,11 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// Raise a desktop notification.
+    Notify {
+        title: String,
+        body: String,
+    },
     /// Show the "is typing" indicator to others for a few seconds.
     Typing(Snowflake),
     /// Add (or with `add` false, remove) our reaction. The new count arrives

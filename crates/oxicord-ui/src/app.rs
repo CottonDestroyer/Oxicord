@@ -2,7 +2,8 @@ use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
     Styled as _, Task, Window, div,
 };
-use oxicord_gateway::{ConnectionState, GatewayEvent};
+use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
+use oxicord_model::gateway::DispatchEvent;
 
 use crate::{
     backend::{Backend, Command, Event},
@@ -74,6 +75,17 @@ impl AppView {
         cx.new(|cx| LoginView::new(backend, notice, window, cx))
     }
 
+    /// Raises a toast for a message that arrived while the window was in the
+    /// background. Do not disturb stays quiet, as it does elsewhere.
+    fn notify(&self, message: &oxicord_model::Message, cx: &Context<Self>) {
+        let session = self.session.read(cx);
+        if session.status == ClientStatus::Dnd || !session.store.is_notable(message) {
+            return;
+        }
+        let (title, body) = crate::notify::compose(&session.store, message);
+        self.backend.send(Command::Notify { title, body });
+    }
+
     fn on_event(&mut self, event: Event, window: &mut Window, cx: &mut Context<Self>) {
         match event {
             Event::Authenticated(_) => {
@@ -120,7 +132,16 @@ impl AppView {
                     self.notice = Some("Discord no longer accepts that token. Sign in again.".into());
                     self.backend.send(Command::Logout);
                 }
+                let incoming = (!window.is_window_active())
+                    .then(|| match &event {
+                        GatewayEvent::Dispatch(DispatchEvent::MessageCreate(m)) => Some((**m).clone()),
+                        _ => None,
+                    })
+                    .flatten();
                 self.session.update(cx, |session, cx| session.handle(event, cx));
+                if let Some(message) = incoming {
+                    self.notify(&message, cx);
+                }
             }
         }
         cx.notify();

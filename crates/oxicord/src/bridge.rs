@@ -67,6 +67,7 @@ async fn run(
                         }
                     }
                     Command::FetchImage(url) => fetch_image(&fetcher, url, events.clone()),
+                    Command::Notify { title, body } => show_notification(title, body),
                     Command::Logout => {
                         browser_open = false;
                         replace(&mut live, None);
@@ -254,8 +255,25 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         }
         Command::SetStatus(status) => live.gateway.set_status(status),
         // Handled before it gets here.
-        Command::Login(_) | Command::BrowserLogin | Command::Logout | Command::FetchImage(_) => {}
+        Command::Login(_)
+        | Command::BrowserLogin
+        | Command::Logout
+        | Command::FetchImage(_)
+        | Command::Notify { .. } => {}
     }
+}
+
+/// Toasts block while the system call runs, so keep them off the runtime.
+fn show_notification(title: String, body: String) {
+    tokio::task::spawn_blocking(move || {
+        if let Err(err) = notify_rust::Notification::new()
+            .summary(&title)
+            .body(&body)
+            .show()
+        {
+            tracing::debug!(%err, "could not show a notification");
+        }
+    });
 }
 
 /// Largest file we will read into memory. Discord's own limit is lower for

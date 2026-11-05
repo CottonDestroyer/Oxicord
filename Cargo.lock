@@ -5178,6 +5178,7 @@ dependencies = [
  "dirs 6.0.0",
  "gpui-kit",
  "keyring",
+ "notify-rust",
  "oxicord-api",
  "oxicord-browser-login",
  "oxicord-gateway",
