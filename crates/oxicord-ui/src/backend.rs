@@ -91,6 +91,19 @@ pub enum Command {
         content: String,
         tags: Vec<Snowflake>,
     },
+    /// Press a bot's button or pick from its menu. Failures are reported as
+    /// [`Event::Notice`], the app's answer arrives through the gateway.
+    ClickComponent {
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+        message: Snowflake,
+        message_flags: u64,
+        application: Snowflake,
+        session_id: String,
+        component_type: u8,
+        custom_id: String,
+        values: Vec<String>,
+    },
     JoinThread(Snowflake),
     LeaveThread(Snowflake),
     /// Start a thread on a message. The answer arrives as

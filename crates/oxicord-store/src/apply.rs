@@ -169,6 +169,7 @@ impl Store {
             self.users.insert(user.id, user);
         }
         self.users.insert(ready.user.id, ready.user.clone());
+        self.session_id = Some(ready.session_id.clone());
         self.me = Some(ready.user);
 
         let mut members: Vec<_> = ready
@@ -327,6 +328,9 @@ impl Store {
         }
         if let Some(pinned) = update.pinned {
             message.pinned = pinned;
+        }
+        if let Some(components) = update.components {
+            message.components = components;
         }
         changes.messages.insert(update.channel_id);
     }

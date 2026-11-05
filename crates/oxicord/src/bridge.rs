@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
     ApiClient, ApiError, Credentials,
-    routes::{MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
+    routes::{ComponentClick, MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
     super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
@@ -250,6 +250,35 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                         describe_request(&err)
                     });
                 let _ = events.send(Event::ThreadCreated(result)).await;
+            });
+        }
+        Command::ClickComponent {
+            guild,
+            channel,
+            message,
+            message_flags,
+            application,
+            session_id,
+            component_type,
+            custom_id,
+            values,
+        } => {
+            tokio::spawn(async move {
+                let click = ComponentClick {
+                    guild,
+                    channel,
+                    message,
+                    message_flags,
+                    application,
+                    session_id,
+                    component_type,
+                    custom_id,
+                    values,
+                    nonce: nonce(),
+                };
+                if let Err(err) = api.click_component(&click).await {
+                    notify(&events, "use that button", &err).await;
+                }
             });
         }
         Command::JoinThread(thread) => {

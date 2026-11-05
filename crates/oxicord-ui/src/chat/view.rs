@@ -40,6 +40,8 @@ use crate::{
 /// text lines up.
 const GUTTER: f32 = 40.;
 
+mod components;
+
 /// The message area for whichever channel is open: header, list, composer.
 pub struct ChatView {
     session: Entity<Session>,
@@ -65,6 +67,10 @@ pub struct ChatView {
     revealed: HashSet<(Snowflake, usize)>,
     /// The message whose quick-reaction row is open.
     picker_for: Option<Snowflake>,
+    /// The drop-down menu of a bot message that is open, as (message, custom id).
+    open_menu: Option<(Snowflake, String)>,
+    /// What was last chosen in each menu, so it shows the choice.
+    picked: HashMap<(Snowflake, String), String>,
 
     /// The newest message we have acknowledged per channel, so we don't ack
     /// the same one twice.
@@ -152,6 +158,8 @@ impl ChatView {
             confirm_delete: None,
             revealed: HashSet::new(),
             picker_for: None,
+            open_menu: None,
+            picked: HashMap::new(),
             acked: HashMap::new(),
             unread_after: None,
             last_typing_sent: None,
@@ -603,7 +611,22 @@ impl ChatView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let blocks = oxicord_markdown::parse(&message.content);
+        let edited = message.edited_timestamp.is_some();
+        self.render_text(message, &message.content, 0, edited, window, cx)
+    }
+
+    /// Draws `text` as the markdown of `message`. `salt` keeps the element ids
+    /// of several texts in one message apart.
+    fn render_text(
+        &mut self,
+        message: &Message,
+        text: &str,
+        salt: u64,
+        edited: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let blocks = oxicord_markdown::parse(text);
         let prefs = self.view_prefs(cx);
         let names = self.names_for(message, &blocks, cx);
         let revealed: HashSet<usize> = self
@@ -627,8 +650,8 @@ impl ChatView {
             offset: *Local::now().offset(),
             hour12: prefs.hour12,
             reveal_spoilers: prefs.reveal_spoilers,
-            edited: message.edited_timestamp.is_some(),
-            key: id.0,
+            edited,
+            key: id.0.wrapping_add(salt.wrapping_mul(0x9E37_79B9)),
             on_spoiler,
         };
         markdown::render(&blocks, &options, window, cx)
@@ -790,6 +813,9 @@ impl ChatView {
             && let Some(reactions) = self.render_reactions(&message, can_react, cx)
         {
             body = body.child(reactions);
+        }
+        if let Some(parts) = self.render_components(&message, window, cx) {
+            body = body.child(parts);
         }
         if let Some(thread) = &message.thread {
             body = body.child(self.thread_chip(thread, cx));

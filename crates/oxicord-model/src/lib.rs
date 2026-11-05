@@ -6,6 +6,7 @@ mod serde_util;
 pub mod account;
 pub mod attachment;
 pub mod channel;
+pub mod component;
 pub mod embed;
 pub mod emoji;
 pub mod gateway;
@@ -24,6 +25,7 @@ pub mod user;
 
 pub use account::{AccountDetails, AppInfo, AuthorizedApp, ClientInfo, Connection, LoginSession};
 pub use attachment::Attachment;
+pub use component::{ButtonStyle, Component, FLAG_COMPONENTS_V2, MediaRef, SelectOption};
 pub use channel::{
     Channel, ChannelType, FLAG_PINNED, ForumTag, Overwrite, OverwriteKind, ThreadMember, ThreadMetadata,
 };

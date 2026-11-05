@@ -285,6 +285,10 @@ impl Session {
 
     pub fn handle(&mut self, event: GatewayEvent, cx: &mut Context<Self>) {
         match event {
+            // The app never answered a click or command.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, .. }) if name == "INTERACTION_FAILURE" => {
+                self.set_notice(Some("That interaction failed. The app didn't respond.".into()), cx);
+            }
             GatewayEvent::Dispatch(event) => {
                 let changes = self.store.apply(event);
                 if !changes.is_empty() {

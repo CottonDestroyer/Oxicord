@@ -28,6 +28,8 @@ pub struct ChannelGroup<'a> {
 #[derive(Default)]
 pub struct Store {
     pub(crate) me: Option<User>,
+    /// Our gateway session, which interactions must quote.
+    pub(crate) session_id: Option<String>,
     pub(crate) users: HashMap<Snowflake, User>,
     pub(crate) guild_order: Vec<Snowflake>,
     pub(crate) guilds: HashMap<Snowflake, Guild>,
@@ -58,6 +60,10 @@ pub struct Store {
 impl Store {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
     }
 
     pub fn me(&self) -> Option<&User> {

@@ -85,6 +85,12 @@ pub struct Message {
     /// The thread started from this message, if any.
     #[serde(default)]
     pub thread: Option<Box<crate::Channel>>,
+    /// Buttons, menus and layout a bot attached.
+    #[serde(default, deserialize_with = "crate::component::components")]
+    pub components: Vec<crate::Component>,
+    /// The app that sent an interaction response or webhook message.
+    #[serde(default)]
+    pub application_id: Option<Snowflake>,
     #[serde(default)]
     pub message_reference: Option<MessageReference>,
     #[serde(default)]
@@ -117,4 +123,6 @@ pub struct PartialMessage {
     pub embeds: Option<Vec<Embed>>,
     #[serde(default)]
     pub pinned: Option<bool>,
+    #[serde(default, deserialize_with = "crate::component::optional_components")]
+    pub components: Option<Vec<crate::Component>>,
 }

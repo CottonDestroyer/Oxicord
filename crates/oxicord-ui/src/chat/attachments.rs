@@ -42,14 +42,14 @@ pub fn human_size(bytes: u64) -> String {
 
 /// Asks Discord's media proxy for a smaller copy, which saves downloading a
 /// multi-megabyte original to draw a 400 pixel preview.
-fn resized(url: &str, width: f32, height: f32) -> String {
+pub(super) fn resized(url: &str, width: f32, height: f32) -> String {
     let joiner = if url.contains('?') { '&' } else { '?' };
     format!("{url}{joiner}format=webp&width={}&height={}", width as u32, height as u32)
 }
 
 /// A picture of a known size, with a placeholder of the same size while it
 /// loads so the message doesn't change height when it arrives.
-fn picture(
+pub(super) fn picture(
     media: &Entity<Media>,
     url: &str,
     link: &str,
