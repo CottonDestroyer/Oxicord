@@ -24,6 +24,23 @@ pub enum Command {
         channel: Snowflake,
         before: Option<Snowflake>,
     },
+    /// `guild` is `None` in a DM. A failure comes back as [`Event::Notice`],
+    /// success arrives through the gateway like any other message.
+    SendMessage {
+        channel: Snowflake,
+        guild: Option<Snowflake>,
+        content: String,
+        reply_to: Option<Snowflake>,
+    },
+    EditMessage {
+        channel: Snowflake,
+        message: Snowflake,
+        content: String,
+    },
+    DeleteMessage {
+        channel: Snowflake,
+        message: Snowflake,
+    },
 }
 
 /// Things the backend reports.
@@ -35,6 +52,8 @@ pub enum Event {
     Gateway(GatewayEvent),
     /// `None` when the download failed.
     Image { url: String, bytes: Option<Vec<u8>> },
+    /// Something went wrong that the user should hear about.
+    Notice(String),
     /// A page of history, newest first. `requested` is the page size that
     /// was asked for.
     History {

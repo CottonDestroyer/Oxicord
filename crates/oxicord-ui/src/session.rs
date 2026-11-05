@@ -12,6 +12,8 @@ pub struct Session {
     pub connection: ConnectionState,
     /// Channels whose last history request failed, with the reason to show.
     pub history_errors: HashMap<Snowflake, String>,
+    /// The latest thing that went wrong, shown until dismissed.
+    pub notice: Option<String>,
 }
 
 impl EventEmitter<Changes> for Session {}
@@ -22,7 +24,13 @@ impl Session {
             store: Store::new(),
             connection: ConnectionState::Connecting,
             history_errors: HashMap::new(),
+            notice: None,
         }
+    }
+
+    pub fn set_notice(&mut self, notice: Option<String>, cx: &mut Context<Self>) {
+        self.notice = notice;
+        cx.notify();
     }
 
     pub fn handle(&mut self, event: GatewayEvent, cx: &mut Context<Self>) {

@@ -3,7 +3,9 @@
 
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
-    ApiClient, ApiError, Credentials, routes::MessagePage, super_props::SuperProperties,
+    ApiClient, ApiError, Credentials,
+    routes::{MessagePage, ReplyTarget, SendMessage},
+    super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
 use oxicord_media::Fetcher;
@@ -129,9 +131,70 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::History { channel, result, requested }).await;
             });
         }
+        Command::SendMessage {
+            channel,
+            guild,
+            content,
+            reply_to,
+        } => {
+            tokio::spawn(async move {
+                let message = SendMessage {
+                    content,
+                    nonce: Some(nonce()),
+                    message_reference: reply_to.map(|message_id| ReplyTarget {
+                        message_id,
+                        channel_id: channel,
+                        guild_id: guild,
+                    }),
+                };
+                if let Err(err) = api.send_message(channel, &message).await {
+                    notify(&events, "send your message", &err).await;
+                }
+            });
+        }
+        Command::EditMessage {
+            channel,
+            message,
+            content,
+        } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.edit_message(channel, message, &content).await {
+                    notify(&events, "edit that message", &err).await;
+                }
+            });
+        }
+        Command::DeleteMessage { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.delete_message(channel, message).await {
+                    notify(&events, "delete that message", &err).await;
+                }
+            });
+        }
         // Handled before it gets here.
         Command::Login(_) | Command::BrowserLogin | Command::Logout | Command::FetchImage(_) => {}
     }
+}
+
+/// Tells the UI that an action failed, in words a person can act on.
+async fn notify(events: &Sender<Event>, action: &str, err: &ApiError) {
+    tracing::warn!(?err, action, "request failed");
+    let _ = events
+        .send(Event::Notice(format!("Couldn't {action}. {}", describe_request(err))))
+        .await;
+}
+
+/// A snowflake-shaped nonce, like the official client sends. Discord uses it
+/// to drop a send that was repeated.
+fn nonce() -> String {
+    const DISCORD_EPOCH_MS: u128 = 1_420_070_400_000;
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let elapsed = u64::try_from(now_ms.saturating_sub(DISCORD_EPOCH_MS)).unwrap_or(0);
+    let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) & 0x3F_FFFF;
+    ((elapsed << 22) | sequence).to_string()
 }
 
 async fn load_history(
@@ -417,6 +480,14 @@ mod tests {
         )
         .unwrap();
         GatewayEvent::Dispatch(ready)
+    }
+
+    #[test]
+    fn nonces_are_unique_and_snowflake_sized() {
+        let (a, b) = (nonce(), nonce());
+        assert_ne!(a, b);
+        // A real snowflake is 18 or 19 digits.
+        assert!((17..=19).contains(&a.len()), "{a}");
     }
 
     #[test]

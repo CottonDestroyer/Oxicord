@@ -66,6 +66,7 @@ impl MainView {
         session: Entity<Session>,
         media: Entity<Media>,
         backend: Backend,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let subscriptions = vec![
@@ -74,7 +75,7 @@ impl MainView {
         ];
         let chat = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
-            cx.new(|cx| ChatView::new(session, media, backend, cx))
+            cx.new(|cx| ChatView::new(session, media, backend, window, cx))
         };
         Self {
             session,
@@ -89,7 +90,12 @@ impl MainView {
         }
     }
 
-    fn select_guild(&mut self, guild: Option<Snowflake>, cx: &mut Context<Self>) {
+    fn select_guild(
+        &mut self,
+        guild: Option<Snowflake>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.guild = guild;
         self.channel = guild.and_then(|g| {
             self.last_channel.get(&g).copied().or_else(|| {
@@ -102,23 +108,24 @@ impl MainView {
                     .map(|c| c.id)
             })
         });
-        self.sync_chat(cx);
+        self.sync_chat(window, cx);
         cx.notify();
     }
 
-    fn select_channel(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
+    fn select_channel(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.channel = Some(channel);
         if let Some(guild) = self.guild {
             self.last_channel.insert(guild, channel);
         }
-        self.sync_chat(cx);
+        self.sync_chat(window, cx);
         cx.notify();
     }
 
     /// Points the message area at whatever channel is selected now.
-    fn sync_chat(&mut self, cx: &mut Context<Self>) {
+    fn sync_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let channel = self.channel;
-        self.chat.update(cx, |chat, cx| chat.set_channel(channel, cx));
+        self.chat
+            .update(cx, |chat, cx| chat.set_channel(channel, window, cx));
     }
 
     fn toggle_category(&mut self, category: Snowflake, cx: &mut Context<Self>) {
@@ -220,7 +227,7 @@ impl MainView {
                 .rounded(px(if selected_guild.is_none() { 16. } else { 24. }))
                 .child(icon("messages-square", 24., theme::TEXT_BRIGHT))
                 .into_any_element(),
-            cx.listener(|this, _, _, cx| this.select_guild(None, cx)),
+            cx.listener(|this, _, window, cx| this.select_guild(None, window, cx)),
         );
 
         let mut list = div().flex().flex_col().gap_2().items_center().w_full();
@@ -234,7 +241,7 @@ impl MainView {
                 selected,
                 item.unread,
                 body,
-                cx.listener(move |this, _, _, cx| this.select_guild(Some(id), cx)),
+                cx.listener(move |this, _, window, cx| this.select_guild(Some(id), window, cx)),
             ));
         }
 
@@ -390,7 +397,7 @@ impl MainView {
             .text_color(rgb(color))
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-            .on_click(cx.listener(move |this, _, _, cx| this.select_channel(id, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| this.select_channel(id, window, cx)))
             .child(icon(glyph, 18., color))
             .child(
                 div()
@@ -427,7 +434,7 @@ impl MainView {
             .text_color(rgb(color))
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-            .on_click(cx.listener(move |this, _, _, cx| this.select_channel(id, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| this.select_channel(id, window, cx)))
             .child(avatar(&self.media, &dm.avatar, 32., &dm.name, cx))
             .child(div().flex_1().truncate().child(dm.name))
             .children(mention_badge(dm.unread.mentions))

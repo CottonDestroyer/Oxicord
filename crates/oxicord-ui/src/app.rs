@@ -79,7 +79,7 @@ impl AppView {
             Event::Authenticated(_) => {
                 let (session, media, backend) =
                     (self.session.clone(), self.media.clone(), self.backend.clone());
-                let main = cx.new(|cx| MainView::new(session, media, backend, cx));
+                let main = cx.new(|cx| MainView::new(session, media, backend, window, cx));
                 self.screen = Screen::Main(main);
             }
             Event::LoginFailed(message) => {
@@ -100,6 +100,10 @@ impl AppView {
                 self.session.update(cx, |session, cx| {
                     session.apply_history(channel, result, requested, cx)
                 });
+            }
+            Event::Notice(text) => {
+                self.session
+                    .update(cx, |session, cx| session.set_notice(Some(text), cx));
             }
             Event::Image { url, bytes } => {
                 self.media.update(cx, |media, cx| media.on_image(url, bytes, cx));
