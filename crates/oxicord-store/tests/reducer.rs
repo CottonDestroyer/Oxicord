@@ -351,6 +351,52 @@ fn gaining_a_role_can_reveal_a_channel() {
 }
 
 #[test]
+fn supplemental_members_supply_our_roles_when_ready_had_none() {
+    let mut ready = ready_json();
+    ready["merged_members"] = json!([]);
+    // Make the secret channel visible only to role 300.
+    ready["guilds"][0]["channels"][4]["permission_overwrites"] = json!([
+        { "id": "100", "type": 0, "allow": "0", "deny": perm(1 << 10) },
+        { "id": "300", "type": 0, "allow": perm(1 << 10), "deny": "0" }
+    ]);
+
+    let mut store = Store::new();
+    store.apply(event("READY", ready));
+    let visible = |s: &Store| {
+        s.channel_groups(id(GUILD))
+            .iter()
+            .flat_map(|g| g.channels.iter())
+            .any(|c| c.id == id(14))
+    };
+    assert!(store.my_roles(id(GUILD)).is_empty());
+    assert!(!visible(&store));
+
+    let changes = store.apply(event(
+        "READY_SUPPLEMENTAL",
+        json!({
+            "guilds": [{ "id": "100" }],
+            "merged_members": [[{ "user_id": "1", "roles": ["300"] }]]
+        }),
+    ));
+    assert_eq!(store.my_roles(id(GUILD)), &[id(300)]);
+    assert!(visible(&store));
+    assert!(changes.affects_channel_list(id(GUILD)));
+}
+
+#[test]
+fn supplemental_members_for_someone_else_are_ignored() {
+    let mut store = ready_store();
+    store.apply(event(
+        "READY_SUPPLEMENTAL",
+        json!({
+            "guilds": [{ "id": "100" }],
+            "merged_members": [[{ "user_id": "2", "roles": ["999"] }]]
+        }),
+    ));
+    assert_eq!(store.my_roles(id(GUILD)), &[id(200)]);
+}
+
+#[test]
 fn channel_update_without_last_message_keeps_the_old_one() {
     let mut store = ready_store();
     store.apply(event(

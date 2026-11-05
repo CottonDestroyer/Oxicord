@@ -3,7 +3,7 @@ use oxicord_model::{
     gateway::{
         DispatchEvent, GuildDelete, GuildMemberUpdate, GuildRoleDelete, GuildRoleEvent,
         MessageAck, MessageDelete, MessageDeleteBulk, PresenceUpdate, ReactionEvent, Ready,
-        TypingStart,
+        ReadySupplemental, TypingStart,
     },
     MemberList,
 };
@@ -23,6 +23,7 @@ impl Store {
                 self.on_ready(*ready);
                 return Changes::full();
             }
+            DispatchEvent::ReadySupplemental(s) => self.on_ready_supplemental(*s, &mut changes),
             DispatchEvent::MessageCreate(m) => self.on_message_create(*m, &mut changes),
             DispatchEvent::MessageUpdate(p) => self.on_message_update(*p, &mut changes),
             DispatchEvent::MessageDelete(d) => self.on_message_delete(d, &mut changes),
@@ -138,6 +139,24 @@ impl Store {
         if let Some(states) = ready.read_state {
             for state in states.entries() {
                 self.read_states.insert(state.id, state.clone());
+            }
+        }
+    }
+
+    /// Picks our own roles out of the extra members READY left for later.
+    /// They decide which channels we can see, so the lists need a redraw.
+    fn on_ready_supplemental(&mut self, extra: ReadySupplemental, changes: &mut Changes) {
+        let me = self.my_id();
+
+        for (guild, members) in extra.guilds.iter().zip(extra.merged_members) {
+            let mine = members
+                .into_vec()
+                .into_iter()
+                .find(|m| m.id().is_some() && m.id() == me);
+            if let Some(member) = mine {
+                self.my_roles.insert(guild.id, member.roles);
+                changes.channel_lists.insert(guild.id);
+                changes.guild_list = true;
             }
         }
     }

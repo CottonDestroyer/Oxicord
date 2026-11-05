@@ -61,6 +61,22 @@ pub struct Ready {
     pub merged_members: Vec<MemberList>,
 }
 
+/// Follows READY with data that didn't fit in it. All we use is
+/// `merged_members`, which is indexed in parallel with this event's own
+/// `guilds` list (not READY's).
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReadySupplemental {
+    #[serde(default)]
+    pub guilds: Vec<SupplementalGuild>,
+    #[serde(default)]
+    pub merged_members: Vec<MemberList>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SupplementalGuild {
+    pub id: Snowflake,
+}
+
 /// User sessions get read states as `{ entries: [...] }`. Accept a bare
 /// array too in case the wrapper goes away.
 #[derive(Clone, Debug, Deserialize)]
@@ -173,6 +189,7 @@ pub struct GuildRoleDelete {
 #[derive(Clone, Debug)]
 pub enum DispatchEvent {
     Ready(Box<Ready>),
+    ReadySupplemental(Box<ReadySupplemental>),
     Resumed,
     MessageCreate(Box<Message>),
     MessageUpdate(Box<PartialMessage>),
@@ -202,6 +219,7 @@ impl DispatchEvent {
 
         Ok(match name {
             "READY" => Self::Ready(Box::new(de(data)?)),
+            "READY_SUPPLEMENTAL" => Self::ReadySupplemental(Box::new(de(data)?)),
             "RESUMED" => Self::Resumed,
             "MESSAGE_CREATE" => Self::MessageCreate(Box::new(de(data)?)),
             "MESSAGE_UPDATE" => Self::MessageUpdate(Box::new(de(data)?)),
@@ -320,6 +338,27 @@ mod tests {
         let lists: Vec<_> = r.merged_members.into_iter().map(|m| m.into_vec()).collect();
         assert_eq!(lists[0][0].roles.len(), 2);
         assert_eq!(lists[1][0].roles, vec![Snowflake(12)]);
+    }
+
+    #[test]
+    fn parses_ready_supplemental_members_by_guild_index() {
+        let event = DispatchEvent::parse(
+            "READY_SUPPLEMENTAL",
+            json!({
+                "guilds": [{ "id": "5", "voice_states": [] }, { "id": "6" }],
+                "merged_members": [[{ "user_id": "1", "roles": ["10"] }], []],
+                "merged_presences": { "friends": [] },
+                "disclose": ["pomelo"]
+            }),
+        )
+        .unwrap();
+
+        let DispatchEvent::ReadySupplemental(s) = event else {
+            panic!("wrong variant");
+        };
+        assert_eq!(s.guilds[1].id, Snowflake(6));
+        let first = s.merged_members.into_iter().next().unwrap().into_vec();
+        assert_eq!(first[0].roles, vec![Snowflake(10)]);
     }
 
     #[test]
