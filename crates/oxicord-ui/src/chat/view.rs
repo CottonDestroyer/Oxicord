@@ -1652,6 +1652,20 @@ impl ChatView {
                 )),
             )
             .children(in_dm.then(|| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        toolbar_button("start-voice-call", "phone", theme::TEXT_MUTED)
+                            .on_click(cx.listener(|_, _, _, _| {})),
+                    )
+                    .child(
+                        toolbar_button("start-video-call", "video", theme::TEXT_MUTED)
+                            .on_click(cx.listener(|_, _, _, _| {})),
+                    )
+            }))
+            .children(in_dm.then(|| {
                 toolbar_button("add-to-dm", "user-plus", theme::TEXT_MUTED).on_click(cx.listener(
                     |this, event: &ClickEvent, _, cx| {
                         let Some(channel) = this.channel else { return };
