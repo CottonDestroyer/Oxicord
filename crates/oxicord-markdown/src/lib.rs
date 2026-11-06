@@ -8,8 +8,10 @@
 
 mod ast;
 mod block;
+mod highlight;
 mod inline;
 
 pub use ast::{Block, Inline};
 pub use block::parse;
+pub use highlight::{Token, highlight};
 pub use inline::parse_inline;

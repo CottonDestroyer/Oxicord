@@ -27,6 +27,8 @@ const CODE_BG: u32 = 0x070813;
 const SPOILER_HIDDEN: u32 = 0x242426;
 const SPOILER_SHOWN: u32 = 0x121213;
 const MONO: &str = "Consolas";
+/// Plain text inside a code block, highlight.js's default color.
+const CODE_TEXT: u32 = 0xc9cace;
 const JUMBO_EMOJI_LIMIT: usize = 27;
 
 /// Called with a spoiler's index when a hidden one is clicked.
@@ -271,7 +273,7 @@ fn render_block(
                 .child(div().flex_1().min_w_0().pl(px(12.)).child(column))
                 .into_any_element()
         }
-        Block::Code { code, .. } => div()
+        Block::Code { language, code } => div()
             .w_full()
             .my(px(2.))
             .px_3()
@@ -281,9 +283,10 @@ fn render_block(
             .border_1()
             .border_color(rgb(theme::BORDER))
             .font_family(MONO)
-            .text_size(px(13.))
-            .text_color(rgb(theme::TEXT))
-            .child(code.clone())
+            .text_size(px(14.))
+            .line_height(px(18.))
+            .text_color(rgb(CODE_TEXT))
+            .child(code_text(language.as_deref(), code, window))
             .into_any_element(),
         Block::List { start, items } => {
             let mut list = div().flex().flex_col().gap(px(1.)).pl(px(8.));
@@ -311,6 +314,53 @@ fn render_block(
             }
             list.into_any_element()
         }
+    }
+}
+
+/// The text of a fenced block, colored when its language is one we know.
+fn code_text(language: Option<&str>, code: &str, window: &Window) -> AnyElement {
+    let spans = language.map(|l| oxicord_markdown::highlight(l, code)).unwrap_or_default();
+    if spans.is_empty() {
+        return div().child(code.to_owned()).into_any_element();
+    }
+
+    let mut font = window.text_style().font();
+    font.family = MONO.into();
+    let run = |len: usize, color: u32| TextRun {
+        len,
+        font: font.clone(),
+        color: rgb(color).into(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    let mut runs = Vec::new();
+    let mut at = 0;
+    for (range, token) in spans {
+        if range.start > at {
+            runs.push(run(range.start - at, CODE_TEXT));
+        }
+        runs.push(run(range.len(), token_color(token)));
+        at = range.end;
+    }
+    if at < code.len() {
+        runs.push(run(code.len() - at, CODE_TEXT));
+    }
+    StyledText::new(code.to_owned()).with_runs(runs).into_any_element()
+}
+
+/// highlight.js colors as the official client's Midnight theme resolves them.
+fn token_color(token: oxicord_markdown::Token) -> u32 {
+    use oxicord_markdown::Token;
+    match token {
+        Token::Keyword => 0xf67774,
+        Token::Type => 0xff59d5,
+        Token::String => 0x57af74,
+        Token::Number => 0xe18752,
+        Token::Comment => 0x888991,
+        Token::Title => 0x8195fb,
+        Token::Attribute => 0x5ea0f1,
+        Token::Meta => 0xdc8d00,
     }
 }
 
