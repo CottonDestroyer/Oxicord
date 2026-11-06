@@ -2173,13 +2173,15 @@ impl Render for ChatView {
             }))
             .children(self.profile_modal.map(|user| {
                 let (name, avatar_url, status, bio) = {
-                    let store = &self.session.read(cx).store;
+                    let session = self.session.read(cx);
+                    let store = &session.store;
                     let account = store.user(user);
+                    let profile = session.profiles.get(&user);
                     (
                         account.map(|u| u.display_name().to_owned()).unwrap_or_default(),
                         account.map(|u| cdn::user_avatar(u.id, u.avatar.as_deref(), 128)).unwrap_or_default(),
                         account.and_then(|u| store.activities(u.id).first().map(|a| a.name.clone())).unwrap_or_default(),
-                        account.and_then(|u| u.bio.clone()).unwrap_or_default(),
+                        profile.map(|p| p.bio.clone()).unwrap_or_default(),
                     )
                 };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
