@@ -83,7 +83,7 @@ pub fn modal(content: AnyElement, on_close: Box<Handler>) -> AnyElement {
                 .top_0()
                 .left_0()
                 .size_full()
-                .bg(rgba(0x0000_0099))
+                .bg(rgba(0x0000_00b8))
                 .on_click(on_close),
         )
         .child(content)

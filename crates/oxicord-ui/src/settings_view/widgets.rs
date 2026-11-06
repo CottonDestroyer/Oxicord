@@ -9,9 +9,9 @@ use crate::{icons::icon, theme};
 
 pub fn title(text: &'static str) -> impl IntoElement {
     div()
-        .mb_2()
-        .text_size(px(20.))
-        .font_weight(FontWeight::BOLD)
+        .mb_4()
+        .text_size(px(24.))
+        .font_weight(FontWeight::MEDIUM)
         .text_color(rgb(theme::TEXT_BRIGHT))
         .child(text)
 }
@@ -32,20 +32,17 @@ pub fn group(heading: &'static str, rows: Vec<AnyElement>) -> impl IntoElement {
         .gap_2()
         .child(
             div()
-                .mt_3()
-                .text_size(px(11.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(rgb(theme::TEXT_MUTED))
-                .child(heading.to_uppercase()),
+                .mt(px(16.))
+                .text_size(px(16.))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .child(heading),
         )
         .child(
             div()
                 .flex()
                 .flex_col()
-                .gap_3()
-                .p_3()
-                .rounded(px(8.))
-                .bg(rgb(theme::BG_PANEL))
+                .gap(px(16.))
                 .children(rows),
         )
 }
@@ -56,10 +53,15 @@ pub fn row_text(label: &str, hint: Option<&str>) -> impl IntoElement {
         .min_w_0()
         .flex()
         .flex_col()
-        .child(div().text_color(rgb(theme::TEXT_BRIGHT)).child(label.to_owned()))
+        .child(
+            div()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .child(label.to_owned()),
+        )
         .children(hint.map(|hint| {
             div()
-                .text_size(px(12.))
+                .text_size(px(14.))
                 .text_color(rgb(theme::TEXT_MUTED))
                 .child(hint.to_owned())
         }))
@@ -75,12 +77,12 @@ pub fn switch_row(
     let track = div()
         .flex_none()
         .w(px(40.))
-        .h(px(22.))
+        .h(px(24.))
         .p(px(3.))
         .flex()
         .rounded_full()
         .bg(rgb(if on { theme::ONLINE } else { theme::BG_ACTIVE }))
-        .child(div().size(px(16.)).rounded_full().bg(rgb(theme::TEXT_BRIGHT)));
+        .child(div().size(px(18.)).rounded_full().bg(rgb(theme::TEXT_BRIGHT)));
     // The knob sits at the end when the switch is on.
     let track = if on { track.justify_end() } else { track };
 
@@ -135,10 +137,9 @@ pub fn info_row(label: &'static str, value: String) -> AnyElement {
         .gap_3()
         .child(
             div()
-                .text_size(px(12.))
-                .font_weight(FontWeight::BOLD)
+                .font_weight(FontWeight::MEDIUM)
                 .text_color(rgb(theme::TEXT_MUTED))
-                .child(label.to_uppercase()),
+                .child(label),
         )
         .child(div().truncate().text_color(rgb(theme::TEXT)).child(value))
         .into_any_element()
