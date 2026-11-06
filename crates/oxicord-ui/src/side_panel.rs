@@ -86,6 +86,7 @@ impl SidePanel {
             PanelKind::Pins => self.load_pins(cx),
             PanelKind::Threads => self.load_threads(cx),
             PanelKind::Search => self.query.update(cx, |input, cx| input.focus(window, cx)),
+            PanelKind::VoiceDetails => {}
         }
         cx.notify();
     }
@@ -414,6 +415,16 @@ impl SidePanel {
                     }
                 }
             }
+            PanelKind::VoiceDetails => {
+                vec![
+                    Self::note("Voice Connected"),
+                    Self::note("Camera Unavailable"),
+                    Self::note("Share Your Screen"),
+                    Self::note("Start An Activity"),
+                    Self::note("Unmute"),
+                    Self::note("Disconnect"),
+                ]
+            }
         }
     }
 }
@@ -424,6 +435,7 @@ impl Render for SidePanel {
             PanelKind::Pins => "Pinned Messages",
             PanelKind::Search => "Search",
             PanelKind::Threads => "Threads",
+            PanelKind::VoiceDetails => "Voice Details",
         };
         let rows = self.body(cx);
 

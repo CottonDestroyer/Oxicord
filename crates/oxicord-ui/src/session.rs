@@ -75,6 +75,7 @@ pub enum PanelKind {
     Pins,
     Search,
     Threads,
+    VoiceDetails,
 }
 
 /// Someone asked to open the side panel.
