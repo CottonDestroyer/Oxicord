@@ -6,7 +6,7 @@ use gpui_kit::{ClipboardItem, Context, MouseDownEvent, Pixels, Point, Window};
 use oxicord_model::Snowflake;
 
 use super::{Allowed, ChatView};
-use crate::{backend::Command, popup::Entry, session::OpenPopup};
+use crate::{backend::Command, popup::Entry, session::{OpenForward, OpenPopup}};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Choice {
@@ -15,6 +15,7 @@ pub(super) enum Choice {
     Pin(bool),
     CopyText,
     Reply,
+    Forward,
     MarkUnread,
     Thread,
     CopyLink,
@@ -32,6 +33,7 @@ impl Choice {
             Choice::Pin(false) => Entry::item("Pin Message", "pin"),
             Choice::CopyText => Entry::item("Copy Text", "copy"),
             Choice::Reply => Entry::item("Reply", "reply"),
+            Choice::Forward => Entry::item("Forward", "forward"),
             Choice::MarkUnread => Entry::item("Mark Unread", "mail"),
             Choice::Thread => Entry::item("Create Thread", "messages-square"),
             Choice::CopyLink => Entry::item("Copy Message Link", "link"),
@@ -58,6 +60,7 @@ pub(super) fn choices(allowed: &Allowed) -> Vec<Choice> {
     if allowed.reply {
         out.push(Choice::Reply);
     }
+    out.push(Choice::Forward);
     out.push(Choice::MarkUnread);
     if allowed.thread {
         out.push(Choice::Thread);
@@ -110,6 +113,7 @@ impl ChatView {
             Choice::Pin(pinned) => self.set_pinned(message, !pinned, cx),
             Choice::CopyText => self.copy_text(message, cx),
             Choice::Reply => self.start_reply(message, window, cx),
+            Choice::Forward => self.forward(message, cx),
             Choice::MarkUnread => self.mark_unread(message, cx),
             Choice::Thread => self.start_thread(message, cx),
             Choice::CopyLink => self.copy_link(message, cx),
@@ -122,7 +126,13 @@ impl ChatView {
         }
     }
 
-    /// Moves the read marker to just before `message`, so it and everything
+    pub(super) fn forward(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let guild = self.guild(cx);
+        self.session.update(cx, |_, cx| cx.emit(OpenForward { channel, guild, message }));
+    }
+
+    /// Moves the read marker to just before `message`,, so it and everything
     /// after it counts as new again.
     fn mark_unread(&mut self, message: Snowflake, cx: &mut Context<Self>) {
         let Some(channel) = self.channel else { return };

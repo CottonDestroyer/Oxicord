@@ -19,6 +19,7 @@ use crate::{
     context_menu::{self, CloseMenu, ContextMenu, Target},
     dm_picker::{ClosePicker, DmPicker, Purpose},
     forum::ForumView,
+    forward_dialog::{CloseForward, ForwardDialog},
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
@@ -30,7 +31,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenInbox, OpenInviteDialog, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -121,6 +122,8 @@ pub struct MainView {
     viewer: Option<String>,
     join: Entity<JoinServerView>,
     join_open: bool,
+    forward: Entity<ForwardDialog>,
+    forward_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
@@ -171,6 +174,10 @@ impl MainView {
         let status_dialog = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| StatusDialog::new(session, media, backend, window, cx))
+        };
+        let forward = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| ForwardDialog::new(session, media, backend, window, cx))
         };
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
@@ -269,6 +276,15 @@ impl MainView {
                 this.status_dialog_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&forward, |this, _, _: &CloseForward, cx| {
+                this.forward_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenForward, window, cx| {
+                this.forward_open = true;
+                this.forward.update(cx, |dialog, cx| dialog.opened(open.channel, open.guild, open.message, window, cx));
+                cx.notify();
+            }),
             cx.subscribe(&join, |this, _, _: &CloseJoin, cx| {
                 this.join_open = false;
                 cx.notify();
@@ -341,6 +357,8 @@ impl MainView {
             viewer: None,
             join,
             join_open: false,
+            forward,
+            forward_open: false,
             switcher,
             switcher_open: false,
             picker,
@@ -2114,6 +2132,7 @@ impl Render for MainView {
         let viewer = self.render_viewer(cx);
         let account = self.render_account_popout(cx);
         let status_dialog = self.status_dialog_open.then(|| self.status_dialog.clone());
+        let forward = self.forward_open.then(|| self.forward.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
@@ -2168,6 +2187,7 @@ impl Render for MainView {
             .children(status_dialog)
             .children(menu)
             .children(viewer)
+            .children(forward)
             .children(join)
             .children(invite)
             .children(server_settings)

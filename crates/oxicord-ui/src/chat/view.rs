@@ -1471,6 +1471,10 @@ impl ChatView {
             );
         }
         bar.child(
+            action_button(("forward", id.0), "forward", theme::TEXT_MUTED)
+                .on_click(cx.listener(move |this, _, _, cx| this.forward(id, cx))),
+        )
+        .child(
             action_button(("more", id.0), "ellipsis", theme::TEXT_MUTED).on_click(cx.listener(
                 move |this, event: &ClickEvent, _, cx| {
                     let at = gpui_kit::point(event.position().x - px(200.), event.position().y + px(14.));

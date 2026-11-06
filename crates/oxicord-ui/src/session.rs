@@ -122,6 +122,15 @@ pub struct OpenServerSettings(pub Snowflake);
 
 impl EventEmitter<OpenServerSettings> for Session {}
 
+/// Someone wants to forward a message: its channel, server and id.
+pub struct OpenForward {
+    pub channel: Snowflake,
+    pub guild: Option<Snowflake>,
+    pub message: Snowflake,
+}
+
+impl EventEmitter<OpenForward> for Session {}
+
 /// The inbox button was pressed.
 pub struct OpenInbox;
 

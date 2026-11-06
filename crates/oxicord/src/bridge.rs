@@ -154,6 +154,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                         message_id,
                         channel_id: channel,
                         guild_id: guild,
+                        kind: None,
                     }),
                     sticker_ids: stickers.iter().map(ToString::to_string).collect(),
                     allowed_mentions: (reply_to.is_some() && !ping_reply).then(AllowedMentions::without_reply_ping),
@@ -173,6 +174,33 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     notify(&events, "send your message", &err).await;
                 }
             });
+        }
+        Command::ForwardMessage { from, guild, message, targets, note } => {
+            for target in targets {
+                let (api, events, note) = (api.clone(), events.clone(), note.clone());
+                tokio::spawn(async move {
+                    let forward = SendMessage {
+                        nonce: Some(nonce()),
+                        message_reference: Some(ReplyTarget {
+                            message_id: message,
+                            channel_id: from,
+                            guild_id: guild,
+                            kind: Some(1),
+                        }),
+                        ..SendMessage::default()
+                    };
+                    if let Err(err) = api.send_message(target, &forward).await {
+                        notify(&events, "forward that message", &err).await;
+                        return;
+                    }
+                    if !note.is_empty() {
+                        let text = SendMessage { content: note, nonce: Some(nonce()), ..SendMessage::default() };
+                        if let Err(err) = api.send_message(target, &text).await {
+                            notify(&events, "send your note", &err).await;
+                        }
+                    }
+                });
+            }
         }
         Command::EditMessage {
             channel,

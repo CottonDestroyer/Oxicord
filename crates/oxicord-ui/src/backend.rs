@@ -42,6 +42,14 @@ pub enum Command {
         files: Vec<PathBuf>,
         stickers: Vec<Snowflake>,
     },
+    /// Sends a copy of `message` to each of `targets`, then `note` after it.
+    ForwardMessage {
+        from: Snowflake,
+        guild: Option<Snowflake>,
+        message: Snowflake,
+        targets: Vec<Snowflake>,
+        note: String,
+    },
     EditMessage {
         channel: Snowflake,
         message: Snowflake,

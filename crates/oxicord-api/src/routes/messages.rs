@@ -49,6 +49,9 @@ pub struct ReplyTarget {
     pub channel_id: Snowflake,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guild_id: Option<Snowflake>,
+    /// 1 makes the new message a forward of the referenced one.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<u8>,
 }
 
 /// A file to attach, already read into memory.
@@ -232,6 +235,19 @@ mod tests {
     }
 
     #[test]
+    fn a_forward_is_a_reference_of_type_one() {
+        let forward = SendMessage {
+            message_reference: Some(ReplyTarget { message_id: Snowflake(1), channel_id: Snowflake(2), guild_id: None, kind: Some(1) }),
+            ..Default::default()
+        };
+        let body = serde_json::to_value(&forward).unwrap();
+        assert_eq!(body["message_reference"]["type"], 1);
+        assert_eq!(body["message_reference"]["message_id"], "1");
+        let reply = ReplyTarget { message_id: Snowflake(1), channel_id: Snowflake(2), guild_id: None, kind: None };
+        assert!(serde_json::to_value(reply).unwrap().get("type").is_none());
+    }
+
+    #[test]
     fn history_query_carries_cursor() {
         let page = MessagePage {
             before: Some(Snowflake(77)),
@@ -268,6 +284,7 @@ mod tests {
                 message_id: Snowflake(5),
                 channel_id: Snowflake(6),
                 guild_id: None,
+                kind: None,
             }),
             ..Default::default()
         })
