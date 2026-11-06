@@ -2172,25 +2172,34 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let name = self
-                    .session
-                    .read(cx)
-                    .store
-                    .user(user)
-                    .map(|u| u.display_name().to_owned())
-                    .unwrap_or_default();
+                let (name, avatar_url, status, bio) = {
+                    let store = &self.session.read(cx).store;
+                    let account = store.user(user);
+                    (
+                        account.map(|u| u.display_name().to_owned()).unwrap_or_default(),
+                        account.map(|u| cdn::user_avatar(u.id, u.avatar.as_deref(), 128)).unwrap_or_default(),
+                        account.and_then(|u| store.activities(u.id).first().map(|a| a.name.clone())).unwrap_or_default(),
+                        account.and_then(|u| u.bio.clone()).unwrap_or_default(),
+                    )
+                };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
                     this.profile_modal = None;
                     cx.notify();
                 });
                 profile::modal(
                     div()
-                        .w(px(400.))
-                        .h(px(300.))
+                        .w(px(420.))
+                        .h(px(360.))
                         .bg(rgb(theme::BG_PANEL))
                         .rounded(px(theme::RADIUS))
                         .p_4()
-                        .child(format!("Profile: {}", name))
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(avatar(&self.media, &avatar_url, 64., &name, cx))
+                        .child(div().font_weight(FontWeight::BOLD).child(name))
+                        .children((!status.is_empty()).then(|| div().text_color(rgb(theme::TEXT_MUTED)).child(status)))
+                        .children((!bio.is_empty()).then(|| div().text_size(px(13.)).child(bio)))
                         .into_any_element(),
                     Box::new(on_close),
                 )
