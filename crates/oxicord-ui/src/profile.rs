@@ -105,7 +105,7 @@ fn body(
         Status::Offline => "Offline",
     };
 
-    let mut sections = div().flex().flex_col().gap_3().p_3().rounded(px(8.)).bg(rgb(theme::BG_PANEL));
+    let mut sections = div().flex().flex_col().gap_3().p_3().rounded(px(8.)).bg(rgb(theme::BG_MENU));
     if !card.bio.is_empty() {
         sections = sections.child(section(
             "About me",
@@ -165,13 +165,13 @@ fn body(
         .id("profile-card")
         .occlude()
         .relative()
-        .w(px(340.))
+        .w(px(300.))
         .border_color(rgb(theme::BORDER))
         .when(inline, |card| card.h_full().flex_none().overflow_y_scroll().border_l_1())
-        .when(!inline, |card| card.rounded(px(10.)).overflow_hidden().border_1())
-        .bg(rgb(theme::BG_SIDEBAR))
+        .when(!inline, |card| card.rounded(px(theme::RADIUS)).overflow_hidden().border_1())
+        .bg(rgb(theme::BG_PANEL))
         .child({
-            let banner = div().h(px(100.)).w_full().bg(rgb(card.accent)).overflow_hidden();
+            let banner = div().h(px(105.)).w_full().bg(rgb(card.accent)).overflow_hidden();
             match card.banner_url.as_deref().and_then(|url| media.update(cx, |m, _| m.get(url))) {
                 Some(image) => banner.child(
                     img(gpui_kit::ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover),
@@ -197,8 +197,8 @@ fn body(
                                 .mt(px(-40.))
                                 .rounded_full()
                                 .border_4()
-                                .border_color(rgb(theme::BG_SIDEBAR))
-                                .bg(rgb(theme::BG_SIDEBAR))
+                                .border_color(rgb(theme::BG_PANEL))
+                                .bg(rgb(theme::BG_PANEL))
                                 .child(avatar(media, &card.avatar_url, 80., &card.name, cx))
                                 .child(presence_dot(card.status)),
                         )
@@ -211,7 +211,7 @@ fn body(
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .rounded(px(6.))
+                                .rounded(px(theme::RADIUS))
                                 .cursor_pointer()
                                 .bg(rgb(theme::ACCENT))
                                 .text_color(rgb(theme::TEXT_BRIGHT))
@@ -270,7 +270,7 @@ fn body(
                                 .px_3()
                                 .flex()
                                 .items_center()
-                                .rounded(px(6.))
+                                .rounded(px(theme::RADIUS))
                                 .cursor_pointer()
                                 .text_size(px(13.))
                                 .border_1()

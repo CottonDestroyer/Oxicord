@@ -15,8 +15,8 @@ fn apply_accent(cx: &mut gpui_kit::App) {
     let accent = |value: u32| gpui_kit::Hsla::from(gpui_kit::rgb(value));
     let colors = &mut Theme::global_mut(cx).colors;
     colors.primary = accent(theme::ACCENT);
-    colors.primary_hover = accent(0x4752c4);
-    colors.primary_active = accent(0x3c45a5);
+    colors.primary_hover = accent(0x4452bb);
+    colors.primary_active = accent(0x3a48a3);
     colors.primary_foreground = accent(theme::TEXT_BRIGHT);
     colors.button_primary = colors.primary;
     colors.button_primary_hover = colors.primary_hover;

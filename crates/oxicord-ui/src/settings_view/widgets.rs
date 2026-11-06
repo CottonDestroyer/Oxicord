@@ -172,7 +172,7 @@ pub fn button(
                 .px_3()
                 .flex()
                 .items_center()
-                .rounded(px(6.))
+                .rounded(px(theme::RADIUS))
                 .border_1()
                 .border_color(rgb(border))
                 .bg(rgb(fill))

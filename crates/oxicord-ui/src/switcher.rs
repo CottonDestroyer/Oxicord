@@ -334,7 +334,7 @@ impl Render for QuickSwitcher {
             .flex()
             .flex_col()
             .gap_3()
-            .rounded(px(10.))
+            .rounded(px(theme::RADIUS))
             .border_1()
             .border_color(rgb(theme::BORDER))
             .bg(rgb(theme::BG_SIDEBAR))

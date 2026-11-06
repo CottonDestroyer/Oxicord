@@ -199,7 +199,7 @@ impl Inbox {
             .flex()
             .items_center()
             .gap_2()
-            .rounded(px(6.))
+            .rounded(px(theme::RADIUS))
             .cursor_pointer()
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.go(channel, None, cx)))
