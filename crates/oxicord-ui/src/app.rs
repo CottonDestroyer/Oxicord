@@ -194,7 +194,8 @@ impl AppView {
                         _ => None,
                     })
                     .flatten();
-                self.session.update(cx, |session, cx| session.handle(event, cx));
+                let backend = self.backend.clone();
+                self.session.update(cx, |session, cx| session.handle(&backend, event, cx));
                 if let Some(message) = incoming {
                     self.notify(&message, cx);
                 }

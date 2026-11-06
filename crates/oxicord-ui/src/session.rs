@@ -539,8 +539,17 @@ impl Session {
         cx.notify();
     }
 
-    pub fn handle(&mut self, event: GatewayEvent, cx: &mut Context<Self>) {
+    pub fn handle(&mut self, backend: &Backend, event: GatewayEvent, cx: &mut Context<Self>) {
         match event {
+            // Somebody pinned or unpinned something. Only channels whose pins
+            // we already fetched are worth asking about again.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "CHANNEL_PINS_UPDATE" => {
+                let channel = serde_json::from_value::<Snowflake>(data["channel_id"].clone()).ok();
+                if let Some(channel) = channel.filter(|c| self.pins.contains_key(c)) {
+                    // The old list stays up until the new one lands.
+                    backend.send(Command::LoadPins(channel));
+                }
+            }
             // The app never answered a click or command.
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, .. }) if name == "INTERACTION_FAILURE" => {
                 self.set_notice(Some("That interaction failed. The app didn't respond.".into()), cx);
