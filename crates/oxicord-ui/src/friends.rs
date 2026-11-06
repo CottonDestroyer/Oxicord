@@ -67,6 +67,14 @@ enum Doing {
 const ACTIVE_NOW_MIN_WINDOW: f32 = 1100.;
 const ACTIVE_NOW_WIDTH: f32 = 360.;
 
+/// What a conversation header says under a person's name: their custom
+/// status, or failing that what they are doing, as bots show their help line.
+pub(crate) fn status_line(activities: &[Activity]) -> Option<String> {
+    custom_status(activities).or_else(|| {
+        activities.iter().find(|a| a.verb().is_some()).map(|a| a.name.clone()).filter(|n| !n.is_empty())
+    })
+}
+
 /// The words a custom status shows, its emoji first when it has a plain one.
 fn custom_status(activities: &[Activity]) -> Option<String> {
     let custom = activities.iter().find(|a| a.is_custom_status())?;

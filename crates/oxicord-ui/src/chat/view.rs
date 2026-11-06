@@ -1488,6 +1488,18 @@ impl ChatView {
                 })
             })
             .unwrap_or(("hash", String::new(), None));
+        // A one to one chat is headed by the person's picture and what they
+        // are up to, not a channel glyph.
+        let dm_person = self.channel.and_then(|id| {
+            let store = &self.session.read(cx).store;
+            let channel = store.channel(id).filter(|c| c.kind == ChannelType::Dm)?;
+            let user = channel.recipients.first()?;
+            Some((
+                cdn::user_avatar(user.id, user.avatar.as_deref(), 64),
+                crate::friends::status_line(store.activities(user.id)),
+                tag(user),
+            ))
+        });
         // Threads only make sense inside a server.
         let has_threads = self.guild(cx).is_some();
         let in_dm = self.channel.and_then(|id| self.session.read(cx).store.channel(id)).is_some_and(|c| c.kind.is_dm());
@@ -1506,13 +1518,19 @@ impl ChatView {
             .pr(px(8.))
             .border_b_1()
             .border_color(rgb(theme::BORDER))
-            .child(icon(glyph, 20., theme::CHANNELS_DEFAULT))
+            .child(match &dm_person {
+                Some((url, _, _)) => avatar(&self.media, url, 20., &name, cx).into_any_element(),
+                None => icon(glyph, 20., theme::CHANNELS_DEFAULT).into_any_element(),
+            })
             .child(
                 div()
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(theme::HEADER_PRIMARY))
                     .child(name),
             )
+            .children(dm_person.as_ref().and_then(|(_, line, _)| line.clone()).map(|line| {
+                div().ml(px(8.)).text_size(px(14.)).text_color(rgb(theme::TEXT_MUTED)).child(line)
+            }))
             .children(topic.filter(|t| !t.is_empty()).map(|topic| {
                 div()
                     .flex_1()
@@ -1598,23 +1616,30 @@ impl ChatView {
             .child(
                 div()
                     .id("open-search")
-                    .w(px(144.))
-                    .h(px(26.))
+                    .w(px(if dm_person.is_some() { 244. } else { 144. }))
+                    .h(px(32.))
                     .flex_none()
                     .flex()
                     .items_center()
                     .justify_between()
-                    .px_2()
-                    .rounded(px(4.))
+                    .pl(px(8.))
+                    .pr(px(4.))
+                    .rounded(px(theme::RADIUS))
+                    .border_1()
+                    .border_color(rgb(theme::BORDER))
                     .cursor_text()
-                    .bg(rgb(theme::BG_PANEL))
-                    .text_size(px(13.))
+                    .bg(rgb(theme::BG_CHAT))
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(theme::TEXT_FAINT))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.session.update(cx, |s, cx| s.open_panel(PanelKind::Search, cx))
                     }))
-                    .child("Search")
-                    .child(icon("search", 14., theme::TEXT_MUTED)),
+                    .child(div().truncate().child(match &dm_person {
+                        Some((_, _, handle)) => format!("Search {handle}"),
+                        None => "Search".to_owned(),
+                    }))
+                    .child(div().size(px(24.)).flex().items_center().justify_center().child(icon("search", 16., theme::TEXT_MUTED))),
             )
             .child(
                 toolbar_button("open-inbox", "inbox", theme::TEXT_MUTED).on_click(cx.listener(|this, _, _, cx| {
