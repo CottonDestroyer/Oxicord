@@ -1504,6 +1504,16 @@ impl MainView {
                     })
                     .child(channel.name),
             )
+            .children(channel.user_limit.map(|_| {
+                div()
+                    .px(px(4.))
+                    .rounded(px(3.))
+                    .bg(rgb(theme::BADGE))
+                    .text_size(px(10.))
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("LIMITED")
+            }))
             .children(channel.can_invite.then(|| {
                 div()
                     .id(("invite-channel", id.0))
