@@ -36,6 +36,7 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
+    profile,
     session::{MentionUser, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
     theme,
 };
@@ -55,6 +56,7 @@ pub struct ChatView {
     media: Entity<Media>,
     backend: Backend,
     channel: Option<Snowflake>,
+    profile_modal: Option<Snowflake>,
     list: ListState,
     rows: Vec<Row>,
     /// Channels whose first page of history has been requested this session.
@@ -202,6 +204,7 @@ impl ChatView {
             media,
             backend,
             channel: None,
+            profile_modal: None,
             list,
             rows: Vec::new(),
             fetched: HashSet::new(),
@@ -1691,6 +1694,20 @@ impl ChatView {
                     },
                 ))
             }))
+            .children(in_dm.then(|| {
+                toolbar_button("view-full-profile", "user", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        if let Some(user) = this
+                            .channel
+                            .and_then(|id| this.session.read(cx).store.channel(id))
+                            .and_then(|c| c.recipients.first().map(|u| u.id))
+                        {
+                            this.profile_modal = Some(user);
+                            cx.notify();
+                        }
+                    },
+                ))
+            }))
             .children((has_members || in_dm).then(|| {
                 let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
                 toolbar_button("toggle-members", if in_dm { "circle-user-round" } else { "users" }, color)
@@ -2153,6 +2170,30 @@ impl Render for ChatView {
             )
             .children(picker.map(|panel| {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
+            }))
+            .children(self.profile_modal.map(|user| {
+                let name = self
+                    .session
+                    .read(cx)
+                    .store
+                    .user(user)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
+                    this.profile_modal = None;
+                    cx.notify();
+                });
+                profile::modal(
+                    div()
+                        .w(px(400.))
+                        .h(px(300.))
+                        .bg(rgb(theme::BG_PANEL))
+                        .rounded(px(theme::RADIUS))
+                        .p_4()
+                        .child(format!("Profile: {}", name))
+                        .into_any_element(),
+                    Box::new(on_close),
+                )
             }))
     }
 }
