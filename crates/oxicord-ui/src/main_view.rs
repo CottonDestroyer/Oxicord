@@ -1892,6 +1892,7 @@ fn rail_button(
 
     div()
         .id((kind, key))
+        .group("rail-item")
         .relative()
         .w_full()
         .h(px(40.))
@@ -1899,6 +1900,19 @@ fn rail_button(
         .justify_center()
         .cursor_pointer()
         .on_click(on_click)
+        // Hovering an item that isn't open stretches its pill to 20px.
+        .children((!selected).then(|| {
+            div()
+                .absolute()
+                .left(px(0.))
+                .top(px(10.))
+                .w(px(4.))
+                .h(px(20.))
+                .rounded_r(px(4.))
+                .bg(rgb(theme::TEXT_BRIGHT))
+                .invisible()
+                .group_hover("rail-item", |s| s.visible())
+        }))
         .child(
             div()
                 .absolute()

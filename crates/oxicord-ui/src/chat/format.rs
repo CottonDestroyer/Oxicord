@@ -8,6 +8,11 @@ fn clock(hour12: bool) -> &'static str {
     if hour12 { "%-I:%M %p" } else { "%H:%M" }
 }
 
+/// Just the clock, which grouped messages show in the gutter on hover.
+pub fn clock_time(at: DateTime<Utc>, offset: FixedOffset, hour12: bool) -> String {
+    at.with_timezone(&offset).format(clock(hour12)).to_string()
+}
+
 pub fn message_time(at: DateTime<Utc>, now: DateTime<Utc>, offset: FixedOffset, hour12: bool) -> String {
     let local = at.with_timezone(&offset);
     let today = now.with_timezone(&offset).date_naive();

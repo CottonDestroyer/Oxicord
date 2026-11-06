@@ -1186,7 +1186,29 @@ impl ChatView {
         let url = cdn::user_avatar(message.author.id, message.author.avatar.as_deref(), 64);
 
         let left: AnyElement = if grouped {
-            div().w(px(GUTTER)).flex_none().into_any_element()
+            // The time of a continued message appears in the gutter when the
+            // row is hovered, ending where the official one does.
+            div()
+                .w(px(GUTTER))
+                .flex_none()
+                .relative()
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .right(px(0.))
+                        .w(px(56.))
+                        .h(px(22.))
+                        .flex()
+                        .items_center()
+                        .justify_end()
+                        .text_size(px(11.))
+                        .text_color(rgb(theme::TEXT_FAINT))
+                        .invisible()
+                        .group_hover("message", |s| s.visible())
+                        .child(format::clock_time(message.timestamp, offset, prefs.hour12)),
+                )
+                .into_any_element()
         } else {
             let user = message.author.id;
             div()
