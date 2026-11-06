@@ -14,8 +14,8 @@ pub const BG_PANEL: u32 = 0x0a0a0c;
 pub const BG_HOVER: u32 = 0x121213;
 /// interactive-background-selected over black.
 pub const BG_ACTIVE: u32 = 0x242426;
-/// channeltextarea-background.
-pub const BG_INPUT: u32 = 0x131416;
+/// The composer box, read from the live client.
+pub const BG_INPUT: u32 = 0x101013;
 
 /// border-subtle (the app frame line) over black.
 pub const BORDER: u32 = 0x1e1e20;
@@ -74,10 +74,12 @@ pub fn font_family() -> &'static str {
 }
 
 pub const RAIL_WIDTH: f32 = 72.0;
-pub const SIDEBAR_WIDTH: f32 = 240.0;
+pub const SIDEBAR_WIDTH: f32 = 293.0;
 pub const MEMBERS_WIDTH: f32 = 264.0;
 /// radius-sm. The official scale is 4, 8, 12, 16 and 24.
 pub const RADIUS: f32 = 8.0;
 /// radius-md, the corner of the main frame.
 pub const RADIUS_MD: f32 = 12.0;
 pub const CHANNEL_HEADER_HEIGHT: f32 = 49.0;
+/// header-primary, the colour of channel titles in the header bar.
+pub const HEADER_PRIMARY: u32 = 0xfbfbfb;

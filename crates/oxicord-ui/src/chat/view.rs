@@ -899,15 +899,15 @@ impl ChatView {
                 .flex()
                 .items_center()
                 .gap(px(6.))
-                .h(px(24.))
-                .px(px(8.))
+                .h(px(30.))
+                .px(px(7.))
                 .rounded(px(8.))
                 .border_1()
-                .border_color(rgb(if mine { theme::ACCENT } else { theme::BORDER }))
+                .border_color(rgb(if mine { theme::ACCENT } else { theme::BG_HOVER }))
                 .bg(rgb(if mine { 0x15183a } else { theme::BG_HOVER }))
                 .text_size(px(13.))
                 .text_color(rgb(if mine { 0x9aadff } else { theme::TEXT_MUTED }))
-                .hover(|s| s.bg(rgb(if mine { 0x15183a } else { theme::BORDER })))
+                .hover(|s| s.bg(rgb(if mine { 0x15183a } else { theme::BORDER })).border_color(rgb(if mine { theme::ACCENT } else { theme::BORDER_MUTED })))
                 .child(glyph)
                 .child(reaction.count.to_string());
 
@@ -1313,8 +1313,9 @@ impl ChatView {
             .w_full()
             .flex()
             .gap_4()
-            .px_4()
-            .pt(px(if grouped { 2. } else { 16. }))
+            .pl(px(16.))
+            .pr(px(24.))
+            .pt(px(if grouped { 2. } else { 17. }))
             .pb(px(2.))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
             .on_mouse_down(
@@ -1454,11 +1455,11 @@ impl ChatView {
             .pr(px(8.))
             .border_b_1()
             .border_color(rgb(theme::BORDER))
-            .child(icon(glyph, 24., theme::CHANNELS_DEFAULT))
+            .child(icon(glyph, 20., theme::CHANNELS_DEFAULT))
             .child(
                 div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::HEADER_PRIMARY))
                     .child(name),
             )
             .children(topic.filter(|t| !t.is_empty()).map(|topic| {
@@ -1720,7 +1721,7 @@ impl ChatView {
         let typing = self.typing_line(cx);
         self.typing_shown = typing.is_some();
 
-        let mut column = div().flex_none().flex().flex_col().px_4().pb_2().pt_1();
+        let mut column = div().flex_none().flex().flex_col().px(px(8.)).pb(px(8.)).pt_1();
 
         // The line always takes up its height so the composer doesn't jump
         // when someone starts or stops typing.
@@ -2066,9 +2067,9 @@ fn divider(day: NaiveDate) -> impl IntoElement {
         .flex()
         .items_center()
         .gap_2()
-        .px_4()
-        .mt_4()
-        .mb_1()
+        .pl(px(16.)).pr(px(14.))
+        .mt(px(24.))
+        .mb(px(8.))
         .child(line())
         .child(
             div()

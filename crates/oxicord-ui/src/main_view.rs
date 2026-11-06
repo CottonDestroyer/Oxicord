@@ -1171,10 +1171,10 @@ impl MainView {
             .flex_col()
             .items_center()
             .gap_2()
-            .py_3()
+            .pb(px(12.))
             .bg(rgb(theme::BG_RAIL))
             .child(home)
-            .child(div().w(px(32.)).h(px(2.)).rounded_full().bg(rgb(theme::BORDER)))
+            .child(div().w(px(32.)).h(px(1.)).bg(rgb(theme::BORDER)))
             .child(
                 div()
                     .id("guild-list")
@@ -1226,6 +1226,8 @@ impl MainView {
             }
             None => {
                 list = list.child(self.render_friends_entry(cx));
+                // A line between the shortcuts and the conversations.
+                list = list.child(div().mx(px(8.)).my(px(10.)).h(px(1.)).bg(rgb(theme::BORDER)));
                 list = list.child(self.render_dm_heading(cx));
                 for dm in self.dm_items(cx) {
                     list = list.child(self.render_dm(dm, cx));
@@ -1295,7 +1297,7 @@ impl MainView {
     }
 
     fn render_group(&mut self, group: GroupItem, cx: &mut Context<Self>) -> AnyElement {
-        let mut column = div().flex().flex_col().gap(px(1.));
+        let mut column = div().flex().flex_col().gap(px(2.));
 
         let hidden = group
             .category
@@ -1303,22 +1305,25 @@ impl MainView {
             .is_some_and(|(id, _)| self.collapsed.contains(id));
 
         if let Some((id, name)) = group.category {
+            // Sentence case with the chevron after the name, 16px of air above.
             let chevron = if hidden { "chevron-right" } else { "chevron-down" };
             column = column.child(
                 div()
                     .id(("category", id.0))
+                    .h(px(40.))
+                    .pt(px(16.))
+                    .px(px(8.))
                     .flex()
                     .items_center()
-                    .gap_1()
-                    .mt_3()
-                    .px_1()
+                    .gap(px(4.))
                     .cursor_pointer()
-                    .text_size(px(12.))
-                    .text_color(rgb(theme::TEXT_MUTED))
-                    .hover(|s| s.text_color(rgb(theme::TEXT)))
+                    .text_size(px(14.))
+                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                    .text_color(rgb(theme::CHANNELS_DEFAULT))
+                    .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle_category(id, cx)))
-                    .child(icon(chevron, 12., theme::TEXT_MUTED))
-                    .child(div().truncate().child(name.to_uppercase())),
+                    .child(div().truncate().child(name))
+                    .child(icon(chevron, 12., theme::CHANNELS_DEFAULT)),
             );
         }
 
@@ -1436,7 +1441,7 @@ impl MainView {
                 if channel.muted { s } else { s.text_color(rgb(theme::TEXT_BRIGHT)) }
             })
             .on_click(cx.listener(move |this, _, window, cx| this.select_channel(id, window, cx)))
-            .child(icon(glyph, 18., color))
+            .child(icon(glyph, 20., color))
             .child(
                 div()
                     .flex_1()
@@ -1490,11 +1495,11 @@ impl MainView {
             .store
             .relationships(RelationshipKind::IncomingRequest)
             .len();
-        let color = if selected { theme::TEXT_BRIGHT } else { theme::CHANNELS_DEFAULT };
+        let color = if selected { theme::TEXT } else { theme::TEXT_FAINT };
 
         div()
             .id("friends")
-            .h(px(42.))
+            .h(px(38.))
             .flex()
             .items_center()
             .gap(px(12.))
@@ -1506,7 +1511,7 @@ impl MainView {
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
             .on_click(cx.listener(|this, _, window, cx| this.show_friends(window, cx)))
-            .child(div().w(px(32.)).flex_none().flex().justify_center().child(icon("friends", 24., color)))
+            .child(div().w(px(20.)).flex_none().flex().justify_center().child(icon("friends", 20., color)))
             .child(div().flex_1().child("Friends"))
             .children(mention_badge(u32::try_from(pending).unwrap_or(u32::MAX)))
     }
@@ -1549,10 +1554,12 @@ impl MainView {
     fn render_dm(&mut self, dm: DmItem, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let id = dm.id;
         let selected = self.channel == Some(id);
-        let color = if selected || dm.unread.unread {
+        let color = if selected {
+            theme::TEXT
+        } else if dm.unread.unread {
             theme::TEXT_BRIGHT
         } else {
-            theme::CHANNELS_DEFAULT
+            theme::TEXT_FAINT
         };
 
         div()
@@ -1738,14 +1745,14 @@ impl MainView {
                     .child(
                         div()
                             .truncate()
-                            .text_size(px(14.)).font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_size(px(16.)).line_height(px(18.)).font_weight(gpui_kit::FontWeight::MEDIUM)
                             .text_color(rgb(theme::TEXT_BRIGHT))
                             .child(name),
                     )
                     .child(
                         div()
                             .truncate()
-                            .text_size(px(12.)).font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_size(px(12.)).line_height(px(13.)).font_weight(gpui_kit::FontWeight::MEDIUM)
                             .text_color(rgb(theme::TEXT_MUTED))
                             .child(status),
                     ),

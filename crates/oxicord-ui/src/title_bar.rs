@@ -11,7 +11,7 @@ use gpui_kit::{
 
 use crate::{icons::icon, theme};
 
-pub const HEIGHT: f32 = 36.;
+pub const HEIGHT: f32 = 32.;
 const BUTTON_WIDTH: f32 = 46.;
 /// The red Windows itself uses for a hovered and a pressed close button.
 const CLOSE_HOVER: u32 = 0xc42b1c;
