@@ -1,5 +1,5 @@
 use gpui_kit::{
-    AnyElement, App, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    AnyElement, App, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ListAlignment, ListOffset, ListState, MouseButton, MouseDownEvent,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
 };
@@ -234,21 +234,37 @@ impl Render for MemberList {
     }
 }
 
-/// The small colored circle on the corner of an avatar.
+/// The small status mark on the corner of an avatar.
 pub fn presence_dot(status: Status) -> impl IntoElement {
-    let color = match status {
-        Status::Online => theme::ONLINE,
-        Status::Idle => theme::IDLE,
-        Status::Dnd => theme::DND,
-        Status::Offline => theme::OFFLINE,
-    };
     div()
         .absolute()
         .right(px(-2.))
         .bottom(px(-2.))
         .size(px(12.))
         .rounded_full()
-        .border_2()
-        .border_color(rgb(theme::BG_MEMBERS))
-        .bg(rgb(color))
+        .bg(rgb(theme::BG_MEMBERS))
+        .p(px(2.))
+        .child(status_shape(status, 8., theme::BG_MEMBERS))
+}
+
+/// A status as Discord draws it: online is a full disc, idle a crescent,
+/// do not disturb a disc with a bar and offline a ring. The cut-outs are
+/// painted in `backdrop`, the color behind the mark.
+pub fn status_shape(status: Status, size: f32, backdrop: u32) -> Div {
+    let color = match status {
+        Status::Online => theme::ONLINE,
+        Status::Idle => theme::IDLE,
+        Status::Dnd => theme::DND,
+        Status::Offline => theme::OFFLINE,
+    };
+    let disc = div().relative().flex_none().size(px(size)).rounded_full().bg(rgb(color)).overflow_hidden();
+    let cut = |x: f32, y: f32, w: f32, h: f32| {
+        div().absolute().left(px(size * x)).top(px(size * y)).w(px(size * w)).h(px(size * h)).rounded_full().bg(rgb(backdrop))
+    };
+    match status {
+        Status::Online => disc,
+        Status::Idle => disc.child(cut(-0.15, -0.15, 0.65, 0.65)),
+        Status::Dnd => disc.child(cut(0.2, 0.4, 0.6, 0.2)),
+        Status::Offline => disc.child(cut(0.25, 0.25, 0.5, 0.5)),
+    }
 }

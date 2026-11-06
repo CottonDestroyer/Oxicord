@@ -27,13 +27,14 @@ use crate::{
     invite_dialog::{CloseInvite, InviteDialog},
     keys::{self, QuickSwitch},
     media::{Media, ViewImage, acronym, avatar},
-    member_list::{MemberList, presence_dot},
+    member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
     session::{DmOpened, JumpTo, MentionUser, OpenInbox, OpenInviteDialog, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
+    status_dialog::{CloseStatusDialog, StatusDialog},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
     theme, title_bar, user_menu,
 };
@@ -104,6 +105,10 @@ pub struct MainView {
     last_channel: HashMap<Snowflake, Snowflake>,
     collapsed: HashSet<Snowflake>,
     status_menu_open: bool,
+    /// The list of statuses beside the account popout.
+    status_submenu_open: bool,
+    status_dialog: Entity<StatusDialog>,
+    status_dialog_open: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
     settings_open: bool,
@@ -162,6 +167,10 @@ impl MainView {
         let join = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| JoinServerView::new(session, media, backend, window, cx))
+        };
+        let status_dialog = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| StatusDialog::new(session, media, backend, window, cx))
         };
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
@@ -256,6 +265,10 @@ impl MainView {
                 this.viewer = Some(shown.0.clone());
                 cx.notify();
             }),
+            cx.subscribe(&status_dialog, |this, _, _: &CloseStatusDialog, cx| {
+                this.status_dialog_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&join, |this, _, _: &CloseJoin, cx| {
                 this.join_open = false;
                 cx.notify();
@@ -314,6 +327,9 @@ impl MainView {
             last_channel: HashMap::new(),
             collapsed: HashSet::new(),
             status_menu_open: false,
+            status_submenu_open: false,
+            status_dialog,
+            status_dialog_open: false,
             profile: None,
             settings_open: false,
             settings_view,
@@ -1292,7 +1308,6 @@ impl MainView {
                     .overflow_y_scroll()
                     .child(list),
             )
-            .children(self.render_status_menu(cx))
             .child(self.render_user_panel(cx))
     }
 
@@ -1624,6 +1639,7 @@ impl MainView {
 
     fn set_status(&mut self, status: ClientStatus, cx: &mut Context<Self>) {
         self.status_menu_open = false;
+        self.status_submenu_open = false;
         self.session.update(cx, |session, cx| {
             session.status = status;
             cx.notify();
@@ -1632,51 +1648,303 @@ impl MainView {
         cx.notify();
     }
 
-    /// The list of statuses that pops up above the user panel.
-    fn render_status_menu(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn close_account_popout(&mut self, cx: &mut Context<Self>) {
+        self.status_menu_open = false;
+        self.status_submenu_open = false;
+        cx.notify();
+    }
+
+    /// The card that opens from the user panel: custom status, profile,
+    /// the status list and a few account shortcuts.
+    fn render_account_popout(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.status_menu_open {
             return None;
         }
-        let current = self.session.read(cx).status;
+        let (me, current, now) = {
+            let session = self.session.read(cx);
+            (session.store.me().cloned(), session.status, chrono::Utc::now().timestamp_millis().max(0) as u64)
+        };
+        let me = me?;
+        let (custom, bio, pronouns) = {
+            let account = &self.session.read(cx).account;
+            let details = account.details.ready();
+            (
+                account.custom_status(now),
+                details.and_then(|d| d.bio.clone()).filter(|b| !b.is_empty()),
+                details.and_then(|d| d.pronouns.clone()).filter(|p| !p.is_empty()),
+            )
+        };
+        let avatar_url = cdn::user_avatar(me.id, me.avatar.as_deref(), 128);
+        let name = me.display_name().to_owned();
+        let user_id = me.id;
 
-        let mut menu = div()
-            .flex_none()
+        let bubble_text = custom.map(|c| {
+            let glyph = c.emoji_id.is_none().then_some(c.emoji_name).flatten();
+            [glyph, Some(c.text).filter(|t| !t.is_empty())].into_iter().flatten().collect::<Vec<_>>().join(" ")
+        });
+        let bubble = div()
+            .id("custom-status-bubble")
+            .absolute()
+            .left(px(109.))
+            .top(px(98.))
+            .h(px(36.))
+            .max_w(px(179.))
+            .px(px(12.))
             .flex()
-            .flex_col()
-            .gap(px(1.))
-            .m_2()
-            .p_1()
-            .rounded(px(8.))
+            .items_center()
+            .gap(px(6.))
+            .rounded(px(16.))
             .border_1()
-            .border_color(rgb(theme::BORDER))
-            .bg(rgb(theme::BG_PANEL));
+            .border_color(rgb(theme::BORDER_MUTED))
+            .bg(rgb(0x17181b))
+            .text_size(px(14.))
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.close_account_popout(cx);
+                this.status_dialog_open = true;
+                this.status_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
+            }))
+            .map(|b| match bubble_text {
+                Some(text) => b.text_color(rgb(theme::TEXT)).child(div().truncate().child(text)),
+                None => b
+                    .text_color(rgb(theme::TEXT_FAINT))
+                    .italic()
+                    .child(icon("circle-plus", 16., theme::TEXT_FAINT))
+                    .child(div().truncate().child("What\u{2019}s your hot take?")),
+            });
 
-        for status in [
-            ClientStatus::Online,
-            ClientStatus::Idle,
-            ClientStatus::Dnd,
-            ClientStatus::Invisible,
-        ] {
-            let color = status_color(status);
-            menu = menu.child(
+        let row = |id: &'static str, glyph: AnyElement, label: String, chevron: bool| {
+            div()
+                .id(id)
+                .h(px(32.))
+                .px(px(8.))
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .rounded(px(theme::RADIUS))
+                .cursor_pointer()
+                .text_size(px(14.))
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .text_color(rgb(theme::TEXT_MUTED))
+                .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
+                .child(div().size(px(16.)).flex().items_center().justify_center().child(glyph))
+                .child(div().flex_1().child(label))
+                .when(chevron, |r| r.child(icon("chevron-right", 16., theme::TEXT_MUTED)))
+        };
+        let line = || div().h(px(1.)).mx(px(8.)).my(px(8.)).bg(rgb(theme::BORDER_MUTED));
+
+        let submenu = self.status_submenu_open.then(|| {
+            let mut menu = div()
+                .absolute()
+                .left(px(288.))
+                .bottom(px(56.))
+                .w(px(300.))
+                .p(px(8.))
+                .flex()
+                .flex_col()
+                .rounded(px(theme::RADIUS))
+                .border_1()
+                .border_color(rgb(theme::BORDER_MUTED))
+                .bg(rgb(theme::BG_MENU));
+            for (index, (status, hint)) in [
+                (ClientStatus::Online, None),
+                (ClientStatus::Idle, None),
+                (ClientStatus::Dnd, Some("You will not receive desktop notifications")),
+                (ClientStatus::Invisible, Some("You will appear offline")),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if index == 1 {
+                    menu = menu.child(line().mx(px(0.)));
+                }
+                menu = menu.child(
+                    div()
+                        .id(status.as_str())
+                        .h(px(if hint.is_some() { 52. } else { 36. }))
+                        .px(px(8.))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(move |this, _, _, cx| this.set_status(status, cx)))
+                        .child(
+                            div()
+                                .size(px(20.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(status_shape(dot_status(status), 10., theme::BG_MENU)),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .text_size(px(14.))
+                                        .line_height(px(18.))
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .text_color(rgb(theme::TEXT_BRIGHT))
+                                        .child(status_label(status)),
+                                )
+                                .children(hint.map(|hint| {
+                                    div().text_size(px(12.)).line_height(px(16.)).text_color(rgb(theme::TEXT_FAINT)).child(hint)
+                                })),
+                        ),
+                );
+            }
+            menu
+        });
+
+        let card = div()
+            .id("account-popout")
+            .occlude()
+            .absolute()
+            .left(px(8.))
+            .bottom(px(72.))
+            .w(px(300.))
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(theme::BORDER_MUTED))
+            .bg(rgb(theme::BG_PANEL))
+            .child(
                 div()
-                    .id(status.as_str())
-                    .h(px(32.))
+                    .relative()
+                    .h(px(140.))
+                    .child(div().h(px(105.)).rounded_t(px(theme::RADIUS)).bg(rgb(theme::ACCENT)))
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(10.))
+                            .top(px(55.))
+                            .p(px(6.))
+                            .rounded_full()
+                            .bg(rgb(theme::BG_PANEL))
+                            .child(
+                                div()
+                                    .relative()
+                                    .child(avatar(&self.media, &avatar_url, 80., &name, cx))
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .right(px(-4.))
+                                            .bottom(px(-4.))
+                                            .p(px(3.))
+                                            .rounded_full()
+                                            .bg(rgb(theme::BG_PANEL))
+                                            .child(status_shape(dot_status(current), 14., theme::BG_PANEL)),
+                                    ),
+                            ),
+                    )
+                    .child(bubble),
+            )
+            .children(submenu)
+            .child(
+                div()
+                    .px(px(16.))
+                    .pt(px(4.))
+                    .pb(px(16.))
                     .flex()
-                    .items_center()
-                    .gap_3()
-                    .px_2()
-                    .rounded(px(4.))
-                    .cursor_pointer()
-                    .text_color(rgb(if status == current { theme::TEXT_BRIGHT } else { theme::TEXT }))
-                    .bg(rgb(if status == current { theme::BG_ACTIVE } else { theme::BG_PANEL }))
-                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_status(status, cx)))
-                    .child(div().size(px(10.)).rounded_full().bg(rgb(color)))
-                    .child(status_label(status)),
+                    .flex_col()
+                    .child(
+                        div()
+                            .h(px(24.))
+                            .text_size(px(20.))
+                            .line_height(px(24.))
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT))
+                            .child(name),
+                    )
+                    .child(
+                        div()
+                            .h(px(24.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .text_size(px(14.))
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(me.username.clone())
+                            .children(pronouns.map(|p| {
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .child(div().size(px(4.)).rounded_full().bg(rgb(theme::TEXT)))
+                                    .child(div().font_weight(gpui_kit::FontWeight::MEDIUM).child(p))
+                            })),
+                    )
+                    .children(bio.map(|bio| {
+                        div().mt(px(8.)).text_size(px(14.)).text_color(rgb(theme::TEXT_BRIGHT)).child(bio)
+                    }))
+                    .child(
+                        div()
+                            .mt(px(12.))
+                            .flex()
+                            .flex_col()
+                            .gap(px(12.))
+                            .child(
+                                div()
+                                    .p(px(8.))
+                                    .flex()
+                                    .flex_col()
+                                    .rounded(px(theme::RADIUS))
+                                    .bg(rgb(0x17181b))
+                                    .child(
+                                        row("account-edit-profile", icon("pencil", 16., theme::TEXT_MUTED).into_any_element(), "Edit Profile".into(), false)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.close_account_popout(cx);
+                                                this.settings_open = true;
+                                                this.settings_view.update(cx, |view, cx| view.open_profile(cx));
+                                            })),
+                                    )
+                                    .child(line())
+                                    .child(
+                                        row(
+                                            "account-status",
+                                            status_shape(dot_status(current), 12., 0x17181b).into_any_element(),
+                                            status_label(current).to_owned(),
+                                            true,
+                                        )
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.status_submenu_open = !this.status_submenu_open;
+                                            cx.notify();
+                                        })),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .p(px(8.))
+                                    .flex()
+                                    .flex_col()
+                                    .rounded(px(theme::RADIUS))
+                                    .bg(rgb(0x17181b))
+                                    .child(
+                                        row("account-copy-id", icon("copy", 16., theme::TEXT_MUTED).into_any_element(), "Copy User ID".into(), false)
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user_id.to_string()));
+                                                this.close_account_popout(cx);
+                                            })),
+                                    ),
+                            ),
+                    ),
             );
-        }
-        Some(menu.into_any_element())
+
+        // A click anywhere else closes it.
+        Some(
+            div()
+                .id("account-popout-layer")
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close_account_popout(cx)))
+                .child(card)
+                .into_any_element(),
+        )
     }
 
     fn render_user_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -1823,6 +2091,8 @@ impl Render for MainView {
         let settings = self.settings_open.then(|| self.settings_view.clone());
         let menu = self.menu_open.then(|| self.menu.clone());
         let viewer = self.render_viewer(cx);
+        let account = self.render_account_popout(cx);
+        let status_dialog = self.status_dialog_open.then(|| self.status_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
@@ -1863,6 +2133,8 @@ impl Render for MainView {
                     .children(panel),
             )
             .children(profile)
+            .children(account)
+            .children(status_dialog)
             .children(menu)
             .children(viewer)
             .children(join)
@@ -2005,18 +2277,9 @@ fn status_label(status: ClientStatus) -> &'static str {
     }
 }
 
-fn status_color(status: ClientStatus) -> u32 {
-    match status {
-        ClientStatus::Online => theme::ONLINE,
-        ClientStatus::Idle => theme::IDLE,
-        ClientStatus::Dnd => theme::DND,
-        ClientStatus::Invisible => theme::OFFLINE,
-    }
-}
-
 /// How a chosen status looks as a dot. Invisible shows as offline, which is
 /// what everyone else sees.
-fn dot_status(status: ClientStatus) -> Status {
+pub(crate) fn dot_status(status: ClientStatus) -> Status {
     match status {
         ClientStatus::Online => Status::Online,
         ClientStatus::Idle => Status::Idle,
@@ -2098,8 +2361,8 @@ mod tests {
             ClientStatus::Invisible,
         ];
         let labels: HashSet<_> = all.iter().map(|s| status_label(*s)).collect();
-        let colors: HashSet<_> = all.iter().map(|s| status_color(*s)).collect();
+        let marks: Vec<_> = all.iter().map(|s| dot_status(*s)).collect();
         assert_eq!(labels.len(), 4);
-        assert_eq!(colors.len(), 4);
+        assert!(marks.iter().enumerate().all(|(i, m)| marks.iter().skip(i + 1).all(|n| n != m)));
     }
 }

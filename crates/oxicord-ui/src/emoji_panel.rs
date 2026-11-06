@@ -121,6 +121,8 @@ pub struct EmojiPanel {
     tab: Tab,
     /// The server whose emoji the first tab lists.
     guild: Option<Snowflake>,
+    /// Hides the GIF and sticker switch, for places that only take an emoji.
+    emoji_only: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -152,8 +154,15 @@ impl EmojiPanel {
             search,
             tab: Tab::Unicode(Group::SmileysAndEmotion),
             guild: None,
+            emoji_only: false,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Offers emoji alone, with no GIF or sticker switch.
+    pub fn emoji_only(mut self) -> Self {
+        self.emoji_only = true;
+        self
     }
 
     fn set_mode(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
@@ -449,7 +458,7 @@ impl Render for EmojiPanel {
             Mode::Gifs => self.render_gifs(cx),
             Mode::Stickers => self.render_stickers(cx),
         };
-        let modes = self.render_modes(cx);
+        let modes = (!self.emoji_only).then(|| self.render_modes(cx));
 
         div()
             .id("emoji-panel")
@@ -464,7 +473,7 @@ impl Render for EmojiPanel {
             .border_1()
             .border_color(rgb(theme::BORDER))
             .bg(rgb(theme::BG_PANEL))
-            .child(modes)
+            .children(modes)
             .child(Input::new(&self.search))
             .children(emoji_view.then_some(tabs))
             .children(emoji_view.then(|| {

@@ -3,7 +3,7 @@
 //! own, the first time a screen needs it.
 
 use oxicord_model::{AccountDetails, AuthorizedApp, Connection, LoginSession, Snowflake};
-use oxicord_settings::{AccountSettings, Key, Patch, Value};
+use oxicord_settings::{AccountSettings, CustomStatus, Key, Patch, Value};
 
 /// A value that may still be on its way.
 #[derive(Clone, Debug, Default)]
@@ -81,6 +81,20 @@ impl AccountState {
             AccountEvent::Connections(r) => self.connections = Load::from_result(r),
             AccountEvent::Sessions(r) => self.sessions = Load::from_result(r),
         }
+    }
+
+    /// Our own custom status, if one is set and has not run out.
+    pub fn custom_status(&self, now_ms: u64) -> Option<CustomStatus> {
+        self.settings.ready()?.custom_status(now_ms)
+    }
+
+    /// Sets or clears the custom status here at once and returns the patch
+    /// to send. `None` until the preferences have loaded.
+    pub fn change_custom_status(&mut self, status: Option<&CustomStatus>, now_ms: u64) -> Option<Patch> {
+        let Load::Ready(settings) = &mut self.settings else {
+            return None;
+        };
+        settings.set_custom_status(status, now_ms).ok()
     }
 
     /// Applies preference changes here at once and returns the patch to

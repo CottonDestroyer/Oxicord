@@ -40,6 +40,14 @@ impl<'a> Field<'a> {
         std::str::from_utf8(self.message()?).map_err(|_| Error::Malformed("text is not utf-8"))
     }
 
+    /// A single fixed64 value.
+    pub fn fixed64(&self) -> Result<u64, Error> {
+        match (self.wire_type, <[u8; 8]>::try_from(self.value)) {
+            (1, Ok(bytes)) => Ok(u64::from_le_bytes(bytes)),
+            _ => Err(Error::Malformed("expected a fixed64")),
+        }
+    }
+
     /// Repeated fixed64 values, packed in one field or sent one by one.
     pub fn fixed64s(&self) -> Result<Vec<u64>, Error> {
         match self.wire_type {
@@ -130,6 +138,12 @@ pub fn fields(mut bytes: &[u8]) -> Result<Vec<Field<'_>>, Error> {
 pub fn put_varint(number: u32, value: u64, out: &mut Vec<u8>) {
     write_varint(u64::from(number) << 3, out);
     write_varint(value, out);
+}
+
+/// A fixed64 field.
+pub fn put_fixed64(number: u32, value: u64, out: &mut Vec<u8>) {
+    write_varint(u64::from(number) << 3 | 1, out);
+    out.extend_from_slice(&value.to_le_bytes());
 }
 
 /// A length-delimited field.

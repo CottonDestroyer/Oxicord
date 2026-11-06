@@ -203,6 +203,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Profile page, for the account popout.
+    pub fn open_profile(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Profile;
+        self.opened(cx);
+        cx.notify();
+    }
+
     fn select(&mut self, page: Page, cx: &mut Context<Self>) {
         self.page = page;
         self.confirm_revoke = None;

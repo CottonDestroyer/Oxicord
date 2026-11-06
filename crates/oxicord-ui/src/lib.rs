@@ -28,6 +28,7 @@ mod session;
 mod server_settings;
 pub(crate) mod settings_view;
 mod side_panel;
+mod status_dialog;
 mod settings;
 mod user_menu;
 mod switcher;

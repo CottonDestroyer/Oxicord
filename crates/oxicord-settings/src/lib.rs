@@ -203,6 +203,55 @@ pub struct Patch {
     pub required_data_version: u32,
 }
 
+/// Field of the status section that holds the custom status message.
+const CUSTOM_STATUS: u32 = 2;
+
+/// The words and emoji next to your name, with the moment they expire.
+/// `emoji_id` is set for a server emoji, `emoji_name` alone is a unicode one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CustomStatus {
+    pub text: String,
+    pub emoji_id: Option<u64>,
+    pub emoji_name: Option<String>,
+    pub expires_at_ms: Option<u64>,
+}
+
+impl CustomStatus {
+    fn read(bytes: &[u8]) -> Result<Self, Error> {
+        let mut status = Self::default();
+        for field in wire::fields(bytes)? {
+            match field.number {
+                1 => status.text = field.text()?.to_owned(),
+                2 => status.emoji_id = Some(field.fixed64()?).filter(|id| *id != 0),
+                3 => status.emoji_name = Some(field.text()?.to_owned()).filter(|n| !n.is_empty()),
+                4 => status.expires_at_ms = Some(field.fixed64()?).filter(|at| *at != 0),
+                _ => {}
+            }
+        }
+        Ok(status)
+    }
+
+    fn write(&self, created_at_ms: u64, out: &mut Vec<u8>) {
+        if !self.text.is_empty() {
+            wire::put_message(1, self.text.as_bytes(), out);
+        }
+        if let Some(id) = self.emoji_id {
+            wire::put_fixed64(2, id, out);
+        }
+        if let Some(name) = self.emoji_name.as_deref().filter(|n| !n.is_empty()) {
+            wire::put_message(3, name.as_bytes(), out);
+        }
+        if let Some(at) = self.expires_at_ms {
+            wire::put_fixed64(4, at, out);
+        }
+        wire::put_fixed64(5, created_at_ms, out);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.text.is_empty() && self.emoji_id.is_none() && self.emoji_name.is_none()
+    }
+}
+
 /// A group of servers in the rail. A server outside any folder shows up as
 /// a folder without an id holding just itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -323,6 +372,42 @@ impl AccountSettings {
             wire::put_message(section, &subtree, &mut message);
         }
 
+        Ok(Patch {
+            settings: STANDARD.encode(message),
+            required_data_version: self.data_version,
+        })
+    }
+
+    /// The custom status in effect at `now_ms`. One that has expired, or
+    /// holds nothing, counts as none.
+    pub fn custom_status(&self, now_ms: u64) -> Option<CustomStatus> {
+        let section = self.sections.get(&STATUS)?;
+        let field = wire::fields(section).ok()?.into_iter().rev().find(|f| f.number == CUSTOM_STATUS)?;
+        let status = CustomStatus::read(field.message().ok()?).ok()?;
+        let expired = status.expires_at_ms.is_some_and(|at| at <= now_ms);
+        (!status.is_empty() && !expired).then_some(status)
+    }
+
+    /// Sets or clears the custom status, keeping the rest of the status
+    /// section as the server has it. The change shows here at once.
+    pub fn set_custom_status(&mut self, status: Option<&CustomStatus>, now_ms: u64) -> Result<Patch, Error> {
+        let mut subtree = Vec::new();
+        if let Some(current) = self.sections.get(&STATUS) {
+            for field in wire::fields(current)? {
+                if field.number != CUSTOM_STATUS {
+                    subtree.extend_from_slice(field.raw);
+                }
+            }
+        }
+        if let Some(status) = status.filter(|s| !s.is_empty()) {
+            let mut inner = Vec::new();
+            status.write(now_ms, &mut inner);
+            wire::put_message(CUSTOM_STATUS, &inner, &mut subtree);
+        }
+
+        let mut message = Vec::new();
+        wire::put_message(STATUS, &subtree, &mut message);
+        self.sections.insert(STATUS, subtree);
         Ok(Patch {
             settings: STANDARD.encode(message),
             required_data_version: self.data_version,
@@ -480,6 +565,44 @@ mod tests {
             assert_eq!(reread.get(*key), *value, "{key:?}");
             assert_eq!(settings.get(*key), *value, "{key:?}");
         }
+    }
+
+    #[test]
+    fn a_custom_status_round_trips_and_leaves_its_neighbours_alone() {
+        // The status section as the web client sends it: the online state,
+        // a status we are about to replace, and show_current_game.
+        let mut status = Vec::new();
+        wire::put_message(1, b"invisible", &mut status);
+        let mut old = Vec::new();
+        wire::put_message(1, b"old words", &mut old);
+        wire::put_message(CUSTOM_STATUS, &old, &mut status);
+        wire::put_message(3, &[], &mut status);
+        let mut blob = Vec::new();
+        wire::put_message(STATUS, &status, &mut blob);
+        let mut settings = AccountSettings::decode(&STANDARD.encode(blob)).unwrap();
+        assert_eq!(settings.custom_status(0).unwrap().text, "old words");
+
+        let new = CustomStatus {
+            text: "busy".into(),
+            emoji_id: None,
+            emoji_name: Some("\u{1f525}".into()),
+            expires_at_ms: Some(2_000),
+        };
+        let patch = settings.set_custom_status(Some(&new), 1_000).unwrap();
+        assert_eq!(settings.custom_status(1_500), Some(new.clone()));
+        // Gone once the clock passes its expiry.
+        assert_eq!(settings.custom_status(2_000), None);
+
+        let reread = AccountSettings::decode(&patch.settings).unwrap();
+        assert_eq!(reread.custom_status(1_500), Some(new));
+        let bytes = STANDARD.decode(&patch.settings).unwrap();
+        let section = wire::fields(wire::fields(&bytes).unwrap()[0].message().unwrap()).unwrap();
+        let numbers: Vec<u32> = section.iter().map(|f| f.number).collect();
+        assert_eq!(numbers, [1, 3, 2], "the online state and show_current_game survive");
+
+        let patch = settings.set_custom_status(None, 3_000).unwrap();
+        assert_eq!(settings.custom_status(0), None);
+        assert_eq!(AccountSettings::decode(&patch.settings).unwrap().custom_status(0), None);
     }
 
     #[test]

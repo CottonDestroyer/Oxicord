@@ -528,6 +528,19 @@ impl Session {
         cx.notify();
     }
 
+    /// Sets or clears our custom status: shown at once, saved in the background.
+    pub fn set_custom_status(
+        &mut self,
+        backend: &Backend,
+        status: Option<&oxicord_settings::CustomStatus>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(patch) = self.account.change_custom_status(status, chrono::Utc::now().timestamp_millis().max(0) as u64) {
+            backend.send(Command::Account(AccountRequest::SaveSettings(patch)));
+        }
+        cx.notify();
+    }
+
     /// Applies a change to the preferences and persists it.
     pub fn change_settings(
         &mut self,
