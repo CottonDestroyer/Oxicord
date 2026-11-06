@@ -1678,6 +1678,19 @@ impl ChatView {
                     },
                 ))
             }))
+            .children(in_dm.then(|| {
+                toolbar_button("show-profile", "circle-user-round", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        if let Some(user) = this
+                            .channel
+                            .and_then(|id| this.session.read(cx).store.channel(id))
+                            .and_then(|c| c.recipients.first().map(|u| u.id))
+                        {
+                            this.open_profile(user, cx);
+                        }
+                    },
+                ))
+            }))
             .children((has_members || in_dm).then(|| {
                 let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
                 toolbar_button("toggle-members", if in_dm { "circle-user-round" } else { "users" }, color)
