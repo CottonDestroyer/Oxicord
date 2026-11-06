@@ -267,7 +267,7 @@ fn embed_card(
     if let Some(description) = embed.description.clone().filter(|d| !d.is_empty()) {
         body = body.child(
             div()
-                .text_size(px(14.))
+                .text_size(px(14.)).line_height(px(18.))
                 .text_color(rgb(theme::TEXT))
                 .child(rich(&description, message.id.0 ^ ((ix as u64 + 1) << 48), media, names, window, cx)),
         );
@@ -284,7 +284,7 @@ fn embed_card(
                         .text_color(rgb(theme::TEXT_BRIGHT))
                         .child(humanize(&field.name, names)),
                 )
-                .child(div().text_size(px(14.)).child(rich(&field.value, message.id.0 ^ ((ix as u64 + 1) << 48) ^ ((field_ix as u64 + 1) << 40), media, names, window, cx))),
+                .child(div().text_size(px(14.)).line_height(px(18.)).child(rich(&field.value, message.id.0 ^ ((ix as u64 + 1) << 48) ^ ((field_ix as u64 + 1) << 40), media, names, window, cx))),
         );
     }
     if let Some(image) = embed.image.as_ref().filter(|i| i.proxy_url.is_some() || i.url.is_some()) {

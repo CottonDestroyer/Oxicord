@@ -1220,7 +1220,7 @@ impl ChatView {
                 .into_any_element()
         };
 
-        let mut body = div().flex_1().min_w_0().flex().flex_col();
+        let mut body = div().flex_1().min_w_0().flex().flex_col().line_height(px(22.));
         if !grouped {
             body = body.child(
                 div()
