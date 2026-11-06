@@ -1,6 +1,6 @@
 use gpui_kit::{
     AnyElement, App, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ListAlignment, ListState, MouseButton, MouseDownEvent,
+    ListAlignment, ListOffset, ListState, MouseButton, MouseDownEvent,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -75,6 +75,10 @@ impl MemberList {
         }
         // A slot may have changed from a header to a member or back.
         self.list.remeasure();
+        // A list that has just been filled starts at its first row.
+        if self.slots == 0 && len > 0 {
+            self.list.scroll_to(ListOffset { item_ix: 0, offset_in_item: px(0.) });
+        }
         self.slots = len;
         cx.notify();
     }
