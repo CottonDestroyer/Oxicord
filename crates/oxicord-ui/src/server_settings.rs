@@ -30,6 +30,7 @@ enum Page {
     Overview,
     ServerProfile,
     ServerTag,
+    Members,
     Roles,
     Channels,
     Emoji,
@@ -39,14 +40,15 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 9] =
-        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 10] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
             Page::Overview => "Overview",
             Page::ServerProfile => "Server Profile",
             Page::ServerTag => "Server Tag",
+            Page::Members => "Members",
             Page::Roles => "Roles",
             Page::Channels => "Channels",
             Page::Emoji => "Emoji",
@@ -59,7 +61,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -429,6 +431,28 @@ impl ServerSettings {
                     widgets::info_row("Server Name", name),
                     widgets::info_row("Server ID", guild.to_string()),
                 ],
+            ))
+            .into_any_element()
+    }
+
+    fn members(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let members = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.member_count.map_or_else(|| "Unknown".to_owned(), |n| n.to_string()))
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Members"))
+            .child(group(
+                "Members",
+                vec![widgets::info_row("Member Count", members)],
             ))
             .into_any_element()
     }
@@ -1036,6 +1060,7 @@ impl Render for ServerSettings {
             Page::Overview => self.overview(cx),
             Page::ServerProfile => self.server_profile(cx),
             Page::ServerTag => self.server_tag(cx),
+            Page::Members => self.members(cx),
             Page::Roles => self.roles(cx),
             Page::Channels => self.channels(cx),
             Page::Emoji => self.emoji(cx),
