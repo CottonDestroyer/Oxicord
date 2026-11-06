@@ -1658,7 +1658,9 @@ impl ChatView {
                     .gap_2()
                     .child(
                         toolbar_button("start-voice-call", "phone", theme::TEXT_MUTED)
-                            .on_click(cx.listener(|_, _, _, _| {})),
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.session.update(cx, |s, cx| s.open_panel(PanelKind::VoiceDetails, cx));
+                            })),
                     )
                     .child(
                         toolbar_button("start-video-call", "video", theme::TEXT_MUTED)
