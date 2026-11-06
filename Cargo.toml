@@ -21,7 +21,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 reqwest = { version = "0.13", features = ["json", "multipart"] }
 notify-rust = "4"
 tokio = { version = "1", features = ["rt", "macros", "time", "sync", "net"] }
-tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["native-tls"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 flate2 = "1"
 thiserror = "2"
