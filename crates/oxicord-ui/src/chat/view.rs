@@ -2172,7 +2172,7 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers) = {
+                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
                     let account = store.user(user);
@@ -2186,6 +2186,7 @@ impl Render for ChatView {
                         profile.map(|p| p.bio.clone()).unwrap_or_default(),
                         profile.map(|p| p.mutual_friends).unwrap_or(0),
                         profile.map(|p| p.mutual_guilds.len()).unwrap_or(0),
+                        profile.map(|p| p.badges.clone()).unwrap_or_default(),
                     )
                 };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -2231,6 +2232,23 @@ impl Render for ChatView {
                         .children((!bio.is_empty()).then(|| div().text_size(px(13.)).child(bio)))
                         .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Friends", mutual_friends)))
                         .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Servers", mutual_servers)))
+                        .children((!badges.is_empty()).then(|| {
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Badges"))
+                                .children(badges.iter().map(|badge| {
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(if badge.description.is_empty() {
+                                            badge.id.clone()
+                                        } else {
+                                            badge.description.clone()
+                                        })
+                                }))
+                        }))
                         .into_any_element(),
                     Box::new(on_close),
                 )
