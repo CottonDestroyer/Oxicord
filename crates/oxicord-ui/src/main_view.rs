@@ -35,7 +35,7 @@ use crate::{
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
-    theme, user_menu,
+    theme, title_bar, user_menu,
 };
 
 struct GuildItem {
@@ -370,6 +370,17 @@ impl MainView {
         }
         self.sync_chat(window, cx);
         cx.notify();
+    }
+
+    /// What the title bar names: the server, the conversation, or Friends.
+    fn window_title(&self, cx: &App) -> SharedString {
+        let store = &self.session.read(cx).store;
+        let name = match (self.guild, self.channel) {
+            (Some(guild), _) => store.guild(guild).map(|g| g.name.clone()),
+            (None, Some(channel)) => store.channel(channel).map(|c| store.dm_name(c)),
+            (None, None) => Some("Friends".to_owned()),
+        };
+        name.unwrap_or_default().into()
     }
 
     /// Channels in sidebar order, for stepping through with the keyboard.
@@ -1789,6 +1800,7 @@ impl Render for MainView {
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
 
+        let title = self.window_title(cx);
         let root = div().size_full().relative().track_focus(&self.focus);
         self.on_shortcuts(root, cx)
             // A click on bare background parks focus here, so Ctrl+K still
@@ -1799,6 +1811,7 @@ impl Render for MainView {
                 }
             }))
             .flex()
+            .pt(px(title_bar::HEIGHT))
             .bg(rgb(theme::BG_RAIL))
             .text_color(rgb(theme::TEXT))
             .child(rail)
@@ -1829,6 +1842,8 @@ impl Render for MainView {
             .children(popup)
             .children(inbox)
             .children(settings)
+            // Last, so it stays usable above any dialog.
+            .child(title_bar::title_bar(title, window))
     }
 }
 

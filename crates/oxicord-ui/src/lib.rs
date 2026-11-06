@@ -32,6 +32,7 @@ mod settings;
 mod user_menu;
 mod switcher;
 pub mod theme;
+mod title_bar;
 
 pub use app::AppView;
 pub use keys::bind as bind_keys;

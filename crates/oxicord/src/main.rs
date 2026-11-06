@@ -4,7 +4,7 @@ mod logging;
 mod settings;
 
 use gpui_kit::{
-    AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size,
+    AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size,
     component::{Theme, ThemeMode},
 };
 use oxicord_ui::{AppView, theme};
@@ -51,9 +51,12 @@ fn main() {
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(940.), px(500.))),
+                // The app draws its own title bar, see oxicord_ui::title_bar. The
+                // title still names the window in the taskbar.
                 titlebar: Some(TitlebarOptions {
                     title: Some("Oxicord".into()),
-                    ..Default::default()
+                    appears_transparent: true,
+                    traffic_light_position: Some(point(px(12.), px(12.))),
                 }),
                 ..Default::default()
             };

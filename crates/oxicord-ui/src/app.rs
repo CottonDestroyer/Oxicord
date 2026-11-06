@@ -1,6 +1,6 @@
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Task, Window, div,
+    Styled as _, Task, Window, div, px, rgb,
 };
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
 use oxicord_model::gateway::DispatchEvent;
@@ -12,6 +12,7 @@ use crate::{
     media::Media,
     session::Session,
     settings::Settings,
+    theme, title_bar,
 };
 
 enum Screen {
@@ -204,9 +205,16 @@ impl AppView {
 }
 
 impl Render for AppView {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         match &self.screen {
-            Screen::Login(view) => div().size_full().child(view.clone()),
+            Screen::Login(view) => div()
+                .size_full()
+                .relative()
+                .pt(px(title_bar::HEIGHT))
+                .bg(rgb(theme::BG_RAIL))
+                .child(view.clone())
+                .child(title_bar::title_bar("Oxicord".into(), window)),
+            // The signed in frame draws its own, naming what is open.
             Screen::Main(view) => div().size_full().child(view.clone()),
         }
     }
