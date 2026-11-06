@@ -33,6 +33,7 @@ enum Page {
     Members,
     Access,
     Integrations,
+    EnableCommunity,
     Roles,
     Channels,
     Emoji,
@@ -42,8 +43,8 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 12] =
-        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 13] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::EnableCommunity, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
@@ -53,6 +54,7 @@ impl Page {
             Page::Members => "Members",
             Page::Access => "Access",
             Page::Integrations => "Integrations",
+            Page::EnableCommunity => "Enable Community",
             Page::Roles => "Roles",
             Page::Channels => "Channels",
             Page::Emoji => "Emoji",
@@ -65,7 +67,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::EnableCommunity => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -500,6 +502,28 @@ impl ServerSettings {
             .child(title("Integrations"))
             .child(group(
                 "Integrations",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn enable_community(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Enable Community"))
+            .child(group(
+                "Community",
                 vec![widgets::info_row("Server Name", name)],
             ))
             .into_any_element()
@@ -1111,6 +1135,7 @@ impl Render for ServerSettings {
             Page::Members => self.members(cx),
             Page::Access => self.access(cx),
             Page::Integrations => self.integrations(cx),
+            Page::EnableCommunity => self.enable_community(cx),
             Page::Roles => self.roles(cx),
             Page::Channels => self.channels(cx),
             Page::Emoji => self.emoji(cx),
