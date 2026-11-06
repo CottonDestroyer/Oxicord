@@ -384,15 +384,21 @@ impl Session {
         }
     }
 
-    /// Asks for the people in `ids` that we haven't asked about yet.
-    pub fn request_users(&mut self, backend: &Backend, ids: Vec<Snowflake>) {
+    /// Asks for the people in `ids` that we haven't asked about yet. Inside a
+    /// server the gateway answers for all of them at once, elsewhere each one
+    /// costs a request.
+    pub fn request_users(&mut self, backend: &Backend, guild: Option<Snowflake>, ids: Vec<Snowflake>) {
         let fresh: Vec<Snowflake> = ids
             .into_iter()
             .filter(|id| self.store.user(*id).is_none() && self.users_requested.insert(*id))
             .take(20)
             .collect();
-        if !fresh.is_empty() {
-            backend.send(Command::FetchUsers(fresh));
+        if fresh.is_empty() {
+            return;
+        }
+        match guild {
+            Some(guild) => backend.send(Command::RequestMembers { guild, ids: fresh }),
+            None => backend.send(Command::FetchUsers(fresh)),
         }
     }
 
@@ -583,6 +589,13 @@ impl Session {
                 self.set_notice(Some("That interaction failed. The app didn't respond.".into()), cx);
             }
             GatewayEvent::Dispatch(event) => {
+                // People who left the server aren't members any more, but
+                // their account can still be looked up.
+                if let DispatchEvent::MemberChunk(chunk) = &event
+                    && !chunk.not_found.is_empty()
+                {
+                    backend.send(Command::FetchUsers(chunk.not_found.clone()));
+                }
                 let changes = self.store.apply(event);
                 if !changes.is_empty() {
                     cx.emit(changes);

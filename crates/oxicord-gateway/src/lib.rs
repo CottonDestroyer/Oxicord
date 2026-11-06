@@ -87,6 +87,12 @@ impl GatewayHandle {
         let _ = self.tx.send(Command::SubscribeMembers { guild, channel });
     }
 
+    /// Asks the server for these people of `guild`. They come back as a
+    /// `GUILD_MEMBERS_CHUNK` event.
+    pub fn request_members(&self, guild: Snowflake, ids: Vec<Snowflake>) {
+        let _ = self.tx.send(Command::RequestMembers { guild, ids });
+    }
+
     pub fn shutdown(&self) {
         let _ = self.tx.send(Command::Shutdown);
     }

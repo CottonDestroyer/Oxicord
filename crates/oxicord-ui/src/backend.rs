@@ -194,6 +194,11 @@ pub enum Command {
         guild: Snowflake,
         channel: Snowflake,
     },
+    /// Look up people of a server by id through the gateway.
+    RequestMembers {
+        guild: Snowflake,
+        ids: Vec<Snowflake>,
+    },
     React {
         channel: Snowflake,
         message: Snowflake,

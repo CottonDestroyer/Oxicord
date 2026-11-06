@@ -32,6 +32,11 @@ impl Store {
             DispatchEvent::ReactionAdd(e) => self.on_reaction(&e, true, &mut changes),
             DispatchEvent::ReactionRemove(e) => self.on_reaction(&e, false, &mut changes),
             DispatchEvent::ReactionBatch(b) => self.on_reaction_batch(b, &mut changes),
+            DispatchEvent::MemberChunk(chunk) => {
+                self.add_users(chunk.members.into_iter().map(|m| m.user).collect());
+                // Names show in message text, so any open list may change.
+                return Changes::full();
+            }
             DispatchEvent::VoiceChannelStatus(s) => {
                 if let Some(channel) = self.channels.get_mut(&s.id) {
                     channel.status = s.status.filter(|text| !text.is_empty());

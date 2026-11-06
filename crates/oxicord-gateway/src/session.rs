@@ -27,6 +27,8 @@ pub(crate) enum Command {
     SetStatus(ClientStatus),
     /// Show the member list of `channel` in `guild`.
     SubscribeMembers { guild: Snowflake, channel: Snowflake },
+    /// Look up some people of `guild` by id. The answer is a member chunk.
+    RequestMembers { guild: Snowflake, ids: Vec<Snowflake> },
     Shutdown,
 }
 
@@ -153,6 +155,7 @@ impl Runtime {
                     Some(Command::SubscribeMembers { guild, channel }) => {
                         self.members = Some((guild, channel));
                     }
+                    Some(Command::RequestMembers { .. }) => {}
                     Some(Command::Shutdown) | None => return false,
                 },
             }
@@ -267,6 +270,17 @@ impl Runtime {
                         self.members = Some((guild, channel));
                         if conn.ready && !self.send_members(&mut conn).await {
                             return RECONNECT;
+                        }
+                    }
+                    Some(Command::RequestMembers { guild, ids }) => {
+                        // Dropped while we aren't connected. A name that never
+                        // resolves is only cosmetic.
+                        if conn.ready {
+                            for chunk in ids.chunks(100) {
+                                if !conn.send(&protocol::request_members(guild, chunk)).await {
+                                    return RECONNECT;
+                                }
+                            }
                         }
                     }
                     Some(Command::Shutdown) | None => {

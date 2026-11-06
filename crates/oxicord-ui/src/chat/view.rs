@@ -1130,7 +1130,8 @@ impl ChatView {
             return;
         }
         let backend = self.backend.clone();
-        self.session.update(cx, |session, _| session.request_users(&backend, ids));
+        let guild = self.guild(cx);
+        self.session.update(cx, |session, _| session.request_users(&backend, guild, ids));
     }
 
     fn render_row(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

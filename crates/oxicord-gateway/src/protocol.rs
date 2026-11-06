@@ -91,6 +91,19 @@ pub fn member_subscription(guild: Snowflake, channel: Option<Snowflake>) -> Valu
     })
 }
 
+/// Asks for specific people of a guild. The official client sends the guild
+/// as a list and no more than a hundred ids per frame.
+pub fn request_members(guild: Snowflake, user_ids: &[Snowflake]) -> Value {
+    json!({
+        "op": op::REQUEST_GUILD_MEMBERS,
+        "d": {
+            "guild_id": [guild.to_string()],
+            "user_ids": user_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "presences": false,
+        }
+    })
+}
+
 pub fn presence_update(status: ClientStatus) -> Value {
     json!({ "op": op::PRESENCE_UPDATE, "d": presence_body(status) })
 }
@@ -192,6 +205,15 @@ impl Backoff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn member_request_names_the_guild_in_a_list_and_ids_as_text() {
+        let frame = request_members(Snowflake(7), &[Snowflake(1), Snowflake(2)]);
+        assert_eq!(frame["op"], 8);
+        assert_eq!(frame["d"]["guild_id"], json!(["7"]));
+        assert_eq!(frame["d"]["user_ids"], json!(["1", "2"]));
+        assert_eq!(frame["d"]["presences"], false);
+    }
 
     #[test]
     fn url_carries_version_encoding_and_compression() {

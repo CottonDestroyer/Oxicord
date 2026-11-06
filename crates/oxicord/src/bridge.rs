@@ -523,6 +523,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         Command::SubscribeMembers { guild, channel } => {
             live.gateway.subscribe_members(guild, channel);
         }
+        Command::RequestMembers { guild, ids } => live.gateway.request_members(guild, ids),
         Command::SetStatus(status) => live.gateway.set_status(status),
         // Handled before it gets here.
         Command::Login(_)

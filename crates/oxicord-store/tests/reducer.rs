@@ -329,6 +329,23 @@ fn batched_reactions_count_every_user_and_notice_us() {
 }
 
 #[test]
+fn a_member_chunk_teaches_the_store_the_people_in_it() {
+    let mut store = ready_store();
+    assert!(store.user(id(777)).is_none());
+
+    let changes = store.apply(event(
+        "GUILD_MEMBERS_CHUNK",
+        json!({
+            "guild_id": "100", "chunk_index": 0, "chunk_count": 1,
+            "members": [{ "user": { "id": "777", "username": "zed" }, "roles": [] }],
+            "not_found": ["888"],
+        }),
+    ));
+    assert!(changes.full);
+    assert_eq!(store.user(id(777)).map(|u| u.username.as_str()), Some("zed"));
+}
+
+#[test]
 fn voice_status_sets_clears_and_survives_a_channel_update() {
     let mut store = ready_store();
     let status = |store: &Store| store.channel(id(13)).and_then(|c| c.status.clone());
