@@ -29,6 +29,10 @@ pub const TEXT_BRIGHT: u32 = 0xdcdcdf;
 pub const TEXT_MUTED: u32 = 0x96979e;
 /// text-muted.
 pub const TEXT_FAINT: u32 = 0x81828a;
+/// background-surface-higher: menus and popouts.
+pub const BG_MENU: u32 = 0x121214;
+/// background-feedback-mod-critical over a menu, behind a focused danger item.
+pub const DANGER_HOVER: u32 = 0x231819;
 /// status-positive-background, the add server button on hover.
 pub const ADD_SERVER_HOVER: u32 = 0x008043;
 /// chat-text-muted, message timestamps.

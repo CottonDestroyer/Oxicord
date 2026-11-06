@@ -132,6 +132,8 @@ impl ContextMenu {
             .items_center()
             .gap_2()
             .rounded(px(4.))
+            .text_size(px(14.))
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
             .cursor_pointer()
             .text_color(rgb(tone))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
@@ -180,13 +182,14 @@ impl Render for ContextMenu {
             .left(self.at.x)
             .top(self.at.y)
             .w(px(264.))
-            .p_1()
+            .p(px(8.))
+            .gap(px(4.))
             .flex()
             .flex_col()
-            .rounded(px(8.))
+            .rounded(px(theme::RADIUS))
             .border_1()
             .border_color(rgb(theme::BORDER))
-            .bg(rgb(theme::BG_PANEL));
+            .bg(rgb(theme::BG_MENU));
 
         let invite_channel = match target {
             Target::Guild(g) => {
@@ -211,26 +214,26 @@ impl Render for ContextMenu {
         if let Target::Guild(guild) = target {
             let allowed = server_settings::can_manage(self.session.read(cx).store.guild_permissions(guild));
             if allowed {
-                menu = menu.child(self.item("server-settings", "Server Settings", theme::TEXT, false, move |this, _, _, cx| {
+                menu = menu.child(self.item("server-settings", "Server Settings", theme::TEXT_BRIGHT, false, move |this, _, _, cx| {
                     this.session.update(cx, |_, cx| cx.emit(OpenServerSettings(guild)));
                     this.close(cx);
                 }, cx));
             }
         }
-        menu = menu.child(self.item("mark-read", "Mark as read", theme::TEXT, false, |this, _, _, cx| {
+        menu = menu.child(self.item("mark-read", "Mark as read", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
             this.run(Action::MarkRead, cx);
         }, cx));
         if matches!(target, Target::Channel(_)) {
-            menu = menu.child(self.item("copy-link", "Copy link", theme::TEXT, false, |this, _, _, cx| {
+            menu = menu.child(self.item("copy-link", "Copy link", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                 this.run(Action::CopyLink, cx);
             }, cx));
         }
 
         // Muting and levels are server settings, which conversations lack.
         if in_guild {
-            menu = menu.child(div().my_1().h(px(1.)).bg(rgb(theme::BORDER)));
+            menu = menu.child(div().my(px(2.)).h(px(1.)).bg(rgb(theme::BORDER)));
             if muted {
-                menu = menu.child(self.item("unmute", format!("Unmute {noun}"), theme::TEXT, false, |this, _, _, cx| {
+                menu = menu.child(self.item("unmute", format!("Unmute {noun}"), theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                     this.run(Action::Unmute, cx);
                 }, cx));
             } else {
@@ -238,7 +241,7 @@ impl Render for ContextMenu {
                 menu = menu.child(self.item(
                     "mute",
                     format!("Mute {noun}"),
-                    theme::TEXT,
+                    theme::TEXT_BRIGHT,
                     false,
                     |this, _, _, cx| {
                         this.open = (this.open != Some(Section::Mute)).then_some(Section::Mute);
@@ -256,7 +259,7 @@ impl Render for ContextMenu {
             }
 
             let opened = self.open == Some(Section::Notify);
-            menu = menu.child(self.item("notify", "Notification settings", theme::TEXT, false, |this, _, _, cx| {
+            menu = menu.child(self.item("notify", "Notification settings", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                 this.open = (this.open != Some(Section::Notify)).then_some(Section::Notify);
                 cx.notify();
             }, cx));
@@ -281,7 +284,7 @@ impl Render for ContextMenu {
                 menu = menu.child(self.item(
                     "suppress",
                     "Suppress @everyone and @here",
-                    theme::TEXT,
+                    theme::TEXT_BRIGHT,
                     suppress,
                     move |this, _, _, cx| this.run(Action::SuppressEveryone(!suppress), cx),
                     cx,
@@ -290,7 +293,7 @@ impl Render for ContextMenu {
         }
 
         if is_guild {
-            menu = menu.child(div().my_1().h(px(1.)).bg(rgb(theme::BORDER)));
+            menu = menu.child(div().my(px(2.)).h(px(1.)).bg(rgb(theme::BORDER)));
             let armed = self.confirm_leave;
             menu = menu.child(self.item(
                 "leave",

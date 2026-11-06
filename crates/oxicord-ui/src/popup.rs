@@ -36,7 +36,8 @@ impl EventEmitter<ClosePopup> for PopupMenu {}
 
 const WIDTH: f32 = 220.;
 const ITEM: f32 = 32.;
-const SEPARATOR: f32 = 9.;
+const SEPARATOR: f32 = 5.;
+const GAP: f32 = 4.;
 
 #[derive(Default)]
 pub struct PopupMenu {
@@ -54,7 +55,7 @@ impl PopupMenu {
     }
 
     fn height(&self) -> f32 {
-        8. + self
+        16. + GAP * self.entries.len().saturating_sub(1) as f32 + self
             .entries
             .iter()
             .map(|e| if matches!(e, Entry::Separator) { SEPARATOR } else { ITEM })
@@ -82,19 +83,20 @@ impl Render for PopupMenu {
             .left(at.x)
             .top(at.y)
             .w(px(WIDTH))
-            .p(px(4.))
+            .p(px(8.))
+            .gap(px(GAP))
             .flex()
             .flex_col()
-            .rounded(px(6.))
+            .rounded(px(theme::RADIUS))
             .border_1()
             .border_color(rgb(theme::BORDER))
-            .bg(rgb(theme::BG_PANEL));
+            .bg(rgb(theme::BG_MENU));
 
         for (index, entry) in self.entries.iter().enumerate() {
             card = match entry {
-                Entry::Separator => card.child(div().my(px(4.)).h(px(1.)).bg(rgb(theme::BORDER))),
+                Entry::Separator => card.child(div().my(px(2.)).h(px(1.)).bg(rgb(theme::BORDER))),
                 Entry::Item { label, glyph, danger } => {
-                    let color = if *danger { theme::DANGER } else { theme::TEXT };
+                    let color = if *danger { theme::DANGER } else { theme::TEXT_BRIGHT };
                     card.child(
                         div()
                             .id(("popup-item", index as u64))
@@ -106,8 +108,9 @@ impl Render for PopupMenu {
                             .rounded(px(4.))
                             .cursor_pointer()
                             .text_size(px(14.))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
                             .text_color(rgb(color))
-                            .hover(|s| s.bg(rgb(if *danger { theme::BADGE } else { theme::ACCENT })).text_color(rgb(theme::TEXT_BRIGHT)))
+                            .hover(|s| s.bg(rgb(if *danger { theme::DANGER_HOVER } else { theme::BG_HOVER })))
                             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                                 let pick = this.pick.take();
                                 cx.emit(ClosePopup);
