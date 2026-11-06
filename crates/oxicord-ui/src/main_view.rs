@@ -1108,7 +1108,7 @@ impl MainView {
                 .justify_center()
                 .bg(rgb(if selected_guild.is_none() { theme::ACCENT } else { theme::BG_HOVER }))
                 .rounded(px(if selected_guild.is_none() { 12. } else { 20. }))
-                .child(icon("messages-square", 24., theme::TEXT_BRIGHT))
+                .child(icon("clyde", 24., theme::TEXT_BRIGHT))
                 .into_any_element(),
             cx.listener(|this, _, window, cx| this.select_guild(None, window, cx)),
         );
@@ -1506,7 +1506,7 @@ impl MainView {
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
             .on_click(cx.listener(|this, _, window, cx| this.show_friends(window, cx)))
-            .child(div().w(px(32.)).flex_none().flex().justify_center().child(icon("users", 24., color)))
+            .child(div().w(px(32.)).flex_none().flex().justify_center().child(icon("friends", 24., color)))
             .child(div().flex_1().child("Friends"))
             .children(mention_badge(u32::try_from(pending).unwrap_or(u32::MAX)))
     }
