@@ -1514,7 +1514,7 @@ impl MainView {
     /// "Direct Messages" with the button that starts a new conversation.
     fn render_dm_heading(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
-            .h(px(32.))
+            .h(px(28.))
             .flex_none()
             .flex()
             .items_center()
@@ -1523,15 +1523,15 @@ impl MainView {
             .pr_1()
             .child(
                 div()
-                    .text_size(px(11.))
-                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .text_size(px(14.))
+                    .font_weight(gpui_kit::FontWeight::MEDIUM)
                     .text_color(rgb(theme::CHANNELS_DEFAULT))
-                    .child("DIRECT MESSAGES"),
+                    .child("Direct Messages"),
             )
             .child(
                 div()
                     .id("new-dm")
-                    .size(px(20.))
+                    .size(px(24.))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -1542,7 +1542,7 @@ impl MainView {
                         let at = point(event.position().x - px(40.), event.position().y + px(14.));
                         this.open_picker(Purpose::Create, at, window, cx);
                     }))
-                    .child(icon("plus", 14., theme::TEXT_MUTED)),
+                    .child(icon("plus", 16., theme::TEXT_MUTED)),
             )
     }
 
