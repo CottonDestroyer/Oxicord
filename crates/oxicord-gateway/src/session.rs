@@ -93,6 +93,8 @@ pub(crate) struct Runtime {
     /// Set when the server threw away part of the member list we hold, so
     /// the next chance we get we ask for the range again.
     resync_members: bool,
+    /// The member list the server last synced for us, the one on screen.
+    synced_list: Option<String>,
 }
 
 impl Runtime {
@@ -110,6 +112,7 @@ impl Runtime {
             persist: Persist::default(),
             members: None,
             resync_members: false,
+            synced_list: None,
         }
     }
 
@@ -408,12 +411,19 @@ impl Runtime {
             }
         };
 
-        // An INVALIDATE leaves holes that stay empty until we ask again.
+        // An INVALIDATE of the list on screen leaves holes that stay empty
+        // until we ask again. One for a list we have left is not our business.
         if let DispatchEvent::GuildMemberListUpdate(update) = &event
             && self.members.is_some_and(|(guild, _)| guild == update.guild_id)
-            && update.ops.iter().any(|op| matches!(op, ListOp::Invalidate { .. }))
         {
-            self.resync_members = true;
+            if update.ops.iter().any(|op| matches!(op, ListOp::Sync { .. })) {
+                self.synced_list = Some(update.id.clone());
+            }
+            if self.synced_list.as_deref() == Some(update.id.as_str())
+                && update.ops.iter().any(|op| matches!(op, ListOp::Invalidate { .. }))
+            {
+                self.resync_members = true;
+            }
         }
 
         let connected = match &event {

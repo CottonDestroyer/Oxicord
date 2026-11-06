@@ -660,6 +660,26 @@ fn a_different_list_id_starts_the_list_over() {
 }
 
 #[test]
+fn edits_for_the_list_we_left_do_not_touch_the_one_on_screen() {
+    let mut store = ready_store();
+    store.apply(list_update("old", json!([{ "op": "SYNC", "range": [0, 1],
+        "items": [group("online", 1), member(10, "a")] }])));
+    // Switching channels: the server syncs the other list.
+    store.apply(list_update("new", json!([{ "op": "SYNC", "range": [0, 2],
+        "items": [group("online", 2), member(20, "x"), member(21, "y")] }])));
+
+    // And keeps talking about the old one for a while.
+    store.apply(list_update("old", json!([{ "op": "UPDATE", "index": 1, "item": member(11, "b") }])));
+    store.apply(list_update("old", json!([{ "op": "INVALIDATE", "range": [0, 99] }])));
+
+    assert_eq!(describe(&store), ["g:online", "m:20", "m:21"]);
+
+    // An edit that arrives before the list's own sync doesn't show anything.
+    store.apply(list_update("third", json!([{ "op": "UPDATE", "index": 0, "item": member(30, "z") }])));
+    assert_eq!(describe(&store), ["g:online", "m:20", "m:21"]);
+}
+
+#[test]
 fn nonsense_indexes_are_survived() {
     let mut store = ready_store();
     store.apply(list_update("everyone", json!([

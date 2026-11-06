@@ -235,12 +235,14 @@ async fn asks_for_the_member_ranges_again_after_the_server_invalidates_them() {
         socket.ready("sess-1", &resume_url).await;
         socket.recv().await; // subscribe
         socket.recv().await; // first ranges
-        socket
-            .send(json!({
-                "op": 0, "s": 3, "t": "GUILD_MEMBER_LIST_UPDATE",
-                "d": { "guild_id": "5", "id": "everyone", "ops": [{ "op": "INVALIDATE", "range": [0, 99] }] }
-            }))
-            .await;
+        let update = |seq: u64, id: &str, op: serde_json::Value| json!({
+            "op": 0, "s": seq, "t": "GUILD_MEMBER_LIST_UPDATE",
+            "d": { "guild_id": "5", "id": id, "ops": [op] }
+        });
+        socket.send(update(3, "everyone", json!({ "op": "SYNC", "range": [0, 0], "items": [] }))).await;
+        // A list we are not on is none of our business.
+        socket.send(update(4, "elsewhere", json!({ "op": "INVALIDATE", "range": [0, 99] }))).await;
+        socket.send(update(5, "everyone", json!({ "op": "INVALIDATE", "range": [0, 99] }))).await;
         let again = socket.recv().await;
         while socket.ws.next().await.is_some_and(|m| m.is_ok()) {}
         again
