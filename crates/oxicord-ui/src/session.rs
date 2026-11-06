@@ -551,6 +551,16 @@ impl Session {
                     cx.notify();
                 }
             }
+            // Preferences, folders or status changed on another device (or by
+            // us, echoed). Type 1 is the main blob. Reading it again beats
+            // merging a partial message, and the old values stay up meanwhile.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data })
+                if name == "USER_SETTINGS_PROTO_UPDATE" && data["settings"]["type"] == 1 =>
+            {
+                if matches!(self.account.settings, Load::Ready(_)) {
+                    backend.send(Command::Account(AccountRequest::LoadSettings));
+                }
+            }
             // Cleared from the inbox on another device.
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "RECENT_MENTION_DELETE" => {
                 let gone = serde_json::from_value::<Snowflake>(data["message_id"].clone()).ok();
