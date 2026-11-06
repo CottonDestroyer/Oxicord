@@ -61,4 +61,41 @@ impl AdminState {
             _ => {}
         }
     }
+
+    /// GUILD_BAN_ADD and GUILD_BAN_REMOVE: keeps a loaded ban list current.
+    /// The gateway doesn't carry the reason, so a new row has none.
+    pub fn apply_ban(&mut self, guild: Snowflake, user: oxicord_model::User, banned: bool) {
+        let Load::Ready(bans) = &mut self.bans else { return };
+        if self.guild != Some(guild) {
+            return;
+        }
+        bans.retain(|b| b.user.id != user.id);
+        if banned {
+            bans.push(BanEntry { user, reason: None });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user(id: u64) -> oxicord_model::User {
+        serde_json::from_value(serde_json::json!({ "id": id.to_string(), "username": "u" })).unwrap()
+    }
+
+    #[test]
+    fn bans_follow_the_gateway_for_the_open_server_only() {
+        let mut state = AdminState::default();
+        state.switch_to(Snowflake(1));
+        state.apply(AdminEvent::Bans(Snowflake(1), Ok(Vec::new())));
+
+        state.apply_ban(Snowflake(1), user(5), true);
+        state.apply_ban(Snowflake(1), user(5), true);
+        state.apply_ban(Snowflake(2), user(6), true);
+        assert_eq!(state.bans.ready().unwrap().len(), 1, "no duplicates, no other servers");
+
+        state.apply_ban(Snowflake(1), user(5), false);
+        assert!(state.bans.ready().unwrap().is_empty());
+    }
 }

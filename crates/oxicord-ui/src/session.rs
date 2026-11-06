@@ -541,6 +541,16 @@ impl Session {
 
     pub fn handle(&mut self, backend: &Backend, event: GatewayEvent, cx: &mut Context<Self>) {
         match event {
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data })
+                if name == "GUILD_BAN_ADD" || name == "GUILD_BAN_REMOVE" =>
+            {
+                let guild = serde_json::from_value::<Snowflake>(data["guild_id"].clone()).ok();
+                let user = serde_json::from_value::<oxicord_model::User>(data["user"].clone()).ok();
+                if let (Some(guild), Some(user)) = (guild, user) {
+                    self.admin.apply_ban(guild, user, name == "GUILD_BAN_ADD");
+                    cx.notify();
+                }
+            }
             // Somebody pinned or unpinned something. Only channels whose pins
             // we already fetched are worth asking about again.
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "CHANNEL_PINS_UPDATE" => {
