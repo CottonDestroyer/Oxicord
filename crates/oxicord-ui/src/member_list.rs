@@ -14,7 +14,7 @@ use crate::{
     theme,
 };
 
-const GROUP_HEIGHT: f32 = 40.;
+const GROUP_HEIGHT: f32 = 42.;
 const MEMBER_HEIGHT: f32 = 44.;
 
 /// The people in the open guild, grouped by role or online state, as the
@@ -128,12 +128,12 @@ impl MemberList {
             .h(px(GROUP_HEIGHT))
             .flex()
             .items_end()
-            .px_4()
-            .pb_1()
-            .text_size(px(12.))
-            .font_weight(FontWeight::SEMIBOLD)
+            .pl(px(16.))
+            .pb(px(4.))
+            .text_size(px(14.))
+            .font_weight(FontWeight::MEDIUM)
             .text_color(rgb(theme::CHANNELS_DEFAULT))
-            .child(format!("{} \u{2014} {count}", name.to_uppercase()))
+            .child(format!("{name} \u{2014} {count}"))
             .into_any_element()
     }
 
@@ -160,7 +160,7 @@ impl MemberList {
         };
 
         let offline = status == Status::Offline;
-        let name_color = color.unwrap_or(theme::TEXT);
+        let name_color = color.unwrap_or(theme::CHANNELS_DEFAULT);
 
         // The 44px slot holds a 42px row with a pixel of air above and
         // below, as the official list does.

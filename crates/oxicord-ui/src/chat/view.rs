@@ -1203,6 +1203,7 @@ impl ChatView {
                         .items_center()
                         .justify_end()
                         .text_size(px(11.))
+                        .font_weight(FontWeight::MEDIUM)
                         .text_color(rgb(theme::TEXT_FAINT))
                         .invisible()
                         .group_hover("message", |s| s.visible())
