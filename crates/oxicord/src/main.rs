@@ -9,19 +9,51 @@ use gpui_kit::{
 };
 use oxicord_ui::{AppView, theme};
 
-/// The component library paints primary buttons white in dark mode. Bring
-/// them in line with the rest of the palette.
+/// The component library ships its own dark palette. Bring the pieces we
+/// use (buttons, inputs, scrollbars, popovers) in line with Midnight, using
+/// the control tokens of the official client.
 fn apply_accent(cx: &mut gpui_kit::App) {
-    let accent = |value: u32| gpui_kit::Hsla::from(gpui_kit::rgb(value));
+    let c = |value: u32| gpui_kit::Hsla::from(gpui_kit::rgb(value));
     let colors = &mut Theme::global_mut(cx).colors;
-    colors.primary = accent(theme::ACCENT);
-    colors.primary_hover = accent(0x4452bb);
-    colors.primary_active = accent(0x3a48a3);
-    colors.primary_foreground = accent(theme::TEXT_BRIGHT);
+
+    // control-primary
+    colors.primary = c(theme::ACCENT);
+    colors.primary_hover = c(0x4452bb);
+    colors.primary_active = c(0x3a48a3);
+    colors.primary_foreground = c(theme::TEXT_BRIGHT);
     colors.button_primary = colors.primary;
     colors.button_primary_hover = colors.primary_hover;
     colors.button_primary_active = colors.primary_active;
     colors.button_primary_foreground = colors.primary_foreground;
+
+    // control-secondary, the translucent grey flattened onto black
+    colors.secondary = c(0x121213);
+    colors.secondary_hover = c(0x1e1e20);
+    colors.secondary_active = c(0x242426);
+    colors.secondary_foreground = c(theme::TEXT_BRIGHT);
+    colors.button_secondary = colors.secondary;
+    colors.button_secondary_hover = colors.secondary_hover;
+    colors.button_secondary_active = colors.secondary_active;
+    colors.button_secondary_foreground = colors.secondary_foreground;
+
+    // control-critical-primary
+    colors.danger = c(0xd22d39);
+    colors.danger_hover = c(0xa9232e);
+    colors.danger_active = c(0x971d28);
+    colors.danger_foreground = c(theme::TEXT_BRIGHT);
+    colors.button_danger = colors.danger;
+    colors.button_danger_hover = colors.danger_hover;
+    colors.button_danger_active = colors.danger_active;
+    colors.button_danger_foreground = colors.danger_foreground;
+
+    colors.muted = c(theme::BG_HOVER);
+    colors.muted_foreground = c(theme::TEXT_FAINT);
+    colors.popover = c(theme::BG_MENU);
+    colors.popover_foreground = c(theme::TEXT);
+    colors.link = c(0x2781e7);
+    // scrollbar-thin-thumb
+    colors.scrollbar_thumb = c(0x595a63);
+    colors.scrollbar_thumb_hover = c(0x6c6d76);
 }
 
 /// Registers the gg sans files from a `fonts` folder next to the executable

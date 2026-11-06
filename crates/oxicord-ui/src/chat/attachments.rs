@@ -237,7 +237,7 @@ fn embed_card(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let accent = embed.color.unwrap_or(0x4e5058);
+    let accent = embed.color.unwrap_or(0x424246);
 
     let mut body = div().flex_1().min_w_0().flex().flex_col().gap(px(4.));
 

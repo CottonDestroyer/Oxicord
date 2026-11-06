@@ -17,9 +17,9 @@ use crate::{
 
 const MAX_PICTURE: f32 = 360.;
 const THUMBNAIL: f32 = 96.;
-const GREEN: u32 = 0x248046;
-const RED: u32 = 0xda373c;
-const GREY: u32 = 0x4e5058;
+const GREEN: u32 = 0x008043;
+const RED: u32 = 0xd22d39;
+const GREY: u32 = 0x1e1e20;
 
 impl ChatView {
     /// All of a message's components, or nothing when it has none.
@@ -344,7 +344,7 @@ impl ChatView {
                         .left_0()
                         .h_full()
                         .w(relative(share))
-                        .bg(rgb(if tally.me { 0x3b4290 } else { theme::BG_ACTIVE })),
+                        .bg(rgb(if tally.me { 0x15183a } else { theme::BG_ACTIVE })),
                 )
                 .child(
                     div()

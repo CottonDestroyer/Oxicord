@@ -20,12 +20,12 @@ use oxicord_model::Snowflake;
 use super::format;
 use crate::{media::Media, theme};
 
-pub const LINK_COLOR: u32 = 0x00a8fc;
-const MENTION_FG: u32 = 0xc9cdfb;
-const MENTION_BG: u32 = 0x3c4270;
-const CODE_BG: u32 = 0x1a1b1f;
-const SPOILER_HIDDEN: u32 = 0x0f1012;
-const SPOILER_SHOWN: u32 = 0x2e3035;
+pub const LINK_COLOR: u32 = 0x2781e7;
+const MENTION_FG: u32 = 0x8ca0fd;
+const MENTION_BG: u32 = 0x15183a;
+const CODE_BG: u32 = 0x070813;
+const SPOILER_HIDDEN: u32 = 0x242426;
+const SPOILER_SHOWN: u32 = 0x121213;
 const MONO: &str = "Consolas";
 const JUMBO_EMOJI_LIMIT: usize = 27;
 
@@ -267,7 +267,7 @@ fn render_block(
             div()
                 .flex()
                 .my(px(2.))
-                .child(div().w(px(4.)).flex_none().rounded_full().bg(rgb(0x4e5058)))
+                .child(div().w(px(4.)).flex_none().rounded_full().bg(rgb(0x424246)))
                 .child(div().flex_1().min_w_0().pl(px(12.)).child(column))
                 .into_any_element()
         }

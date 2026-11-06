@@ -904,9 +904,9 @@ impl ChatView {
                 .rounded(px(8.))
                 .border_1()
                 .border_color(rgb(if mine { theme::ACCENT } else { theme::BG_HOVER }))
-                .bg(rgb(if mine { 0x2f3252 } else { theme::BG_HOVER }))
+                .bg(rgb(if mine { 0x15183a } else { theme::BG_HOVER }))
                 .text_size(px(13.))
-                .text_color(rgb(if mine { 0xdee0fc } else { theme::TEXT_MUTED }))
+                .text_color(rgb(if mine { 0x8ca0fd } else { theme::TEXT_MUTED }))
                 .child(glyph)
                 .child(reaction.count.to_string());
 
@@ -1719,7 +1719,7 @@ impl ChatView {
                     .px_3()
                     .py_2()
                     .rounded(px(theme::RADIUS))
-                    .bg(rgb(0x3a2326))
+                    .bg(rgb(0x120707))
                     .text_size(px(13.))
                     .text_color(rgb(theme::DANGER))
                     .child(div().flex_1().child(text))
