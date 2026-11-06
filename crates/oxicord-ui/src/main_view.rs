@@ -70,6 +70,8 @@ struct ChannelItem {
     voice: Vec<VoiceItem>,
     /// What the people in a voice channel say they are doing.
     status: Option<String>,
+    /// User limit for voice channels (None = unlimited).
+    user_limit: Option<u32>,
     muted: bool,
     /// Threads shown beneath this channel.
     threads: Vec<ChannelItem>,
@@ -2377,6 +2379,7 @@ fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> Cha
         unread: store.unread(c.id),
         muted: store.is_muted(c),
         status: c.status.clone(),
+        user_limit: c.user_limit,
         can_invite: !c.kind.is_thread()
             && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE),
         voice: store
