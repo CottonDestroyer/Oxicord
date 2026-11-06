@@ -403,20 +403,28 @@ impl FriendsView {
                     .child("You can add friends with their Discord username."),
             )
             .child(
+                // The field and its button share one rounded outline, as the
+                // official page draws them.
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
                     .max_w(px(560.))
-                    .child(div().flex_1().child(Input::new(&self.add_name)))
+                    .mt(px(4.))
+                    .py(px(8.))
+                    .px(px(12.))
+                    .rounded(px(16.))
+                    .border_1()
+                    .border_color(rgb(theme::BORDER))
+                    .child(div().flex_1().child(Input::new(&self.add_name).appearance(false).bordered(false)))
                     .child(
                         div()
                             .id("send-request")
-                            .h(px(36.))
+                            .h(px(32.))
                             .px_4()
                             .flex()
                             .items_center()
-                            .rounded(px(theme::RADIUS))
+                            .rounded(px(16.))
                             .cursor_pointer()
                             .bg(rgb(theme::ACCENT))
                             .text_color(rgb(theme::TEXT_BRIGHT))

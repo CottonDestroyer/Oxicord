@@ -903,10 +903,11 @@ impl ChatView {
                 .px(px(8.))
                 .rounded(px(8.))
                 .border_1()
-                .border_color(rgb(if mine { theme::ACCENT } else { theme::BG_HOVER }))
+                .border_color(rgb(if mine { theme::ACCENT } else { theme::BORDER }))
                 .bg(rgb(if mine { 0x15183a } else { theme::BG_HOVER }))
                 .text_size(px(13.))
-                .text_color(rgb(if mine { 0x8ca0fd } else { theme::TEXT_MUTED }))
+                .text_color(rgb(if mine { 0x9aadff } else { theme::TEXT_MUTED }))
+                .hover(|s| s.bg(rgb(if mine { 0x15183a } else { theme::BORDER })))
                 .child(glyph)
                 .child(reaction.count.to_string());
 

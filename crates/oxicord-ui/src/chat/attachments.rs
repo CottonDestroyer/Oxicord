@@ -80,7 +80,7 @@ pub(super) fn picture(
         Some(image) => frame
             .child(img(ImageSource::Image(image)).size_full().rounded(px(8.)))
             .into_any_element(),
-        None => frame.bg(rgb(theme::BG_SIDEBAR)).into_any_element(),
+        None => frame.bg(rgb(theme::BG_PANEL)).into_any_element(),
     }
 }
 
@@ -132,7 +132,7 @@ fn file_card(attachment: &Attachment, message: &Message) -> AnyElement {
         .px_3()
         .py_2()
         .rounded(px(8.))
-        .bg(rgb(theme::BG_SIDEBAR))
+        .bg(rgb(theme::BG_PANEL))
         .border_1()
         .border_color(rgb(theme::BORDER))
         .cursor_pointer()
@@ -237,7 +237,7 @@ fn embed_card(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let accent = embed.color.unwrap_or(0x424246);
+    let accent = embed.color.unwrap_or(0x242426);
 
     let mut body = div().flex_1().min_w_0().flex().flex_col().gap(px(4.));
 
@@ -307,7 +307,7 @@ fn embed_card(
         .flex()
         .max_w(px(520.))
         .rounded(px(4.))
-        .bg(rgb(theme::BG_SIDEBAR))
+        .bg(rgb(theme::BG_PANEL))
         .border_1()
         .border_color(rgb(theme::BORDER))
         .overflow_hidden()
