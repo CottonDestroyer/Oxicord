@@ -2172,7 +2172,7 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let (name, avatar_url, status, bio) = {
+                let (name, avatar_url, status, bio, mutual_friends, mutual_servers) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
                     let account = store.user(user);
@@ -2182,6 +2182,8 @@ impl Render for ChatView {
                         account.map(|u| cdn::user_avatar(u.id, u.avatar.as_deref(), 128)).unwrap_or_default(),
                         account.and_then(|u| store.activities(u.id).first().map(|a| a.name.clone())).unwrap_or_default(),
                         profile.map(|p| p.bio.clone()).unwrap_or_default(),
+                        profile.map(|p| p.mutual_friends).unwrap_or(0),
+                        profile.map(|p| p.mutual_guilds.len()).unwrap_or(0),
                     )
                 };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -2191,7 +2193,7 @@ impl Render for ChatView {
                 profile::modal(
                     div()
                         .w(px(420.))
-                        .h(px(360.))
+                        .h(px(400.))
                         .bg(rgb(theme::BG_PANEL))
                         .rounded(px(theme::RADIUS))
                         .p_4()
@@ -2202,6 +2204,8 @@ impl Render for ChatView {
                         .child(div().font_weight(FontWeight::BOLD).child(name))
                         .children((!status.is_empty()).then(|| div().text_color(rgb(theme::TEXT_MUTED)).child(status)))
                         .children((!bio.is_empty()).then(|| div().text_size(px(13.)).child(bio)))
+                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Friends", mutual_friends)))
+                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Servers", mutual_servers)))
                         .into_any_element(),
                     Box::new(on_close),
                 )
