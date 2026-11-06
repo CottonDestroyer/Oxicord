@@ -10,6 +10,8 @@ const GROUP_WINDOW_SECS: i64 = 7 * 60;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Row {
+    /// Who the chat is with, above the first message once all history is in.
+    Intro,
     /// The first row of a new day.
     Divider(NaiveDate),
     /// Where the messages we have not read begin.

@@ -18,13 +18,13 @@ use gpui_kit::{
 };
 use oxicord_markdown::Block;
 use oxicord_media::cdn;
-use oxicord_model::{Emoji, Message, MessageType, Permissions, Snowflake};
+use oxicord_model::{ChannelType, Emoji, Message, MessageType, Permissions, Snowflake};
 use oxicord_settings::Key;
 use oxicord_store::Changes;
 
 use super::{
     attachments::{render_attachments, render_embeds},
-    format,
+    format, intro,
     markdown::{self, Names, Options, SpoilerHandler},
     rows::{Row, build_rows, diff},
     typing::typing_text,
@@ -600,11 +600,14 @@ impl ChatView {
     /// changed so the scroll position and measured heights survive.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         let offset = *Local::now().offset();
-        let new = self
+        let mut new = self
             .channel
             .and_then(|c| self.session.read(cx).store.timeline(c))
             .map(|t| build_rows(t.messages(), offset, self.unread_after))
             .unwrap_or_default();
+        if self.shows_intro(cx) {
+            new.insert(0, Row::Intro);
+        }
 
         match diff(&self.rows, &new) {
             Some((range, count)) => self.list.splice(range, count),
@@ -613,6 +616,45 @@ impl ChatView {
             None => self.list.remeasure(),
         }
         self.rows = new;
+    }
+
+    /// Whether the top of the list should say what conversation this is: only
+    /// once nothing older can be fetched, and only for chats and channels
+    /// that have such a beginning.
+    fn shows_intro(&self, cx: &App) -> bool {
+        let Some(channel) = self.channel else { return false };
+        let session = self.session.read(cx);
+        let fetched = session.store.timeline(channel).is_some_and(|t| !t.has_more_before());
+        let kind = session.store.channel(channel).map(|c| c.kind);
+        fetched
+            && !self.loading
+            && !session.history_errors.contains_key(&channel)
+            && matches!(
+                kind,
+                Some(ChannelType::Dm | ChannelType::GroupDm | ChannelType::GuildText | ChannelType::GuildAnnouncement)
+            )
+    }
+
+    fn render_intro(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(channel_id) = self.channel else { return div().into_any_element() };
+        let (kind, name, topic, person) = {
+            let store = &self.session.read(cx).store;
+            let Some(channel) = store.channel(channel_id) else { return div().into_any_element() };
+            let person = channel.recipients.first().map(|u| {
+                (cdn::user_avatar(u.id, u.avatar.as_deref(), 160), u.display_name().to_owned(), tag(u))
+            });
+            let name = if matches!(channel.kind, ChannelType::Dm | ChannelType::GroupDm) {
+                store.dm_name(channel)
+            } else {
+                channel.name.clone().unwrap_or_default()
+            };
+            (channel.kind, name, channel.topic.clone(), person)
+        };
+        match (kind, person) {
+            (ChannelType::Dm, Some((url, display, username))) => intro::direct(&self.media, &url, &display, &username, cx),
+            (ChannelType::GroupDm | ChannelType::Dm, _) => intro::group(&name),
+            _ => intro::channel(&name, topic.as_deref()),
+        }
     }
 
     fn message(&self, id: Snowflake, cx: &App) -> Option<Message> {
@@ -1144,6 +1186,7 @@ impl ChatView {
 
     fn render_row(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.rows.get(ix).cloned() {
+            Some(Row::Intro) => self.render_intro(cx),
             Some(Row::Divider(day)) => divider(day).into_any_element(),
             Some(Row::NewMessages) => new_messages_line().into_any_element(),
             Some(Row::Message { id, grouped }) => match self.message(id, cx) {
@@ -2209,4 +2252,12 @@ fn system_row(message: &Message, media: &Entity<Media>, cx: &mut App) -> AnyElem
         )
         .child(div().child(text))
         .into_any_element()
+}
+
+/// The handle people go by: a plain username, or the old name#1234 form.
+fn tag(user: &oxicord_model::User) -> String {
+    match user.discriminator.as_deref() {
+        Some(d) if d != "0" && !d.is_empty() => format!("{}#{d}", user.username),
+        _ => user.username.clone(),
+    }
 }
