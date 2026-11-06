@@ -2087,6 +2087,27 @@ impl Render for MainView {
             None
         };
         let panel = self.panel_open.then(|| self.panel.clone());
+        // The chat header runs over the column on its right, so the column
+        // is laid over the chat and the chat leaves room for it.
+        let over_chat = !(self.guild.is_none() && self.channel.is_none()) && !in_forum;
+        let aside_width = if members.is_some() {
+            theme::MEMBERS_WIDTH
+        } else if dm_column.is_some() {
+            if self.dm_peer(cx).is_some() { profile::COLUMN_WIDTH } else { theme::MEMBERS_WIDTH }
+        } else if panel.is_some() {
+            theme::MEMBERS_WIDTH + 100.
+        } else {
+            0.
+        };
+        if over_chat {
+            self.chat.update(cx, |chat, cx| chat.set_aside_width(aside_width, cx));
+        }
+        let aside = div()
+            .flex()
+            .h_full()
+            .children(members)
+            .children(dm_column)
+            .children(panel);
         let profile = self.render_profile(window, cx);
         let settings = self.settings_open.then(|| self.settings_view.clone());
         let menu = self.menu_open.then(|| self.menu.clone());
@@ -2127,10 +2148,20 @@ impl Render for MainView {
                     .border_t_1().border_l_1()
                     .border_color(rgb(theme::BORDER))
                     .child(sidebar)
-                    .child(content)
-                    .children(members)
-                    .children(dm_column)
-                    .children(panel),
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .child(content)
+                            .child(if over_chat {
+                                div().absolute().top(px(theme::CHANNEL_HEADER_HEIGHT)).right_0().bottom_0().child(aside).into_any_element()
+                            } else {
+                                aside.into_any_element()
+                            }),
+                    ),
             )
             .children(profile)
             .children(account)

@@ -67,6 +67,9 @@ pub struct ChatView {
     reply_to: Option<Snowflake>,
     /// Whether the reply notifies its author. Resets with each new reply.
     reply_ping: bool,
+    /// Width of the column laid over the right edge, which the messages
+    /// and the composer stay clear of.
+    aside_width: f32,
     editing: Option<Snowflake>,
     /// Files chosen for the next message.
     files: Vec<PathBuf>,
@@ -205,6 +208,7 @@ impl ChatView {
             drafts: HashMap::new(),
             reply_to: None,
             reply_ping: true,
+            aside_width: 0.,
             editing: None,
             files: Vec::new(),
             confirm_delete: None,
@@ -855,6 +859,15 @@ impl ChatView {
             }
         })
         .detach();
+    }
+
+    /// Reserves room on the right for a column the parent lays over the chat.
+    pub fn set_aside_width(&mut self, width: f32, cx: &mut Context<Self>) {
+        if (self.aside_width - width).abs() > f32::EPSILON {
+            self.aside_width = width;
+            self.list.remeasure();
+            cx.notify();
+        }
     }
 
     fn start_reply(&mut self, message: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
@@ -2058,10 +2071,18 @@ impl Render for ChatView {
                 }
             }))
             .child(header)
-            .child(div().flex_1().min_h_0().child(body))
-            .child(composer)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .pr(px(self.aside_width))
+                    .child(div().flex_1().min_h_0().child(body))
+                    .child(composer),
+            )
             .children(picker.map(|panel| {
-                div().absolute().bottom(px(72.)).right(px(16.)).child(panel)
+                div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
     }
 }
