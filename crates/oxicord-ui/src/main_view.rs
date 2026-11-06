@@ -20,6 +20,7 @@ use crate::{
     dm_picker::{ClosePicker, DmPicker, Purpose},
     forum::ForumView,
     forward_dialog::{CloseForward, ForwardDialog},
+    nickname_dialog::{CloseNickname, NicknameDialog},
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
@@ -31,7 +32,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenPanel, OpenPicker, OpenPopup, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -124,6 +125,8 @@ pub struct MainView {
     join_open: bool,
     forward: Entity<ForwardDialog>,
     forward_open: bool,
+    nickname: Entity<NicknameDialog>,
+    nickname_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
@@ -178,6 +181,10 @@ impl MainView {
         let forward = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| ForwardDialog::new(session, media, backend, window, cx))
+        };
+        let nickname = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| NicknameDialog::new(session, backend, window, cx))
         };
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
@@ -276,6 +283,15 @@ impl MainView {
                 this.status_dialog_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&nickname, |this, _, _: &CloseNickname, cx| {
+                this.nickname_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenNickname, window, cx| {
+                this.nickname_open = true;
+                this.nickname.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
+                cx.notify();
+            }),
             cx.subscribe(&forward, |this, _, _: &CloseForward, cx| {
                 this.forward_open = false;
                 cx.notify();
@@ -359,6 +375,8 @@ impl MainView {
             join_open: false,
             forward,
             forward_open: false,
+            nickname,
+            nickname_open: false,
             switcher,
             switcher_open: false,
             picker,
@@ -2133,6 +2151,7 @@ impl Render for MainView {
         let account = self.render_account_popout(cx);
         let status_dialog = self.status_dialog_open.then(|| self.status_dialog.clone());
         let forward = self.forward_open.then(|| self.forward.clone());
+        let nickname = self.nickname_open.then(|| self.nickname.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
@@ -2188,6 +2207,7 @@ impl Render for MainView {
             .children(menu)
             .children(viewer)
             .children(forward)
+            .children(nickname)
             .children(join)
             .children(invite)
             .children(server_settings)

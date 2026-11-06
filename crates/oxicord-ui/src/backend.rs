@@ -146,6 +146,10 @@ pub enum Command {
     /// Mark channels read, each up to its newest message.
     AckBulk(Vec<(Snowflake, Snowflake)>),
     LeaveGuild(Snowflake),
+    /// Our nickname in a server. The answer arrives as [`Event::OwnNick`].
+    LoadOwnNick(Snowflake),
+    /// `None` clears the nickname.
+    SetNickname { guild: Snowflake, nick: Option<String> },
     /// Create an invite link. The code arrives as [`Event::InviteCreated`].
     CreateInvite {
         channel: Snowflake,
@@ -295,6 +299,7 @@ pub enum Event {
         result: Result<Vec<oxicord_model::Gif>, String>,
     },
     Users(Vec<User>),
+    OwnNick { guild: Snowflake, nick: Option<String> },
     /// The first few people to react, for the tooltip on a reaction.
     Reactors {
         message: Snowflake,

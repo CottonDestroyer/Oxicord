@@ -18,6 +18,7 @@ mod login;
 mod main_view;
 mod media;
 mod menus;
+mod nickname_dialog;
 mod notify;
 mod plain;
 mod popup;

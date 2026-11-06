@@ -220,6 +220,12 @@ impl Render for ContextMenu {
                 }, cx));
             }
         }
+        if let Target::Guild(guild) = target {
+            menu = menu.child(self.item("nickname", "Change Nickname", theme::TEXT_BRIGHT, false, move |this, _, _, cx| {
+                this.session.update(cx, |_, cx| cx.emit(crate::session::OpenNickname(guild)));
+                this.close(cx);
+            }, cx));
+        }
         menu = menu.child(self.item("mark-read", "Mark as read", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
             this.run(Action::MarkRead, cx);
         }, cx));

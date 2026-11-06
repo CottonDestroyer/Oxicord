@@ -49,6 +49,30 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Our own nickname in `guild`, if we set one.
+    pub async fn own_nickname(&self, guild: Snowflake) -> Result<Option<String>, ApiError> {
+        let member: oxicord_model::Member = self
+            .json(
+                Method::GET,
+                &format!("/users/@me/guilds/{guild}/member"),
+                "GET /users/@me/guilds/:id/member",
+                None,
+            )
+            .await?;
+        Ok(member.nick.filter(|n| !n.is_empty()))
+    }
+
+    /// Sets our nickname in `guild`, or clears it with `None`.
+    pub async fn set_nickname(&self, guild: Snowflake, nick: Option<&str>) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/members/@me"),
+            "PATCH /guilds/:id/members/@me",
+            Some(&json!({ "nick": nick })),
+        )
+        .await
+    }
+
     pub async fn leave_guild(&self, guild: Snowflake) -> Result<(), ApiError> {
         self.empty(
             Method::DELETE,

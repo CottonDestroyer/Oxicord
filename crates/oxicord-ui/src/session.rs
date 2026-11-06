@@ -26,6 +26,8 @@ pub struct Session {
     /// The first few people to react, per message, emoji and count. The
     /// count is part of the key so a tooltip never lists stale people.
     pub reactors: HashMap<(Snowflake, String, u32), Vec<String>>,
+    /// Our nickname per server, as far as we have asked.
+    pub own_nicks: HashMap<Snowflake, Option<String>>,
     /// Pinned messages per channel, loaded when the panel asks.
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
@@ -120,6 +122,11 @@ pub struct OpenInviteDialog(pub Snowflake);
 
 impl EventEmitter<OpenInviteDialog> for Session {}
 
+/// Someone wants to change their nickname in this server.
+pub struct OpenNickname(pub Snowflake);
+
+impl EventEmitter<OpenNickname> for Session {}
+
 /// Someone wants the settings of this server.
 pub struct OpenServerSettings(pub Snowflake);
 
@@ -177,6 +184,7 @@ impl Session {
             connection: ConnectionState::Connecting,
             history_errors: HashMap::new(),
             reactors: HashMap::new(),
+            own_nicks: HashMap::new(),
             notice: None,
             settings,
             account: AccountState::default(),

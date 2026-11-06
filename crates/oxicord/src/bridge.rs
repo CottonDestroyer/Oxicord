@@ -350,6 +350,20 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::LoadOwnNick(guild) => {
+            tokio::spawn(async move {
+                if let Ok(nick) = api.own_nickname(guild).await {
+                    let _ = events.send(Event::OwnNick { guild, nick }).await;
+                }
+            });
+        }
+        Command::SetNickname { guild, nick } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_nickname(guild, nick.as_deref()).await {
+                    notify(&events, "change your nickname", &err).await;
+                }
+            });
+        }
         Command::LeaveGuild(guild) => {
             tokio::spawn(async move {
                 if let Err(err) = api.leave_guild(guild).await {

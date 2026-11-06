@@ -134,6 +134,12 @@ impl AppView {
                     session.reactors.insert((message, key, count), names);
                 });
             }
+            Event::OwnNick { guild, nick } => {
+                self.session.update(cx, |session, cx| {
+                    session.own_nicks.insert(guild, nick);
+                    cx.notify();
+                });
+            }
             Event::Users(users) => {
                 self.session.update(cx, |session, cx| session.apply_users(users, cx));
             }
