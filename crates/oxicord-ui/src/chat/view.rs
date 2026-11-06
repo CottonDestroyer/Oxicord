@@ -2172,7 +2172,7 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts) = {
+                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts, accent_color, banner) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
                     let account = store.user(user);
@@ -2190,6 +2190,8 @@ impl Render for ChatView {
                         profile.and_then(|p| p.joined_server.clone()),
                         profile.and_then(|p| p.premium_since.clone()),
                         profile.map(|p| p.accounts.clone()).unwrap_or_default(),
+                        profile.and_then(|p| p.accent_color),
+                        profile.and_then(|p| p.banner.clone()),
                     )
                 };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -2227,6 +2229,20 @@ impl Render for ChatView {
                                         .child(icon("x", 16., theme::TEXT_MUTED)),
                                 ),
                         )
+                        .children(accent_color.map(|color| {
+                            div()
+                                .h(px(72.))
+                                .w_full()
+                                .rounded(px(theme::RADIUS))
+                                .bg(rgb(color))
+                        }))
+                        .children(banner.map(|url| {
+                            div()
+                                .h(px(72.))
+                                .w_full()
+                                .rounded(px(theme::RADIUS))
+                                .child(div().child(url))
+                        }))
                         .child(avatar(&self.media, &avatar_url, 64., &name, cx))
                         .child(div().font_weight(FontWeight::BOLD).child(name.clone()))
                         .children((!username.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("@{}", username))))
