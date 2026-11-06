@@ -1688,14 +1688,18 @@ impl MainView {
         };
         let backend = self.backend.clone();
 
+        // A card floating 8px in from the edges, as the official panels are.
+        div().flex_none().p(px(8.)).child(
         div()
             .h(px(56.))
-            .flex_none()
             .flex()
             .items_center()
-            .gap_2()
-            .px_2()
-            .bg(rgb(theme::BG_PANEL))
+            .gap(px(8.))
+            .p(px(8.))
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(theme::BORDER_MUTED))
+            .bg(rgb(theme::BG_SIDEBAR))
             .child(
                 div()
                     .id("me")
@@ -1770,7 +1774,8 @@ impl MainView {
                     .hover(|s| s.bg(rgb(theme::BG_HOVER)))
                     .on_click(move |_, _, _| backend.send(Command::Logout))
                     .child(icon("log-out", 18., theme::TEXT_MUTED)),
-            )
+            ),
+        )
     }
 }
 

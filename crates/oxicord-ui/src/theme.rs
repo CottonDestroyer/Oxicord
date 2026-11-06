@@ -19,6 +19,8 @@ pub const BG_INPUT: u32 = 0x131416;
 
 /// border-subtle (the app frame line) over black.
 pub const BORDER: u32 = 0x1e1e20;
+/// border-muted over black, the outline of floating cards.
+pub const BORDER_MUTED: u32 = 0x18181a;
 /// text-default.
 pub const TEXT: u32 = 0xd4d5d8;
 /// text-strong.
@@ -39,6 +41,23 @@ pub const IDLE: u32 = 0xfdb833;
 pub const DND: u32 = 0xda3e44;
 /// text-status-offline.
 pub const OFFLINE: u32 = 0x9d9ea5;
+
+static GG_SANS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Called once the gg sans files are registered with the text system.
+pub fn gg_sans_loaded() {
+    GG_SANS.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The family every screen draws in: Discord's own typeface when its files
+/// were found, the system font otherwise.
+pub fn font_family() -> &'static str {
+    if GG_SANS.load(std::sync::atomic::Ordering::Relaxed) {
+        "gg sans"
+    } else {
+        ".SystemUIFont"
+    }
+}
 
 pub const RAIL_WIDTH: f32 = 72.0;
 pub const SIDEBAR_WIDTH: f32 = 240.0;

@@ -24,6 +24,36 @@ fn apply_accent(cx: &mut gpui_kit::App) {
     colors.button_primary_foreground = colors.primary_foreground;
 }
 
+/// Registers the gg sans files from a `fonts` folder next to the executable
+/// or in the working directory. They are Discord's and not part of the
+/// repository, so a missing folder just leaves the system font in place.
+fn load_fonts(cx: &mut gpui_kit::App) {
+    let beside_exe = std::env::current_exe().ok().and_then(|exe| Some(exe.parent()?.join("fonts")));
+    let dirs = beside_exe.into_iter().chain([std::path::PathBuf::from("fonts")]);
+
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let fonts: Vec<_> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "ttf"))
+            .filter_map(|path| std::fs::read(path).ok())
+            .map(std::borrow::Cow::Owned)
+            .collect();
+        if fonts.is_empty() {
+            continue;
+        }
+        match cx.text_system().add_fonts(fonts) {
+            Ok(()) => {
+                theme::gg_sans_loaded();
+                Theme::global_mut(cx).font_family = theme::font_family().into();
+            }
+            Err(err) => tracing::warn!(?err, "could not register the fonts in {}", dir.display()),
+        }
+        return;
+    }
+}
+
 fn main() {
     logging::init();
 
@@ -37,6 +67,7 @@ fn main() {
             gpui_kit::init(cx);
             Theme::change(ThemeMode::Dark, None, cx);
             apply_accent(cx);
+            load_fonts(cx);
             oxicord_ui::bind_keys(cx);
 
             // Without this the process lingers after the last window closes.

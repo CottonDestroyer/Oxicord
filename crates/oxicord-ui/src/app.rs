@@ -210,13 +210,17 @@ impl Render for AppView {
         match &self.screen {
             Screen::Login(view) => div()
                 .size_full()
+                .font_family(theme::font_family())
                 .relative()
                 .pt(px(title_bar::HEIGHT))
                 .bg(rgb(theme::BG_RAIL))
                 .child(view.clone())
                 .child(title_bar::title_bar("Oxicord".into(), window)),
             // The signed in frame draws its own, naming what is open.
-            Screen::Main(view) => div().size_full().child(view.clone()),
+            Screen::Main(view) => div()
+                .size_full()
+                .font_family(theme::font_family())
+                .child(view.clone()),
         }
     }
 }
