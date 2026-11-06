@@ -117,6 +117,9 @@ pub struct Channel {
     pub available_tags: Vec<ForumTag>,
     #[serde(default)]
     pub flags: u64,
+    /// The text people set on a voice channel while they sit in it.
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 /// Whether a thread is still open. An archived thread is hidden but can be

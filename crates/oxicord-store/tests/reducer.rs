@@ -329,6 +329,31 @@ fn batched_reactions_count_every_user_and_notice_us() {
 }
 
 #[test]
+fn voice_status_sets_clears_and_survives_a_channel_update() {
+    let mut store = ready_store();
+    let status = |store: &Store| store.channel(id(13)).and_then(|c| c.status.clone());
+
+    let changes = store.apply(event(
+        "VOICE_CHANNEL_STATUS_UPDATE",
+        json!({ "id": "13", "guild_id": "100", "status": "movie night" }),
+    ));
+    assert!(changes.channel_lists.contains(&id(GUILD)));
+    assert_eq!(status(&store).as_deref(), Some("movie night"));
+
+    store.apply(event(
+        "CHANNEL_UPDATE",
+        json!({ "id": "13", "type": 2, "guild_id": "100", "name": "voice", "position": 1 }),
+    ));
+    assert_eq!(status(&store).as_deref(), Some("movie night"), "updates don't carry it");
+
+    store.apply(event(
+        "VOICE_CHANNEL_STATUS_UPDATE",
+        json!({ "id": "13", "guild_id": "100", "status": null }),
+    ));
+    assert_eq!(status(&store), None);
+}
+
+#[test]
 fn history_pages_merge_in_order_and_report_whether_more_exists() {
     let mut store = ready_store();
 

@@ -32,6 +32,13 @@ impl Store {
             DispatchEvent::ReactionAdd(e) => self.on_reaction(&e, true, &mut changes),
             DispatchEvent::ReactionRemove(e) => self.on_reaction(&e, false, &mut changes),
             DispatchEvent::ReactionBatch(b) => self.on_reaction_batch(b, &mut changes),
+            DispatchEvent::VoiceChannelStatus(s) => {
+                if let Some(channel) = self.channels.get_mut(&s.id) {
+                    channel.status = s.status.filter(|text| !text.is_empty());
+                    let guild = channel.guild_id;
+                    self.mark_listing(guild, &mut changes);
+                }
+            }
             DispatchEvent::GuildCreate(g) => {
                 let id = g.id;
                 self.ingest_guild(*g, Vec::new());
@@ -61,6 +68,10 @@ impl Store {
                 // Thread updates leave out our own membership.
                 if channel.member.is_none() && let Some(old) = self.channels.get(&channel.id) {
                     channel.member = old.member.clone();
+                }
+                // The voice status has its own event and isn't repeated here.
+                if channel.status.is_none() && let Some(old) = self.channels.get(&channel.id) {
+                    channel.status = old.status.clone();
                 }
                 let id = channel.id;
                 let guild = channel.guild_id;

@@ -238,6 +238,14 @@ pub struct ReactionEvent {
     pub emoji: Emoji,
 }
 
+/// VOICE_CHANNEL_STATUS_UPDATE. An empty or missing status clears it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct VoiceChannelStatus {
+    pub id: Snowflake,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
 /// MESSAGE_REACTION_ADD_MANY: busy channels batch many people's reactions to
 /// one message into a single event.
 #[derive(Clone, Debug, Deserialize)]
@@ -415,6 +423,7 @@ pub enum DispatchEvent {
     ReactionAdd(ReactionEvent),
     ReactionRemove(ReactionEvent),
     ReactionBatch(ReactionBatch),
+    VoiceChannelStatus(VoiceChannelStatus),
     GuildCreate(Box<Guild>),
     GuildUpdate(Box<Guild>),
     GuildDelete(GuildDelete),
@@ -463,6 +472,7 @@ impl DispatchEvent {
             "MESSAGE_REACTION_ADD" => Self::ReactionAdd(de(data)?),
             "MESSAGE_REACTION_REMOVE" => Self::ReactionRemove(de(data)?),
             "MESSAGE_REACTION_ADD_MANY" => Self::ReactionBatch(de(data)?),
+            "VOICE_CHANNEL_STATUS_UPDATE" => Self::VoiceChannelStatus(de(data)?),
             "GUILD_CREATE" => Self::GuildCreate(Box::new(de(data)?)),
             "GUILD_UPDATE" => Self::GuildUpdate(Box::new(de(data)?)),
             "GUILD_DELETE" => Self::GuildDelete(de(data)?),

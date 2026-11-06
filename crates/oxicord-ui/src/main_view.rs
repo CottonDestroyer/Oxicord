@@ -65,6 +65,8 @@ struct ChannelItem {
     can_invite: bool,
     /// Who is in it, for voice channels.
     voice: Vec<VoiceItem>,
+    /// What the people in a voice channel say they are doing.
+    status: Option<String>,
     muted: bool,
     /// Threads shown beneath this channel.
     threads: Vec<ChannelItem>,
@@ -1460,7 +1462,18 @@ impl MainView {
             }))
             .children(mention_badge(channel.unread.mentions));
 
-        div().flex().flex_col().child(row).children(participants)
+        let status = channel.status.map(|text| {
+            div()
+                .ml(px(30.))
+                .px_2()
+                .pb_1()
+                .truncate()
+                .text_size(px(12.))
+                .text_color(rgb(theme::TEXT_FAINT))
+                .child(text)
+        });
+
+        div().flex().flex_col().child(row).children(status).children(participants)
     }
 
     /// The row above the DM list that opens the friends page.
@@ -1987,6 +2000,7 @@ fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> Cha
         kind: c.kind,
         unread: store.unread(c.id),
         muted: store.is_muted(c),
+        status: c.status.clone(),
         can_invite: !c.kind.is_thread()
             && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE),
         voice: store
