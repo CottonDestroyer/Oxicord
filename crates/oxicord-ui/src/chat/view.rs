@@ -2172,13 +2172,15 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let (name, avatar_url, status, bio, mutual_friends, mutual_servers) = {
+                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
                     let account = store.user(user);
                     let profile = session.profiles.get(&user);
                     (
                         account.map(|u| u.display_name().to_owned()).unwrap_or_default(),
+                        account.map(|u| u.username.clone()).unwrap_or_default(),
+                        profile.map(|p| p.pronouns.clone()).unwrap_or_default(),
                         account.map(|u| cdn::user_avatar(u.id, u.avatar.as_deref(), 128)).unwrap_or_default(),
                         account.and_then(|u| store.activities(u.id).first().map(|a| a.name.clone())).unwrap_or_default(),
                         profile.map(|p| p.bio.clone()).unwrap_or_default(),
@@ -2222,7 +2224,9 @@ impl Render for ChatView {
                                 ),
                         )
                         .child(avatar(&self.media, &avatar_url, 64., &name, cx))
-                        .child(div().font_weight(FontWeight::BOLD).child(name))
+                        .child(div().font_weight(FontWeight::BOLD).child(name.clone()))
+                        .children((!username.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("@{}", username))))
+                        .children((!pronouns.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(pronouns)))
                         .children((!status.is_empty()).then(|| div().text_color(rgb(theme::TEXT_MUTED)).child(status)))
                         .children((!bio.is_empty()).then(|| div().text_size(px(13.)).child(bio)))
                         .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Friends", mutual_friends)))
