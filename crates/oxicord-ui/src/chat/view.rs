@@ -2172,7 +2172,7 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since) = {
+                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
                     let account = store.user(user);
@@ -2189,6 +2189,7 @@ impl Render for ChatView {
                         profile.map(|p| p.badges.clone()).unwrap_or_default(),
                         profile.and_then(|p| p.joined_server.clone()),
                         profile.and_then(|p| p.premium_since.clone()),
+                        profile.map(|p| p.accounts.clone()).unwrap_or_default(),
                     )
                 };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -2262,6 +2263,24 @@ impl Render for ChatView {
                                 .text_size(px(12.))
                                 .text_color(rgb(theme::TEXT_MUTED))
                                 .child(format!("Boosting since: {}", since))
+                        }))
+                        .children((!accounts.is_empty()).then(|| {
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Connections"))
+                                .children(accounts.iter().map(|account| {
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(format!(
+                                            "{}: {}{}",
+                                            account.kind,
+                                            account.name,
+                                            if account.verified { " (verified)" } else { "" }
+                                        ))
+                                }))
                         }))
                         .child(
                             div()
