@@ -29,6 +29,8 @@ pub const TEXT_BRIGHT: u32 = 0xdcdcdf;
 pub const TEXT_MUTED: u32 = 0x96979e;
 /// text-muted.
 pub const TEXT_FAINT: u32 = 0x81828a;
+/// status-positive-background, the add server button on hover.
+pub const ADD_SERVER_HOVER: u32 = 0x008043;
 /// chat-text-muted, message timestamps.
 pub const CHAT_TEXT_MUTED: u32 = 0x73747d;
 /// message-highlight-background-default over black.
@@ -69,7 +71,7 @@ pub fn font_family() -> &'static str {
 
 pub const RAIL_WIDTH: f32 = 72.0;
 pub const SIDEBAR_WIDTH: f32 = 240.0;
-pub const MEMBERS_WIDTH: f32 = 240.0;
+pub const MEMBERS_WIDTH: f32 = 264.0;
 /// radius-sm. The official scale is 4, 8, 12, 16 and 24.
 pub const RADIUS: f32 = 8.0;
 /// radius-md, the corner of the main frame.

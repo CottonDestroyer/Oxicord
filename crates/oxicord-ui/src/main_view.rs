@@ -1069,19 +1069,20 @@ impl MainView {
     /// a grid of its first servers when closed.
     fn folder_body(&mut self, members: &[&GuildItem], tint: u32, open: bool, cx: &mut Context<Self>) -> AnyElement {
         let base = div()
-            .size(px(48.))
+            .size(px(40.))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(16.))
+            .rounded(px(theme::RADIUS_MD))
             .bg(rgba((tint << 8) | 0x59));
         if open {
-            return base.child(icon("folder-open", 24., tint)).into_any_element();
+            return base.child(icon("folder-open", 22., tint)).into_any_element();
         }
-        let mut grid = div().w(px(36.)).flex().flex_wrap().gap(px(2.));
+        // A 4px inset and 2px gap, so each preview is 15px.
+        let mut grid = div().w(px(32.)).flex().flex_wrap().gap(px(2.));
         for item in members.iter().take(4) {
             let image = item.icon.as_deref().and_then(|url| self.media.update(cx, |m, _| m.get(url)));
-            let cell = div().size(px(17.)).rounded(px(5.)).overflow_hidden().bg(rgb(theme::BG_CHAT));
+            let cell = div().size(px(15.)).rounded(px(4.)).overflow_hidden().bg(rgb(theme::BG_HOVER));
             grid = grid.child(match image {
                 Some(image) => cell.child(img(ImageSource::Image(image)).size_full()),
                 None => cell,
@@ -1101,12 +1102,12 @@ impl MainView {
             selected_guild.is_none(),
             home_unread,
             div()
-                .size(px(48.))
+                .size(px(40.))
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(rgb(if selected_guild.is_none() { theme::ACCENT } else { theme::BG_CHAT }))
-                .rounded(px(if selected_guild.is_none() { 16. } else { 24. }))
+                .bg(rgb(if selected_guild.is_none() { theme::ACCENT } else { theme::BG_HOVER }))
+                .rounded(px(if selected_guild.is_none() { 12. } else { 20. }))
                 .child(icon("messages-square", 24., theme::TEXT_BRIGHT))
                 .into_any_element(),
             cx.listener(|this, _, window, cx| this.select_guild(None, window, cx)),
@@ -1185,15 +1186,15 @@ impl MainView {
             .child(
                 div()
                     .id("add-server")
-                    .size(px(48.))
+                    .size(px(40.))
                     .flex_none()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(24.))
-                    .bg(rgb(theme::BG_CHAT))
+                    .rounded(px(20.))
+                    .bg(rgb(theme::BG_HOVER))
                     .cursor_pointer()
-                    .hover(|s| s.bg(rgb(theme::BG_ACTIVE)).rounded(px(16.)))
+                    .hover(|s| s.bg(rgb(theme::ADD_SERVER_HOVER)).rounded(px(12.)))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.join_open = true;
                         this.join.update(cx, |view, cx| view.opened(window, cx));
@@ -1893,7 +1894,7 @@ fn rail_button(
         .id((kind, key))
         .relative()
         .w_full()
-        .h(px(48.))
+        .h(px(40.))
         .flex()
         .justify_center()
         .cursor_pointer()
@@ -1902,7 +1903,7 @@ fn rail_button(
             div()
                 .absolute()
                 .left(px(0.))
-                .top(px((48. - pill_height) / 2.))
+                .top(px((40. - pill_height) / 2.))
                 .w(px(4.))
                 .h(px(pill_height))
                 .rounded_r(px(4.))
@@ -1921,8 +1922,8 @@ fn guild_icon(
     selected: bool,
     cx: &mut App,
 ) -> AnyElement {
-    let radius = px(if selected { 16. } else { 24. });
-    let base = div().size(px(48.)).flex_none().rounded(radius).overflow_hidden();
+    let radius = px(if selected { 12. } else { 20. });
+    let base = div().size(px(40.)).flex_none().rounded(radius).overflow_hidden();
 
     let image = url.and_then(|url| media.update(cx, |media, _| media.get(url)));
     match image {
@@ -1933,7 +1934,7 @@ fn guild_icon(
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgb(if selected { theme::ACCENT } else { theme::BG_CHAT }))
+            .bg(rgb(if selected { theme::ACCENT } else { theme::BG_HOVER }))
             .text_color(rgb(theme::TEXT_BRIGHT))
             .text_size(px(16.))
             .child(acronym(name))

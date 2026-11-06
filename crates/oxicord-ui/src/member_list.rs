@@ -3,6 +3,7 @@ use gpui_kit::{
     ListAlignment, ListState, MouseButton, MouseDownEvent,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_media::cdn;
 use oxicord_model::{Snowflake, Status};
 use oxicord_store::{Changes, Entry};
@@ -13,7 +14,7 @@ use crate::{
     theme,
 };
 
-const GROUP_HEIGHT: f32 = 36.;
+const GROUP_HEIGHT: f32 = 40.;
 const MEMBER_HEIGHT: f32 = 44.;
 
 /// The people in the open guild, grouped by role or online state, as the
@@ -131,7 +132,7 @@ impl MemberList {
             .pb_1()
             .text_size(px(12.))
             .font_weight(FontWeight::SEMIBOLD)
-            .text_color(rgb(theme::TEXT_MUTED))
+            .text_color(rgb(theme::CHANNELS_DEFAULT))
             .child(format!("{} \u{2014} {count}", name.to_uppercase()))
             .into_any_element()
     }
@@ -159,47 +160,52 @@ impl MemberList {
         };
 
         let offline = status == Status::Offline;
-        let name_color = match (offline, color) {
-            (true, _) => theme::TEXT_FAINT,
-            (false, Some(color)) => color,
-            (false, None) => theme::TEXT,
-        };
+        let name_color = color.unwrap_or(theme::TEXT);
 
+        // The 44px slot holds a 42px row with a pixel of air above and
+        // below, as the official list does.
         div()
-            .id(("member", user.0))
-            .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                this.session.update(cx, |_, cx| {
-                    cx.emit(OpenUserMenu { user, guild: Some(guild), at: event.position, dm: None, can_mention: true });
-                });
-            }))
             .h(px(MEMBER_HEIGHT))
-            .flex()
-            .items_center()
-            .gap_3()
-            .mx_2()
-            .px_2()
-            .rounded(px(6.))
-            .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.session
-                    .update(cx, |session, cx| session.show_profile(user, Some(guild), cx));
-            }))
-            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .px(px(8.))
+            .py(px(1.))
             .child(
                 div()
-                    .relative()
-                    .flex_none()
-                    .opacity(if offline { 0.5 } else { 1. })
-                    .child(avatar(&self.media, &avatar_url, 32., &name, cx))
-                    .child(presence_dot(status)),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_color(rgb(name_color))
-                    .child(name),
+                    .id(("member", user.0))
+                    .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                        this.session.update(cx, |_, cx| {
+                            cx.emit(OpenUserMenu { user, guild: Some(guild), at: event.position, dm: None, can_mention: true });
+                        });
+                    }))
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .px(px(8.))
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .font_weight(FontWeight::MEDIUM)
+                    // Offline people fade out until the pointer is on them.
+                    .when(offline, |row| row.opacity(0.3).hover(|s| s.opacity(1.).bg(rgb(theme::BG_HOVER))))
+                    .when(!offline, |row| row.hover(|s| s.bg(rgb(theme::BG_HOVER))))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.session
+                            .update(cx, |session, cx| session.show_profile(user, Some(guild), cx));
+                    }))
+                    .child(
+                        div()
+                            .relative()
+                            .flex_none()
+                            .child(avatar(&self.media, &avatar_url, 32., &name, cx))
+                            .child(presence_dot(status)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(rgb(name_color))
+                            .child(name),
+                    ),
             )
             .into_any_element()
     }
