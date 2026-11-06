@@ -551,6 +551,14 @@ impl Session {
                     cx.notify();
                 }
             }
+            // Cleared from the inbox on another device.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "RECENT_MENTION_DELETE" => {
+                let gone = serde_json::from_value::<Snowflake>(data["message_id"].clone()).ok();
+                if let (Some(gone), Load::Ready(list)) = (gone, &mut self.mentions) {
+                    list.retain(|m| m.id != gone);
+                    cx.notify();
+                }
+            }
             // Somebody pinned or unpinned something. Only channels whose pins
             // we already fetched are worth asking about again.
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "CHANNEL_PINS_UPDATE" => {
