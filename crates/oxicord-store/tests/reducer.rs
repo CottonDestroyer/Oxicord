@@ -902,7 +902,7 @@ fn passive_updates_light_up_channels_in_big_servers() {
 #[test]
 fn our_own_profile_updates_and_group_members_come_and_go() {
     let mut store = ready_store();
-    store.apply(event("CURRENT_USER_UPDATE", json!({ "id": "1", "username": "me", "global_name": "New Me" })));
+    store.apply(event("USER_UPDATE", json!({ "id": "1", "username": "me", "global_name": "New Me" })));
     assert_eq!(store.me().unwrap().display_name(), "New Me");
 
     store.apply(event(

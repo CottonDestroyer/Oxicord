@@ -484,7 +484,7 @@ impl DispatchEvent {
             "MESSAGE_POLL_VOTE_ADD" => Self::PollVoteAdd(de(data)?),
             "MESSAGE_POLL_VOTE_REMOVE" => Self::PollVoteRemove(de(data)?),
             "PASSIVE_UPDATE_V2" => Self::PassiveUpdate(de(data)?),
-            "CURRENT_USER_UPDATE" => Self::CurrentUserUpdate(Box::new(de(data)?)),
+            "USER_UPDATE" => Self::CurrentUserUpdate(Box::new(de(data)?)),
             "CHANNEL_RECIPIENT_ADD" => Self::RecipientAdd(de(data)?),
             "CHANNEL_RECIPIENT_REMOVE" => Self::RecipientRemove(de(data)?),
             "THREAD_CREATE" => Self::ChannelCreate(Box::new(de(data)?)),
