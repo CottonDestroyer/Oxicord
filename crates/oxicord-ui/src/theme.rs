@@ -29,6 +29,10 @@ pub const TEXT_BRIGHT: u32 = 0xdcdcdf;
 pub const TEXT_MUTED: u32 = 0x96979e;
 /// text-muted.
 pub const TEXT_FAINT: u32 = 0x81828a;
+/// chat-text-muted, message timestamps.
+pub const CHAT_TEXT_MUTED: u32 = 0x73747d;
+/// message-highlight-background-default over black.
+pub const MESSAGE_HIGHLIGHT: u32 = 0x0e1027;
 /// channels-default, the idle color of channel and DM names.
 pub const CHANNELS_DEFAULT: u32 = 0x7a7b83;
 /// interactive-muted, how muted channels are drawn.

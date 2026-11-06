@@ -1203,7 +1203,7 @@ impl ChatView {
                 div()
                     .flex()
                     .items_baseline()
-                    .gap_2()
+                    .gap(px(4.))
                     .child(
                         div()
                             .id(("author", id.0))
@@ -1217,14 +1217,14 @@ impl ChatView {
                                 let user = message.author.id;
                                 move |this, _, _, cx| this.open_profile(user, cx)
                             }))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(FontWeight::MEDIUM)
                             .text_color(rgb(theme::TEXT_BRIGHT))
                             .child(author),
                     )
                     .child(
                         div()
                             .text_size(px(12.))
-                            .text_color(rgb(theme::TEXT_FAINT))
+                            .text_color(rgb(theme::CHAT_TEXT_MUTED))
                             .child(format::message_time(message.timestamp, Utc::now(), offset, prefs.hour12)),
                     ),
             );
@@ -1291,8 +1291,8 @@ impl ChatView {
             .flex()
             .gap_4()
             .px_4()
-            .pt(px(if grouped { 1. } else { 16. }))
-            .pb(px(1.))
+            .pt(px(if grouped { 2. } else { 16. }))
+            .pb(px(2.))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)))
             .on_mouse_down(
                 MouseButton::Right,
@@ -1302,7 +1302,7 @@ impl ChatView {
             .child(body)
             .child(bar);
         if self.highlight == Some(id) {
-            return row.bg(rgb(0x2c3050)).into_any_element();
+            return row.bg(rgb(theme::MESSAGE_HIGHLIGHT)).into_any_element();
         }
         row.into_any_element()
     }
@@ -1426,11 +1426,12 @@ impl ChatView {
             .flex_none()
             .flex()
             .items_center()
-            .gap_2()
-            .px_4()
+            .gap(px(8.))
+            .pl(px(16.))
+            .pr(px(8.))
             .border_b_1()
             .border_color(rgb(theme::BORDER))
-            .child(icon(glyph, 20., theme::TEXT_MUTED))
+            .child(icon(glyph, 24., theme::CHANNELS_DEFAULT))
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
@@ -1481,14 +1482,14 @@ impl ChatView {
                     )
             }))
             .children(has_threads.then(|| {
-                action_button("open-threads", "messages-square", theme::TEXT_MUTED).on_click(
+                toolbar_button("open-threads", "messages-square", theme::TEXT_MUTED).on_click(
                     cx.listener(|this, _, _, cx| {
                         this.session.update(cx, |s, cx| s.open_panel(PanelKind::Threads, cx));
                     }),
                 )
             }))
             .children(has_threads.then(|| {
-                action_button("notification-settings", "bell", theme::TEXT_MUTED).on_click(cx.listener(
+                toolbar_button("notification-settings", "bell", theme::TEXT_MUTED).on_click(cx.listener(
                     |this, event: &ClickEvent, _, cx| {
                         let Some(channel) = this.channel else { return };
                         let at = gpui_kit::point(event.position().x - px(190.), event.position().y + px(18.));
@@ -1499,12 +1500,12 @@ impl ChatView {
                 ))
             }))
             .child(
-                action_button("open-pins", "pin", theme::TEXT_MUTED).on_click(cx.listener(
+                toolbar_button("open-pins", "pin", theme::TEXT_MUTED).on_click(cx.listener(
                     |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Pins, cx)),
                 )),
             )
             .children(in_dm.then(|| {
-                action_button("add-to-dm", "user-plus", theme::TEXT_MUTED).on_click(cx.listener(
+                toolbar_button("add-to-dm", "user-plus", theme::TEXT_MUTED).on_click(cx.listener(
                     |this, event: &ClickEvent, _, cx| {
                         let Some(channel) = this.channel else { return };
                         let at = gpui_kit::point(event.position().x - px(300.), event.position().y + px(18.));
@@ -1516,7 +1517,7 @@ impl ChatView {
             }))
             .children((has_members || in_dm).then(|| {
                 let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
-                action_button("toggle-members", if in_dm { "circle-user-round" } else { "users" }, color)
+                toolbar_button("toggle-members", if in_dm { "circle-user-round" } else { "users" }, color)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_members(cx)))
             }))
             .child(
@@ -1541,12 +1542,12 @@ impl ChatView {
                     .child(icon("search", 14., theme::TEXT_MUTED)),
             )
             .child(
-                action_button("open-inbox", "inbox", theme::TEXT_MUTED).on_click(cx.listener(|this, _, _, cx| {
+                toolbar_button("open-inbox", "inbox", theme::TEXT_MUTED).on_click(cx.listener(|this, _, _, cx| {
                     this.session.update(cx, |_, cx| cx.emit(OpenInbox));
                 })),
             )
             .child(
-                action_button("open-help", "circle-question-mark", theme::TEXT_MUTED)
+                toolbar_button("open-help", "circle-question-mark", theme::TEXT_MUTED)
                     .on_click(|_, _, cx| cx.open_url("https://support.discord.com")),
             )
     }
@@ -1770,14 +1771,16 @@ impl ChatView {
                     .items_end()
                     .gap_2()
                     .px_3()
-                    .py_2()
-                    .rounded(px(8.))
+                    .py(px(6.))
+                    .rounded(px(theme::RADIUS))
+                    .border_1()
+                    .border_color(rgb(theme::BORDER_MUTED))
                     .bg(rgb(theme::BG_INPUT))
                     .on_drop(cx.listener(|this, dropped: &ExternalPaths, _, cx| {
                         this.add_files(dropped.paths().to_vec(), cx);
                     }))
                     .children((self.editing.is_none()).then(|| {
-                        action_button("attach", "circle-plus", theme::TEXT_MUTED)
+                        toolbar_button("attach", "circle-plus", theme::TEXT_MUTED)
                             .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx)))
                     }))
                     .child(
@@ -1794,17 +1797,17 @@ impl ChatView {
                             .child(Textarea::new(&self.input).appearance(false).bordered(false)),
                     )
                     .child(
-                        action_button("gif", "images", theme::TEXT_MUTED).on_click(cx.listener(
+                        toolbar_button("gif", "images", theme::TEXT_MUTED).on_click(cx.listener(
                             |this, _, window, cx| this.open_gifs(window, cx),
                         )),
                     )
                     .child(
-                        action_button("sticker", "sticker", theme::TEXT_MUTED).on_click(cx.listener(
+                        toolbar_button("sticker", "sticker", theme::TEXT_MUTED).on_click(cx.listener(
                             |this, _, window, cx| this.open_stickers(window, cx),
                         )),
                     )
                     .child(
-                        action_button("emoji", "face-slightly-smiling", theme::TEXT_MUTED).on_click(cx.listener(
+                        toolbar_button("emoji", "face-slightly-smiling", theme::TEXT_MUTED).on_click(cx.listener(
                             |this, _, window, cx| this.open_emoji(EmojiTarget::Composer, window, cx),
                         )),
                     ),
@@ -1990,6 +1993,25 @@ fn action_button(
         .cursor_pointer()
         .hover(|s| s.bg(rgb(theme::BG_HOVER)))
         .child(icon(glyph, 16., color))
+}
+
+/// A toolbar button in the header or composer: a 32px square with a 20px icon.
+fn toolbar_button(
+    id: impl Into<gpui_kit::ElementId>,
+    glyph: &str,
+    color: u32,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    div()
+        .id(id)
+        .size(px(32.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.))
+        .cursor_pointer()
+        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+        .child(icon(glyph, 20., color))
 }
 
 /// The red line above the first message you haven't read.
