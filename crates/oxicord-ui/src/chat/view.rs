@@ -65,6 +65,8 @@ pub struct ChatView {
     /// Unsent text per channel, so switching away doesn't lose it.
     drafts: HashMap<Snowflake, String>,
     reply_to: Option<Snowflake>,
+    /// Whether the reply notifies its author. Resets with each new reply.
+    reply_ping: bool,
     editing: Option<Snowflake>,
     /// Files chosen for the next message.
     files: Vec<PathBuf>,
@@ -202,6 +204,7 @@ impl ChatView {
             input,
             drafts: HashMap::new(),
             reply_to: None,
+            reply_ping: true,
             editing: None,
             files: Vec::new(),
             confirm_delete: None,
@@ -665,6 +668,7 @@ impl ChatView {
                 guild,
                 content: String::new(),
                 reply_to: self.reply_to.take(),
+                ping_reply: self.reply_ping,
                 files: Vec::new(),
                 stickers: vec![sticker],
             });
@@ -683,6 +687,7 @@ impl ChatView {
                 guild,
                 content: gif.url.clone(),
                 reply_to: self.reply_to.take(),
+                ping_reply: self.reply_ping,
                 files: Vec::new(),
                 stickers: Vec::new(),
             });
@@ -755,6 +760,7 @@ impl ChatView {
                     guild,
                     content: text,
                     reply_to: self.reply_to.take(),
+                    ping_reply: self.reply_ping,
                     files: std::mem::take(&mut self.files),
                     stickers: Vec::new(),
                 });
@@ -811,6 +817,7 @@ impl ChatView {
 
     fn start_reply(&mut self, message: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.reply_to = Some(message);
+        self.reply_ping = true;
         self.editing = None;
         self.input.update(cx, |input, cx| input.focus(window, cx));
         cx.notify();
@@ -1893,29 +1900,58 @@ impl ChatView {
     }
 
     fn compose_context_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let label: SharedString = if self.editing.is_some() {
-            "Editing message".into()
+        // The name is only a heading for replies. Pinging is offered in
+        // servers, and never for a reply to ourselves.
+        let (label, ping_choice) = if self.editing.is_some() {
+            (div().child("Editing message"), None)
         } else {
             let reply = self.reply_to?;
-            let name = self
-                .message(reply, cx)
-                .map(|m| m.author.display_name().to_owned())
-                .unwrap_or_else(|| "message".into());
-            format!("Replying to {name}").into()
+            let author = self.message(reply, cx).map(|m| m.author);
+            let mine = author.as_ref().zip(self.session.read(cx).store.me()).is_some_and(|(a, me)| a.id == me.id);
+            let name = author.map(|a| a.display_name().to_owned()).unwrap_or_else(|| "message".into());
+            (
+                div()
+                    .flex()
+                    .gap(px(4.))
+                    .child("Replying to")
+                    .child(div().font_weight(FontWeight::SEMIBOLD).text_color(rgb(theme::TEXT_BRIGHT)).child(name)),
+                (self.guild(cx).is_some() && !mine).then_some(self.reply_ping),
+            )
         };
 
         Some(
             div()
+                .h(px(38.))
                 .flex()
                 .items_center()
-                .gap_2()
-                .px_3()
-                .py_1()
+                .gap(px(8.))
+                .px(px(16.))
                 .rounded_t(px(8.))
-                .bg(rgb(theme::BG_SIDEBAR))
-                .text_size(px(13.))
+                .bg(rgb(theme::BG_PANEL))
+                .text_size(px(14.))
                 .text_color(rgb(theme::TEXT_MUTED))
-                .child(div().flex_1().child(label))
+                .child(label.flex_1())
+                .children(ping_choice.map(|on| {
+                    div()
+                        .id("reply-ping")
+                        .h(px(24.))
+                        .px(px(6.))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.))
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .text_size(px(12.))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(rgb(if on { theme::TEXT_BRIGHT } else { theme::TEXT_FAINT }))
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.reply_ping = !this.reply_ping;
+                            cx.notify();
+                        }))
+                        .child("@")
+                        .child(if on { "ON" } else { "OFF" })
+                }))
                 .child(
                     action_button("cancel-compose", "x", theme::TEXT_MUTED).on_click(cx.listener(
                         |this, _, window, cx| this.cancel_compose(window, cx),

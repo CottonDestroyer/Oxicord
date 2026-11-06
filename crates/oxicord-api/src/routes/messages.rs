@@ -70,6 +70,23 @@ pub struct SendMessage {
     /// Stickers to send, which need no text.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sticker_ids: Vec<String>,
+    /// Only set to silence the ping a reply sends to its author.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_mentions: Option<AllowedMentions>,
+}
+
+/// Which mentions in a message may notify. Naming every kind but leaving
+/// `replied_user` false is how the official client mutes a reply ping.
+#[derive(Clone, Debug, Serialize)]
+pub struct AllowedMentions {
+    pub parse: Vec<&'static str>,
+    pub replied_user: bool,
+}
+
+impl AllowedMentions {
+    pub fn without_reply_ping() -> Self {
+        Self { parse: vec!["users", "roles", "everyone"], replied_user: false }
+    }
 }
 
 impl ApiClient {
@@ -203,6 +220,16 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_silenced_reply_names_every_mention_kind_but_the_replied_user() {
+        let quiet = SendMessage { allowed_mentions: Some(AllowedMentions::without_reply_ping()), ..Default::default() };
+        let body = serde_json::to_value(&quiet).unwrap();
+        assert_eq!(body["allowed_mentions"]["replied_user"], false);
+        assert_eq!(body["allowed_mentions"]["parse"], serde_json::json!(["users", "roles", "everyone"]));
+        // Left alone the field is not sent at all.
+        assert!(serde_json::to_value(SendMessage::default()).unwrap().get("allowed_mentions").is_none());
+    }
 
     #[test]
     fn history_query_carries_cursor() {

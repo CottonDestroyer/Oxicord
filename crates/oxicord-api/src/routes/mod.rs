@@ -18,5 +18,5 @@ mod users;
 pub use search::{SEARCH_PAGE, SearchOutcome, SearchScope};
 pub use interactions::{ComponentClick, click_body};
 pub use commands::{CommandRun, IndexOutcome, run_body};
-pub use messages::{MessagePage, ReplyTarget, SendMessage, Upload};
+pub use messages::{AllowedMentions, MessagePage, ReplyTarget, SendMessage, Upload};
 pub use reactions::emoji_path_segment;

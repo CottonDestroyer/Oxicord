@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
     ApiClient, ApiError, Credentials,
-    routes::{CommandRun, ComponentClick, IndexOutcome, MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
+    routes::{AllowedMentions, CommandRun, ComponentClick, IndexOutcome, MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
     super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
@@ -142,6 +142,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
             guild,
             content,
             reply_to,
+            ping_reply,
             files,
             stickers,
         } => {
@@ -155,6 +156,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                         guild_id: guild,
                     }),
                     sticker_ids: stickers.iter().map(ToString::to_string).collect(),
+                    allowed_mentions: (reply_to.is_some() && !ping_reply).then(AllowedMentions::without_reply_ping),
                 };
                 let sent = if files.is_empty() {
                     api.send_message(channel, &message).await

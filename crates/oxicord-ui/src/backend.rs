@@ -36,6 +36,8 @@ pub enum Command {
         guild: Option<Snowflake>,
         content: String,
         reply_to: Option<Snowflake>,
+        /// False to answer without pinging the author of `reply_to`.
+        ping_reply: bool,
         /// Local files to attach. Reading them is the backend's job.
         files: Vec<PathBuf>,
         stickers: Vec<Snowflake>,
