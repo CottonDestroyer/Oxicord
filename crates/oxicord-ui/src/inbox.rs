@@ -28,6 +28,9 @@ impl EventEmitter<CloseInbox> for Inbox {}
 enum Tab {
     Unreads,
     Mentions,
+    Bookmarks,
+    Reminders,
+    Scheduled,
 }
 
 /// A channel with something new in it.
@@ -252,6 +255,9 @@ impl Render for Inbox {
                     list = list.child(self.pending_row(item, cx));
                 }
             }
+            Tab::Bookmarks | Tab::Reminders | Tab::Scheduled => {
+                list = list.child(empty_note("Nothing here yet."));
+            }
         }
 
         let header = div()
@@ -268,6 +274,9 @@ impl Render for Inbox {
             .child(div().flex_1())
             .child(self.tab_button(Tab::Mentions, "Mentions", cx))
             .child(self.tab_button(Tab::Unreads, "Unreads", cx))
+            .child(self.tab_button(Tab::Bookmarks, "Bookmarks", cx))
+            .child(self.tab_button(Tab::Reminders, "Reminders", cx))
+            .child(self.tab_button(Tab::Scheduled, "Scheduled", cx))
             .children((self.tab == Tab::Unreads).then(|| {
                 div()
                     .id("mark-all-read")
