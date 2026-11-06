@@ -2200,6 +2200,27 @@ impl Render for ChatView {
                         .flex()
                         .flex_col()
                         .gap_2()
+                        .child(
+                            div()
+                                .flex()
+                                .justify_end()
+                                .child(
+                                    div()
+                                        .id("close-profile-modal")
+                                        .size(px(28.))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(4.))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                            this.profile_modal = None;
+                                            cx.notify();
+                                        }))
+                                        .child(icon("x", 16., theme::TEXT_MUTED)),
+                                ),
+                        )
                         .child(avatar(&self.media, &avatar_url, 64., &name, cx))
                         .child(div().font_weight(FontWeight::BOLD).child(name))
                         .children((!status.is_empty()).then(|| div().text_color(rgb(theme::TEXT_MUTED)).child(status)))
