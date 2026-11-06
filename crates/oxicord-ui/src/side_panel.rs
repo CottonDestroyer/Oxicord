@@ -438,7 +438,7 @@ impl Render for SidePanel {
             .border_color(rgb(theme::BORDER))
             .child(
                 div()
-                    .h(px(48.))
+                    .h(px(theme::CHANNEL_HEADER_HEIGHT))
                     .flex_none()
                     .flex()
                     .items_center()

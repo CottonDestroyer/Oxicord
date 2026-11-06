@@ -1216,7 +1216,7 @@ impl MainView {
             None => "Direct Messages".into(),
         };
 
-        let mut list = div().flex().flex_col().gap(px(1.)).p_2();
+        let mut list = div().flex().flex_col().gap(px(2.)).p_2();
         match self.guild {
             Some(guild) => {
                 for group in self.group_items(guild, cx) {
@@ -1242,7 +1242,7 @@ impl MainView {
             .child(
                 div()
                     .id("sidebar-header")
-                    .h(px(48.))
+                    .h(px(theme::CHANNEL_HEADER_HEIGHT))
                     .flex_none()
                     .flex()
                     .items_center()
@@ -1402,9 +1402,9 @@ impl MainView {
         let color = if selected || channel.unread.unread {
             theme::TEXT_BRIGHT
         } else if channel.muted {
-            theme::TEXT_FAINT
+            theme::CHANNEL_MUTED
         } else {
-            theme::TEXT_MUTED
+            theme::CHANNELS_DEFAULT
         };
 
         let indent = if channel.kind.is_thread() { 18. } else { 0. };
@@ -1424,12 +1424,16 @@ impl MainView {
             .flex()
             .items_center()
             .gap_2()
-            .px_2()
-            .rounded(px(6.))
+            .px(px(8.))
+            .rounded(px(theme::RADIUS))
             .cursor_pointer()
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
             .text_color(rgb(color))
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
-            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .hover(|s| {
+                let s = s.bg(rgb(theme::BG_HOVER));
+                if channel.muted { s } else { s.text_color(rgb(theme::TEXT_BRIGHT)) }
+            })
             .on_click(cx.listener(move |this, _, window, cx| this.select_channel(id, window, cx)))
             .child(icon(glyph, 18., color))
             .child(
@@ -1485,23 +1489,23 @@ impl MainView {
             .store
             .relationships(RelationshipKind::IncomingRequest)
             .len();
-        let color = if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
+        let color = if selected { theme::TEXT_BRIGHT } else { theme::CHANNELS_DEFAULT };
 
         div()
             .id("friends")
-            .h(px(40.))
-            .mb_2()
+            .h(px(42.))
             .flex()
             .items_center()
-            .gap_3()
-            .px_2()
-            .rounded(px(6.))
+            .gap(px(12.))
+            .px(px(8.))
+            .rounded(px(theme::RADIUS))
             .cursor_pointer()
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
             .text_color(rgb(color))
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
-            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
             .on_click(cx.listener(|this, _, window, cx| this.show_friends(window, cx)))
-            .child(icon("users", 20., color))
+            .child(div().w(px(32.)).flex_none().flex().justify_center().child(icon("users", 24., color)))
             .child(div().flex_1().child("Friends"))
             .children(mention_badge(u32::try_from(pending).unwrap_or(u32::MAX)))
     }
@@ -1520,7 +1524,7 @@ impl MainView {
                 div()
                     .text_size(px(11.))
                     .font_weight(gpui_kit::FontWeight::BOLD)
-                    .text_color(rgb(theme::TEXT_MUTED))
+                    .text_color(rgb(theme::CHANNELS_DEFAULT))
                     .child("DIRECT MESSAGES"),
             )
             .child(
@@ -1547,7 +1551,7 @@ impl MainView {
         let color = if selected || dm.unread.unread {
             theme::TEXT_BRIGHT
         } else {
-            theme::TEXT_MUTED
+            theme::CHANNELS_DEFAULT
         };
 
         div()
@@ -1559,16 +1563,17 @@ impl MainView {
                 });
             }))
             .group("dm-row")
-            .h(px(44.))
+            .h(px(42.))
             .flex()
             .items_center()
-            .gap_3()
-            .px_2()
-            .rounded(px(6.))
+            .gap(px(12.))
+            .px(px(8.))
+            .rounded(px(theme::RADIUS))
             .cursor_pointer()
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
             .text_color(rgb(color))
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
-            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
             .on_click(cx.listener(move |this, _, window, cx| this.select_channel(id, window, cx)))
             .child(
                 div()
@@ -1839,9 +1844,9 @@ impl Render for MainView {
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .rounded_tl(px(theme::RADIUS))
+                    .rounded_tl(px(theme::RADIUS_MD))
                     .overflow_hidden()
-                    .border_1()
+                    .border_t_1().border_l_1()
                     .border_color(rgb(theme::BORDER))
                     .child(sidebar)
                     .child(content)

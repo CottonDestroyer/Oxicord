@@ -29,6 +29,10 @@ pub const TEXT_BRIGHT: u32 = 0xdcdcdf;
 pub const TEXT_MUTED: u32 = 0x96979e;
 /// text-muted.
 pub const TEXT_FAINT: u32 = 0x81828a;
+/// channels-default, the idle color of channel and DM names.
+pub const CHANNELS_DEFAULT: u32 = 0x7a7b83;
+/// interactive-muted, how muted channels are drawn.
+pub const CHANNEL_MUTED: u32 = 0x4f505a;
 
 /// background-brand.
 pub const ACCENT: u32 = 0x5865f2;
@@ -64,4 +68,6 @@ pub const SIDEBAR_WIDTH: f32 = 240.0;
 pub const MEMBERS_WIDTH: f32 = 240.0;
 /// radius-sm. The official scale is 4, 8, 12, 16 and 24.
 pub const RADIUS: f32 = 8.0;
+/// radius-md, the corner of the main frame.
+pub const RADIUS_MD: f32 = 12.0;
 pub const CHANNEL_HEADER_HEIGHT: f32 = 49.0;

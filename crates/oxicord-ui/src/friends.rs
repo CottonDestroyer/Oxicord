@@ -480,7 +480,7 @@ impl FriendsView {
         }
 
         div()
-            .h(px(48.))
+            .h(px(theme::CHANNEL_HEADER_HEIGHT))
             .flex_none()
             .flex()
             .items_center()
