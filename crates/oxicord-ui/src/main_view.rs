@@ -1726,7 +1726,7 @@ impl MainView {
                         div()
                             .relative()
                             .flex_none()
-                            .child(avatar(&self.media, &url, 36., &name, cx))
+                            .child(avatar(&self.media, &url, 32., &name, cx))
                             .child(presence_dot(dot_status(chosen))),
                     )
             .child(
@@ -1738,14 +1738,14 @@ impl MainView {
                     .child(
                         div()
                             .truncate()
-                            .text_size(px(14.))
+                            .text_size(px(14.)).font_weight(gpui_kit::FontWeight::MEDIUM)
                             .text_color(rgb(theme::TEXT_BRIGHT))
                             .child(name),
                     )
                     .child(
                         div()
                             .truncate()
-                            .text_size(px(12.))
+                            .text_size(px(12.)).font_weight(gpui_kit::FontWeight::MEDIUM)
                             .text_color(rgb(theme::TEXT_MUTED))
                             .child(status),
                     ),
