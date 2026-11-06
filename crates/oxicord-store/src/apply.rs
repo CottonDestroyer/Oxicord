@@ -31,6 +31,7 @@ impl Store {
             DispatchEvent::MessageAck(a) => self.on_message_ack(a, &mut changes),
             DispatchEvent::ReactionAdd(e) => self.on_reaction(&e, true, &mut changes),
             DispatchEvent::ReactionRemove(e) => self.on_reaction(&e, false, &mut changes),
+            DispatchEvent::ReactionBatch(b) => self.on_reaction_batch(b, &mut changes),
             DispatchEvent::GuildCreate(g) => {
                 let id = g.id;
                 self.ingest_guild(*g, Vec::new());
@@ -449,6 +450,41 @@ impl Store {
             (None, false) => return,
         }
         changes.messages.insert(event.channel_id);
+    }
+
+    fn on_reaction_batch(&mut self, batch: oxicord_model::gateway::ReactionBatch, changes: &mut Changes) {
+        let me = self.my_id();
+        let Some(message) = self
+            .timelines
+            .get_mut(&batch.channel_id)
+            .and_then(|t| t.get_mut(batch.message_id))
+        else {
+            return;
+        };
+
+        for entry in batch.reactions {
+            if entry.users.is_empty() {
+                continue;
+            }
+            let count = entry.users.len() as u32;
+            let mine = me.is_some_and(|me| entry.users.contains(&me));
+            match message
+                .reactions
+                .iter_mut()
+                .find(|r| same_emoji(&r.emoji, &entry.emoji))
+            {
+                Some(reaction) => {
+                    reaction.count += count;
+                    reaction.me |= mine;
+                }
+                None => message.reactions.push(Reaction {
+                    count,
+                    me: mine,
+                    emoji: entry.emoji,
+                }),
+            }
+        }
+        changes.messages.insert(batch.channel_id);
     }
 
     fn on_poll_vote(&mut self, vote: oxicord_model::gateway::PollVote, add: bool, changes: &mut Changes) {

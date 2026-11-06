@@ -238,6 +238,23 @@ pub struct ReactionEvent {
     pub emoji: Emoji,
 }
 
+/// MESSAGE_REACTION_ADD_MANY: busy channels batch many people's reactions to
+/// one message into a single event.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReactionBatch {
+    pub channel_id: Snowflake,
+    pub message_id: Snowflake,
+    #[serde(default)]
+    pub reactions: Vec<ReactionUsers>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReactionUsers {
+    pub emoji: Emoji,
+    #[serde(default)]
+    pub users: Vec<Snowflake>,
+}
+
 /// MESSAGE_REACTION_REMOVE_ALL and _EMOJI. The emoji is only present on the
 /// second kind.
 #[derive(Clone, Debug, Deserialize)]
@@ -397,6 +414,7 @@ pub enum DispatchEvent {
     MessageAck(MessageAck),
     ReactionAdd(ReactionEvent),
     ReactionRemove(ReactionEvent),
+    ReactionBatch(ReactionBatch),
     GuildCreate(Box<Guild>),
     GuildUpdate(Box<Guild>),
     GuildDelete(GuildDelete),
@@ -444,6 +462,7 @@ impl DispatchEvent {
             "MESSAGE_ACK" => Self::MessageAck(de(data)?),
             "MESSAGE_REACTION_ADD" => Self::ReactionAdd(de(data)?),
             "MESSAGE_REACTION_REMOVE" => Self::ReactionRemove(de(data)?),
+            "MESSAGE_REACTION_ADD_MANY" => Self::ReactionBatch(de(data)?),
             "GUILD_CREATE" => Self::GuildCreate(Box::new(de(data)?)),
             "GUILD_UPDATE" => Self::GuildUpdate(Box::new(de(data)?)),
             "GUILD_DELETE" => Self::GuildDelete(de(data)?),

@@ -303,6 +303,32 @@ fn reactions_add_and_remove_with_our_own_flag() {
 }
 
 #[test]
+fn batched_reactions_count_every_user_and_notice_us() {
+    let mut store = ready_store();
+    store.open_channel(id(11));
+    store.apply(create(11, 701, ADA));
+
+    let changes = store.apply(event(
+        "MESSAGE_REACTION_ADD_MANY",
+        json!({
+            "channel_id": "11", "message_id": "701",
+            "reactions": [
+                { "emoji": { "name": "👍" }, "users": ["2", "3", "1"] },
+                { "emoji": { "name": "🎉" }, "users": ["2"] },
+                { "emoji": { "name": "🔥" }, "users": [] },
+            ]
+        }),
+    ));
+    assert!(changes.messages.contains(&id(11)));
+
+    let msg = store.timeline(id(11)).unwrap().get(id(701)).unwrap();
+    assert_eq!(msg.reactions.len(), 2, "an emoji nobody used is not shown");
+    assert_eq!(msg.reactions[0].count, 3);
+    assert!(msg.reactions[0].me);
+    assert!(!msg.reactions[1].me);
+}
+
+#[test]
 fn history_pages_merge_in_order_and_report_whether_more_exists() {
     let mut store = ready_store();
 
