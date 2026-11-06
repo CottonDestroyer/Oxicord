@@ -33,8 +33,11 @@ enum Page {
     Members,
     Access,
     Integrations,
+    AutoMod,
     EnableCommunity,
     BoostPerks,
+    Stickers,
+    Soundboard,
     Roles,
     Channels,
     Emoji,
@@ -44,8 +47,8 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 14] =
-        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::EnableCommunity, Page::BoostPerks, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 17] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
@@ -55,8 +58,11 @@ impl Page {
             Page::Members => "Members",
             Page::Access => "Access",
             Page::Integrations => "Integrations",
+            Page::AutoMod => "AutoMod",
             Page::EnableCommunity => "Enable Community",
             Page::BoostPerks => "Boost Perks",
+            Page::Stickers => "Stickers",
+            Page::Soundboard => "Soundboard",
             Page::Roles => "Roles",
             Page::Channels => "Channels",
             Page::Emoji => "Emoji",
@@ -69,7 +75,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::EnableCommunity | Page::BoostPerks => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::BoostPerks | Page::Stickers | Page::Soundboard => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -548,6 +554,72 @@ impl ServerSettings {
             .child(title("Boost Perks"))
             .child(group(
                 "Boost Perks",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn automod(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("AutoMod"))
+            .child(group(
+                "AutoMod",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn stickers(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Stickers"))
+            .child(group(
+                "Stickers",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn soundboard(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Soundboard"))
+            .child(group(
+                "Soundboard",
                 vec![widgets::info_row("Server Name", name)],
             ))
             .into_any_element()
@@ -1159,8 +1231,11 @@ impl Render for ServerSettings {
             Page::Members => self.members(cx),
             Page::Access => self.access(cx),
             Page::Integrations => self.integrations(cx),
+            Page::AutoMod => self.automod(cx),
             Page::EnableCommunity => self.enable_community(cx),
             Page::BoostPerks => self.boost_perks(cx),
+            Page::Stickers => self.stickers(cx),
+            Page::Soundboard => self.soundboard(cx),
             Page::Roles => self.roles(cx),
             Page::Channels => self.channels(cx),
             Page::Emoji => self.emoji(cx),
