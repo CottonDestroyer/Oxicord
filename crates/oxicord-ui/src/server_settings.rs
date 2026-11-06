@@ -29,6 +29,7 @@ use crate::{
 enum Page {
     Overview,
     ServerProfile,
+    ServerTag,
     Roles,
     Channels,
     Emoji,
@@ -38,13 +39,14 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 8] =
-        [Page::Overview, Page::ServerProfile, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 9] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
             Page::Overview => "Overview",
             Page::ServerProfile => "Server Profile",
+            Page::ServerTag => "Server Tag",
             Page::Roles => "Roles",
             Page::Channels => "Channels",
             Page::Emoji => "Emoji",
@@ -57,7 +59,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites | Page::ServerProfile => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -398,6 +400,31 @@ impl ServerSettings {
             .child(title("Server Profile"))
             .child(group(
                 "Profile",
+                vec![
+                    widgets::info_row("Server Name", name),
+                    widgets::info_row("Server ID", guild.to_string()),
+                ],
+            ))
+            .into_any_element()
+    }
+
+    fn server_tag(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Server Tag"))
+            .child(group(
+                "Tag",
                 vec![
                     widgets::info_row("Server Name", name),
                     widgets::info_row("Server ID", guild.to_string()),
@@ -1008,6 +1035,7 @@ impl Render for ServerSettings {
         let body = match self.page {
             Page::Overview => self.overview(cx),
             Page::ServerProfile => self.server_profile(cx),
+            Page::ServerTag => self.server_tag(cx),
             Page::Roles => self.roles(cx),
             Page::Channels => self.channels(cx),
             Page::Emoji => self.emoji(cx),
