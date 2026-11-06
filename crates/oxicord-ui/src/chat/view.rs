@@ -2249,6 +2249,21 @@ impl Render for ChatView {
                                         })
                                 }))
                         }))
+                        .child(
+                            div()
+                                .id("copy-user-id")
+                                .mt(px(8.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::BG_HOVER))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string()));
+                                }))
+                                .child(div().text_size(px(12.)).child("Copy User ID")),
+                        )
                         .into_any_element(),
                     Box::new(on_close),
                 )
