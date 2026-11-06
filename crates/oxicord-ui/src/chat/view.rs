@@ -2052,7 +2052,7 @@ fn divider(day: NaiveDate) -> impl IntoElement {
             div()
                 .text_size(px(12.))
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(theme::TEXT_MUTED))
+                .text_color(rgb(theme::TEXT_FAINT))
                 .child(format::day_label(day)),
         )
         .child(line())
