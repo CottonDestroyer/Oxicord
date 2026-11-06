@@ -416,8 +416,19 @@ impl SidePanel {
                 }
             }
             PanelKind::VoiceDetails => {
+                let channel_name = match self.channel {
+                    Some(id) => {
+                        let store = &self.session.read(cx).store;
+                        if let Some(c) = store.channel(id) {
+                            c.name.clone().unwrap_or_else(|| "Voice Channel".to_owned())
+                        } else {
+                            "Voice Channel".to_owned()
+                        }
+                    }
+                    None => "Voice Channel".to_owned(),
+                };
                 vec![
-                    Self::note("Voice Connected"),
+                    Self::note(format!("Connected to {}", channel_name)),
                     Self::note("Camera Unavailable"),
                     Self::note("Share Your Screen"),
                     Self::note("Start An Activity"),
