@@ -113,6 +113,7 @@ pub struct MainView {
     status_submenu_open: bool,
     status_dialog: Entity<StatusDialog>,
     status_dialog_open: bool,
+    channel_status_modal: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
     settings_open: bool,
@@ -364,6 +365,7 @@ impl MainView {
             status_submenu_open: false,
             status_dialog,
             status_dialog_open: false,
+            channel_status_modal: false,
             profile: None,
             settings_open: false,
             settings_view,
@@ -1546,7 +1548,24 @@ impl MainView {
                 .child(text)
         });
 
-        div().flex().flex_col().child(row).children(status).children(participants)
+        let set_status = (channel.kind == ChannelType::GuildVoice || channel.kind == ChannelType::GuildStageVoice).then(|| {
+            div()
+                .id(("set-status", channel.id.0))
+                .ml(px(30.))
+                .px_2()
+                .pb_1()
+                .text_size(px(12.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .cursor_pointer()
+                .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.channel_status_modal = true;
+                    cx.notify();
+                }))
+                .child("Set a channel status")
+        });
+
+        div().flex().flex_col().child(row).children(status).children(set_status).children(participants)
     }
 
     /// The row above the DM list that opens the friends page.
@@ -2171,6 +2190,23 @@ impl Render for MainView {
         let invite = self.invite_open.then(|| self.invite.clone());
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
+        let channel_status_modal = self.channel_status_modal.then(|| {
+            let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.channel_status_modal = false;
+                cx.notify();
+            });
+            profile::modal(
+                div()
+                    .w(px(400.))
+                    .h(px(200.))
+                    .bg(rgb(theme::BG_PANEL))
+                    .rounded(px(theme::RADIUS))
+                    .p_4()
+                    .child("Set a channel status")
+                    .into_any_element(),
+                Box::new(on_close),
+            )
+        });
 
         let title = self.window_title(cx);
         let root = div().size_full().relative().track_focus(&self.focus);
@@ -2227,6 +2263,7 @@ impl Render for MainView {
             .children(picker)
             .children(popup)
             .children(inbox)
+            .children(channel_status_modal)
             .children(settings)
             // Last, so it stays usable above any dialog.
             .child(title_bar::title_bar(title, window))
