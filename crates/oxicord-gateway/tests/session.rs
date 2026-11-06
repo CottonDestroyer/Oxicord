@@ -224,6 +224,45 @@ async fn asks_for_the_member_list_once_ready_and_again_after_a_reconnect() {
 }
 
 #[tokio::test]
+async fn asks_for_the_member_ranges_again_after_the_server_invalidates_them() {
+    let (listener, url) = bind().await;
+    let resume_url = url.clone();
+
+    let server = tokio::spawn(async move {
+        let mut socket = FakeSocket::accept(&listener).await;
+        socket.hello().await;
+        socket.recv().await; // identify
+        socket.ready("sess-1", &resume_url).await;
+        socket.recv().await; // subscribe
+        socket.recv().await; // first ranges
+        socket
+            .send(json!({
+                "op": 0, "s": 3, "t": "GUILD_MEMBER_LIST_UPDATE",
+                "d": { "guild_id": "5", "id": "everyone", "ops": [{ "op": "INVALIDATE", "range": [0, 99] }] }
+            }))
+            .await;
+        let again = socket.recv().await;
+        while socket.ws.next().await.is_some_and(|m| m.is_ok()) {}
+        again
+    });
+
+    let (handle, mut events) = spawn(config(&url));
+    handle.subscribe_members(Snowflake(5), Snowflake(9));
+
+    let mut states = Vec::new();
+    loop {
+        if matches!(next_dispatch(&mut events, &mut states).await, DispatchEvent::GuildMemberListUpdate(_)) {
+            break;
+        }
+    }
+    handle.shutdown();
+    let again = timeout(WAIT, server).await.unwrap().unwrap();
+
+    assert_eq!(again["op"], 37);
+    assert_eq!(again["d"]["subscriptions"]["5"]["channels"]["9"], json!([[0, 99]]));
+}
+
+#[tokio::test]
 async fn identifies_again_after_a_non_resumable_invalid_session() {
     let (listener, url) = bind().await;
     let resume_url = url.clone();

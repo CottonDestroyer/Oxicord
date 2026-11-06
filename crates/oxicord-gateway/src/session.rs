@@ -8,7 +8,7 @@ use std::{
 use futures_util::{Sink, SinkExt, StreamExt};
 use oxicord_model::{
     Snowflake,
-    gateway::{DispatchEvent, GatewayPayload, Hello, op},
+    gateway::{DispatchEvent, GatewayPayload, Hello, ListOp, op},
 };
 use serde_json::Value;
 use tokio::{
@@ -90,6 +90,9 @@ pub(crate) struct Runtime {
     status: ClientStatus,
     /// The member list we want, kept so a reconnect can ask for it again.
     members: Option<(Snowflake, Snowflake)>,
+    /// Set when the server threw away part of the member list we hold, so
+    /// the next chance we get we ask for the range again.
+    resync_members: bool,
 }
 
 impl Runtime {
@@ -106,6 +109,7 @@ impl Runtime {
             events,
             persist: Persist::default(),
             members: None,
+            resync_members: false,
         }
     }
 
@@ -366,6 +370,9 @@ impl Runtime {
             }),
             op::DISPATCH => {
                 let exit = self.on_dispatch(conn, p);
+                if exit.is_none() && conn.ready && std::mem::take(&mut self.resync_members) && !self.send_members(conn).await {
+                    return Some(RECONNECT);
+                }
                 // The first moment the session is usable, ask again for the
                 // member list we wanted before the connection dropped.
                 if exit.is_none() && conn.ready && conn.subscribed.is_empty() && self.members.is_some() && !self.send_members(conn).await {
@@ -400,6 +407,14 @@ impl Runtime {
                 return None;
             }
         };
+
+        // An INVALIDATE leaves holes that stay empty until we ask again.
+        if let DispatchEvent::GuildMemberListUpdate(update) = &event
+            && self.members.is_some_and(|(guild, _)| guild == update.guild_id)
+            && update.ops.iter().any(|op| matches!(op, ListOp::Invalidate { .. }))
+        {
+            self.resync_members = true;
+        }
 
         let connected = match &event {
             DispatchEvent::Ready(ready) => {
