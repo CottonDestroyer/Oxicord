@@ -149,7 +149,7 @@ impl MemberList {
         roles: &[Snowflake],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (name, avatar_url, status, color) = {
+        let (name, avatar_url, status, color, bot, line) = {
             let store = &self.session.read(cx).store;
             let Some(account) = store.user(user) else {
                 return div().h(px(MEMBER_HEIGHT)).into_any_element();
@@ -160,6 +160,8 @@ impl MemberList {
                 cdn::user_avatar(account.id, account.avatar.as_deref(), 64),
                 store.presence(user),
                 store.member_color(guild, roles),
+                account.bot,
+                crate::friends::status_line(store.activities(user)),
             )
         };
 
@@ -206,9 +208,25 @@ impl MemberList {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .truncate()
-                            .text_color(rgb(name_color))
-                            .child(name),
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(4.))
+                                    .child(div().min_w_0().truncate().text_color(rgb(name_color)).child(name))
+                                    .children(bot.then(app_badge)),
+                            )
+                            .children(line.map(|line| {
+                                div()
+                                    .truncate()
+                                    .text_size(px(12.))
+                                    .line_height(px(16.))
+                                    .font_weight(FontWeight::NORMAL)
+                                    .text_color(rgb(theme::TEXT_MUTED))
+                                    .child(line)
+                            })),
                     ),
             )
             .into_any_element()
@@ -232,6 +250,23 @@ impl Render for MemberList {
                 .size_full(),
             )
     }
+}
+
+/// The tag after a bot's name.
+pub fn app_badge() -> Div {
+    div()
+        .flex_none()
+        .h(px(15.))
+        .px(px(4.))
+        .flex()
+        .items_center()
+        .rounded(px(4.))
+        .bg(rgb(theme::ACCENT))
+        .text_size(px(10.))
+        .line_height(px(15.))
+        .font_weight(FontWeight::BOLD)
+        .text_color(rgb(0xffffff))
+        .child("APP")
 }
 
 /// The small status mark on the corner of an avatar.

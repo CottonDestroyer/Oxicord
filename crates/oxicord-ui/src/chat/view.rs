@@ -1308,6 +1308,7 @@ impl ChatView {
                             .text_color(rgb(theme::TEXT_BRIGHT))
                             .child(author),
                     )
+                    .children(message.author.bot.then(crate::member_list::app_badge))
                     .child(
                         div()
                             .text_size(px(12.))
