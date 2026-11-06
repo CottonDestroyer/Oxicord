@@ -50,6 +50,13 @@ pub enum Command {
         targets: Vec<Snowflake>,
         note: String,
     },
+    /// Who reacted with `emoji`. The answer arrives as [`Event::Reactors`].
+    LoadReactors {
+        channel: Snowflake,
+        message: Snowflake,
+        emoji: oxicord_model::Emoji,
+        count: u32,
+    },
     EditMessage {
         channel: Snowflake,
         message: Snowflake,
@@ -288,6 +295,13 @@ pub enum Event {
         result: Result<Vec<oxicord_model::Gif>, String>,
     },
     Users(Vec<User>),
+    /// The first few people to react, for the tooltip on a reaction.
+    Reactors {
+        message: Snowflake,
+        key: String,
+        count: u32,
+        names: Vec<String>,
+    },
     Commands {
         channel: Snowflake,
         result: Result<oxicord_model::CommandIndex, String>,

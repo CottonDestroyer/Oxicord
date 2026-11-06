@@ -129,6 +129,11 @@ impl AppView {
             Event::Gifs { query, result } => {
                 self.session.update(cx, |session, cx| session.apply_gifs(query, result, cx));
             }
+            Event::Reactors { message, key, count, names } => {
+                self.session.update(cx, |session, _| {
+                    session.reactors.insert((message, key, count), names);
+                });
+            }
             Event::Users(users) => {
                 self.session.update(cx, |session, cx| session.apply_users(users, cx));
             }

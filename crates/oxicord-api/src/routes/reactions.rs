@@ -30,6 +30,22 @@ impl ApiClient {
         self.empty(Method::PUT, &path, &route, None).await
     }
 
+    /// The first `limit` people who reacted with `emoji`.
+    pub async fn reactors(
+        &self,
+        channel: Snowflake,
+        message: Snowflake,
+        emoji: &Emoji,
+        limit: u8,
+    ) -> Result<Vec<oxicord_model::User>, ApiError> {
+        let path = format!(
+            "/channels/{channel}/messages/{message}/reactions/{}?limit={limit}&type=0",
+            emoji_path_segment(emoji)
+        );
+        let route = format!("GET /channels/{channel}/messages/:id/reactions/:emoji");
+        self.json(Method::GET, &path, &route, None).await
+    }
+
     pub async fn remove_reaction(
         &self,
         channel: Snowflake,

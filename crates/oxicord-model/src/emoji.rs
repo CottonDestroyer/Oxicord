@@ -12,3 +12,15 @@ pub struct Emoji {
     #[serde(default)]
     pub animated: bool,
 }
+
+impl Emoji {
+    /// What tells one reaction from another on a message: the character, or
+    /// `name:id` for a custom emoji.
+    pub fn key(&self) -> String {
+        let name = self.name.as_deref().unwrap_or_default();
+        match self.id {
+            Some(id) => format!("{name}:{id}"),
+            None => name.to_owned(),
+        }
+    }
+}

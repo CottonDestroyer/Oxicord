@@ -23,6 +23,9 @@ pub struct Session {
     pub settings: Settings,
     pub account: AccountState,
     pub admin: crate::admin::AdminState,
+    /// The first few people to react, per message, emoji and count. The
+    /// count is part of the key so a tooltip never lists stale people.
+    pub reactors: HashMap<(Snowflake, String, u32), Vec<String>>,
     /// Pinned messages per channel, loaded when the panel asks.
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
@@ -173,6 +176,7 @@ impl Session {
             store: Store::new(),
             connection: ConnectionState::Connecting,
             history_errors: HashMap::new(),
+            reactors: HashMap::new(),
             notice: None,
             settings,
             account: AccountState::default(),

@@ -202,6 +202,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 });
             }
         }
+        Command::LoadReactors { channel, message, emoji, count } => {
+            tokio::spawn(async move {
+                if let Ok(users) = api.reactors(channel, message, &emoji, 3).await {
+                    let key = emoji.key();
+                    let names = users.iter().map(|u| u.display_name().to_owned()).collect();
+                    let _ = events.send(Event::Reactors { message, key, count, names }).await;
+                }
+            });
+        }
         Command::EditMessage {
             channel,
             message,

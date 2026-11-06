@@ -67,6 +67,8 @@ pub struct ChatView {
     reply_to: Option<Snowflake>,
     /// Whether the reply notifies its author. Resets with each new reply.
     reply_ping: bool,
+    /// Reactor lookups already sent, so hovering twice asks once.
+    reactors_asked: std::collections::HashSet<(Snowflake, String, u32)>,
     /// Width of the column laid over the right edge, which the messages
     /// and the composer stay clear of.
     aside_width: f32,
@@ -208,6 +210,7 @@ impl ChatView {
             drafts: HashMap::new(),
             reply_to: None,
             reply_ping: true,
+            reactors_asked: Default::default(),
             aside_width: 0.,
             editing: None,
             files: Vec::new(),
@@ -973,6 +976,31 @@ impl ChatView {
                 .child(glyph)
                 .child(reaction.count.to_string());
 
+            let key = (message.id, reaction.emoji.key(), reaction.count);
+            let channel = message.channel_id;
+            pill = pill
+                .on_hover(cx.listener({
+                    let (key, emoji) = (key.clone(), reaction.emoji.clone());
+                    move |this, hovered: &bool, _, cx| {
+                        if *hovered {
+                            this.request_reactors(channel, &key, &emoji, cx);
+                        }
+                    }
+                }))
+                .tooltip({
+                    let session = self.session.clone();
+                    let name = reaction.emoji.name.clone().unwrap_or_default();
+                    // Unicode reactions are named by the character, the tooltip wants :shortcode:.
+                    let name = match reaction.emoji.id {
+                        None => emojis::get(&name).and_then(|e| e.shortcode()).map_or(name, str::to_owned),
+                        Some(_) => name,
+                    };
+                    move |_, cx| {
+                        let names = session.read(cx).reactors.get(&key).cloned().unwrap_or_default();
+                        let text = reactors_line(&names, key.2, &name);
+                        cx.new(|_| Tip(text)).into()
+                    }
+                });
             if can_react {
                 pill = pill.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
                     this.react(id, emoji.clone(), !mine, cx);
@@ -981,6 +1009,14 @@ impl ChatView {
             row = row.child(pill);
         }
         Some(row.into_any_element())
+    }
+
+    /// Asks who reacted, once per message, emoji and count.
+    fn request_reactors(&mut self, channel: Snowflake, key: &(Snowflake, String, u32), emoji: &Emoji, cx: &mut Context<Self>) {
+        if self.reactors_asked.insert(key.clone()) {
+            self.backend.send(Command::LoadReactors { channel, message: key.0, emoji: emoji.clone(), count: key.2 });
+        }
+        let _ = cx;
     }
 
     /// A row of common emoji to react with.
@@ -2310,5 +2346,51 @@ fn tag(user: &oxicord_model::User) -> String {
     match user.discriminator.as_deref() {
         Some(d) if d != "0" && !d.is_empty() => format!("{}#{d}", user.username),
         _ => user.username.clone(),
+    }
+}
+
+/// "Ann, Bo and Cy reacted with :wave:", counting those we did not fetch.
+fn reactors_line(names: &[String], count: u32, emoji: &str) -> String {
+    let word = format!(":{emoji}:");
+    let shown = names.len() as u32;
+    match names {
+        [] => format!("{count} reacted with {word}"),
+        [only] if count <= 1 => format!("{only} reacted with {word}"),
+        _ if count > shown => format!("{} and {} others reacted with {word}", names.join(", "), count - shown),
+        [rest @ .., last] => format!("{} and {last} reacted with {word}", rest.join(", ")),
+    }
+}
+
+/// A plain text tooltip in the menu colors.
+struct Tip(String);
+
+impl Render for Tip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(12.))
+            .py(px(8.))
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(theme::BORDER_MUTED))
+            .bg(rgb(theme::BG_MENU))
+            .text_size(px(14.))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .child(self.0.clone())
+    }
+}
+
+#[cfg(test)]
+mod reactor_tests {
+    use super::reactors_line;
+
+    #[test]
+    fn the_tooltip_lists_names_and_counts_the_rest() {
+        let n = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(reactors_line(&n(&["Ann"]), 1, "wave"), "Ann reacted with :wave:");
+        assert_eq!(reactors_line(&n(&["Ann", "Bo"]), 2, "wave"), "Ann and Bo reacted with :wave:");
+        assert_eq!(reactors_line(&n(&["Ann", "Bo", "Cy"]), 3, "wave"), "Ann, Bo and Cy reacted with :wave:");
+        assert_eq!(reactors_line(&n(&["Ann", "Bo", "Cy"]), 9, "wave"), "Ann, Bo, Cy and 6 others reacted with :wave:");
+        assert_eq!(reactors_line(&[], 4, "wave"), "4 reacted with :wave:");
     }
 }
