@@ -249,6 +249,12 @@ pub enum Command {
         user: Snowflake,
         guild: Option<Snowflake>,
     },
+    /// Save the private note we keep about a user. A failure arrives as an
+    /// [`Event::Notice`].
+    SetUserNote {
+        user: Snowflake,
+        note: String,
+    },
     /// Bookmark a message. The server records it under saved messages.
     BookmarkMessage {
         channel: Snowflake,

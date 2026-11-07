@@ -4,7 +4,7 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    FocusHandle, MouseButton, component::input::Escape, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
+    FocusHandle, MouseButton, component::input::{Escape, InputEvent, InputState}, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
@@ -116,6 +116,11 @@ pub struct MainView {
     channel_status_modal: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
+    /// The editable note box shown in a profile card.
+    note_input: Entity<InputState>,
+    /// Which profile the note box was last filled for, so we don't overwrite
+    /// what the user is typing when the profile reloads.
+    note_prefilled_for: Option<Snowflake>,
     settings_open: bool,
     settings_view: Entity<SettingsView>,
     panel: Entity<SidePanel>,
@@ -190,6 +195,7 @@ impl MainView {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| NicknameDialog::new(session, backend, window, cx))
         };
+        let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
             cx.new(|cx| QuickSwitcher::new(session, media, window, cx))
@@ -301,6 +307,11 @@ impl MainView {
                 this.nickname_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&note_input, |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.save_note(cx);
+                }
+            }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenNickname, window, cx| {
                 this.nickname_open = true;
                 this.nickname.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
@@ -392,6 +403,8 @@ impl MainView {
             forward_open: false,
             nickname,
             nickname_open: false,
+            note_input,
+            note_prefilled_for: None,
             switcher,
             switcher_open: false,
             picker,
@@ -734,6 +747,8 @@ impl MainView {
             self.backend.send(Command::LoadProfile { user, guild });
         }
         self.profile = Some(ShowProfile { user, guild });
+        // Let the note box refill from the stored note when it next renders.
+        self.note_prefilled_for = None;
         cx.notify();
     }
 
@@ -793,6 +808,7 @@ impl MainView {
                     .unwrap_or_default(),
                 is_me: store.me().is_some_and(|me| me.id == user),
                 actions: Vec::new(),
+                note_input: self.note_input.clone(),
             }
         };
         let mut card = card;
@@ -803,10 +819,26 @@ impl MainView {
         Some(card)
     }
 
+    /// Sends the note typed in the open profile's box to Discord.
+    fn save_note(&mut self, cx: &mut Context<Self>) {
+        let Some(profile) = &self.profile else { return };
+        let note: String = self.note_input.read(cx).value().trim().to_string();
+        self.backend.send(Command::SetUserNote { user: profile.user, note });
+    }
+
     /// The card for the person we are looking at, over everything else.
     fn render_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (user, guild) = self.profile.as_ref().map(|p| (p.user, p.guild))?;
         let card = self.build_card(user, guild, cx)?;
+
+        // Fill the note box from the stored note the first time we show a user,
+        // so we don't overwrite what the user is typing.
+        if self.note_prefilled_for != Some(user) {
+            if let Some(note) = self.session.read(cx).profiles.get(&user).map(|p| p.note.clone()) {
+                self.note_input.update(cx, |input, cx| input.set_value(note, window, cx));
+            }
+            self.note_prefilled_for = Some(user);
+        }
 
         let on_message =
             cx.listener(move |this, _: &ClickEvent, _, cx| this.message_from_card(user, cx));

@@ -49,6 +49,18 @@ impl ApiClient {
         Ok(response.note)
     }
 
+    /// Overwrite the private note we keep about a user. The note is ours
+    /// alone and shows nowhere but our own client.
+    pub async fn set_user_note(&self, user: Snowflake, note: &str) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/users/@me/notes/{user}"),
+            "PATCH /users/@me/notes/:id",
+            Some(&serde_json::json!({ "note": note })),
+        )
+        .await
+    }
+
     /// Save a message for later. Discord records it under saved messages.
     pub async fn bookmark_message(
         &self,
