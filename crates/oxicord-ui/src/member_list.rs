@@ -1,5 +1,5 @@
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    AnyElement, App, ClickEvent, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement, StyledImage as _,
     ListAlignment, ListOffset, ListState, MouseButton, MouseDownEvent,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
 };
@@ -150,7 +150,7 @@ impl MemberList {
         roles: &[Snowflake],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (name, avatar_url, status, color, bot, line, in_voice) = {
+        let (name, avatar_url, status, color, bot, line, in_voice, decoration, nameplate) = {
             let store = &self.session.read(cx).store;
             let Some(account) = store.user(user) else {
                 return div().h(px(MEMBER_HEIGHT)).into_any_element();
@@ -164,6 +164,8 @@ impl MemberList {
                 account.bot,
                 crate::friends::status_line(store.activities(user)),
                 store.voice_of(user).is_some_and(|v| v.channel_id.is_some()),
+                account.decoration(),
+                account.nameplate(),
             )
         };
 
@@ -185,12 +187,25 @@ impl MemberList {
                         });
                     }))
                     .size_full()
+                    .relative()
+                    .overflow_hidden()
                     .flex()
                     .items_center()
                     .gap(px(12.))
                     .px(px(8.))
                     .rounded(px(theme::RADIUS))
                     .cursor_pointer()
+                    // A nameplate is a banner behind the name, from the avatar's middle to the edge.
+                    .children(nameplate.and_then(|sku| {
+                        let image = self.media.update(cx, |m, _| m.get(&cdn::collectible(sku)))?;
+                        Some(
+                            div().absolute().top_0().bottom_0().left(px(24.)).right_0().child(
+                                gpui_kit::img(gpui_kit::ImageSource::Image(image))
+                                    .size_full()
+                                    .object_fit(gpui_kit::ObjectFit::Cover),
+                            ),
+                        )
+                    }))
                     .font_weight(FontWeight::MEDIUM)
                     // Offline people fade out until the pointer is on them.
                     .when(offline, |row| row.opacity(0.3).hover(|s| s.opacity(1.).bg(rgb(theme::BG_HOVER))))
@@ -204,6 +219,7 @@ impl MemberList {
                             .relative()
                             .flex_none()
                             .child(avatar(&self.media, &avatar_url, 32., &name, cx))
+                            .children(decoration.and_then(|sku| crate::media::decoration(&self.media, sku, 32., cx)))
                             .child(presence_dot(status)),
                     )
                     .child(

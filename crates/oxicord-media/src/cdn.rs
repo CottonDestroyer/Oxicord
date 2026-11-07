@@ -43,6 +43,12 @@ pub fn member_banner(guild: Snowflake, user: Snowflake, hash: &str, width: u32) 
     format!("{CDN}/guilds/{guild}/users/{user}/banners/{hash}.png?size={width}")
 }
 
+/// The still picture of a shop item: an avatar decoration (square) or a
+/// nameplate (wide), named by its listing.
+pub fn collectible(sku: Snowflake) -> String {
+    format!("{CDN}/media/v1/collectibles-shop/{sku}/static")
+}
+
 pub fn guild_icon(guild: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/icons/{guild}/{hash}.png?size={size}")
 }

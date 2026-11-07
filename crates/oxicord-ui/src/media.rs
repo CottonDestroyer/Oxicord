@@ -5,6 +5,7 @@ use gpui_kit::{
     Styled as _, div, img, px, rgb,
 };
 use oxicord_media::{ImageKind, sniff};
+use oxicord_model::Snowflake;
 
 use crate::{
     backend::{Backend, Command},
@@ -103,6 +104,21 @@ pub fn avatar(media: &Entity<Media>, url: &str, size: f32, name: &str, cx: &mut 
             .child(initial(name))
             .into_any_element(),
     }
+}
+
+/// The frame around an avatar, to put inside a `relative` box the size of the
+/// avatar. It is a fifth bigger than the avatar and centered on it.
+pub fn decoration(media: &Entity<Media>, sku: Snowflake, size: f32, cx: &mut App) -> Option<impl IntoElement> {
+    let image = media.update(cx, |media, _| media.get(&oxicord_media::cdn::collectible(sku)))?;
+    let outset = size * 0.1;
+    Some(
+        div()
+            .absolute()
+            .left(px(-outset))
+            .top(px(-outset))
+            .size(px(size * 1.2))
+            .child(img(ImageSource::Image(image)).size_full()),
+    )
 }
 
 fn initial(name: &str) -> String {

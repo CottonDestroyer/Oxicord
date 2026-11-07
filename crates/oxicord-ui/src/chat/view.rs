@@ -1318,7 +1318,14 @@ impl ChatView {
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| this.user_menu_at(user, event, cx)))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| this.open_profile(user, Some(event.position()), cx)))
-                .child(avatar(&self.media, &url, GUTTER, &author, cx))
+                .child(
+                    div()
+                        .relative()
+                        .child(avatar(&self.media, &url, GUTTER, &author, cx))
+                        .children(
+                            message.author.decoration().and_then(|sku| crate::media::decoration(&self.media, sku, GUTTER, cx)),
+                        ),
+                )
                 .into_any_element()
         };
 
