@@ -519,7 +519,16 @@ impl SidePanel {
                             .child(if deafened { "Undeafen" } else { "Deafen" })
                             .into_any_element()
                     },
-                    Self::note("Disconnect"),
+                    div()
+                        .id("disconnect-voice")
+                        .px_4()
+                        .py_2()
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(|_, _: &gpui_kit::ClickEvent, _, cx| cx.emit(ClosePanel)))
+                        .child("Disconnect")
+                        .into_any_element(),
                 ]
             }
         }
