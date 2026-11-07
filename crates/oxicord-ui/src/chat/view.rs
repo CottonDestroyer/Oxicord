@@ -75,8 +75,9 @@ pub struct ChatView {
     /// and the composer stay clear of.
     aside_width: f32,
     editing: Option<Snowflake>,
-    /// Files chosen for the next message.
-    files: Vec<PathBuf>,
+    /// Files chosen for the next message, paired with whether each one should
+    /// be sent as a spoiler (filename prefixed with `SPOILER_`).
+    files: Vec<(PathBuf, bool)>,
     /// The message whose delete button was pressed once already.
     confirm_delete: Option<Snowflake>,
     /// Spoilers the reader has clicked open, as (message, index in message).
@@ -828,8 +829,8 @@ impl ChatView {
 
     fn add_files(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         for path in paths {
-            if self.files.len() < Self::MAX_FILES && !self.files.contains(&path) {
-                self.files.push(path);
+            if self.files.len() < Self::MAX_FILES && !self.files.iter().any(|(p, _)| p == &path) {
+                self.files.push((path, false));
             }
         }
         cx.notify();
@@ -2063,10 +2064,11 @@ impl ChatView {
     /// The files waiting to be sent, each removable.
     fn render_file_chips(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let mut row = div().flex().flex_wrap().gap_2().mb_2();
-        for (index, path) in self.files.iter().enumerate() {
+        for (index, (path, spoiler)) in self.files.iter().enumerate() {
             let name = path
                 .file_name()
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            let spoiler_on = *spoiler;
             row = row.child(
                 div()
                     .max_w(px(240.))
@@ -2081,6 +2083,15 @@ impl ChatView {
                     .text_size(px(13.))
                     .child(icon("file", 14., theme::TEXT_MUTED))
                     .child(div().flex_1().min_w_0().truncate().child(name))
+                    .child(
+                        action_button(("spoiler-file", index), if spoiler_on { "eye-off" } else { "eye" }, if spoiler_on { theme::ACCENT } else { theme::TEXT_MUTED })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(entry) = this.files.get_mut(index) {
+                                    entry.1 = !entry.1;
+                                }
+                                cx.notify();
+                            })),
+                    )
                     .child(
                         action_button(("remove-file", index), "x", theme::TEXT_MUTED).on_click(
                             cx.listener(move |this, _, _, cx| {

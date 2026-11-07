@@ -820,12 +820,18 @@ fn show_notification(title: String, body: String) {
 /// most accounts and it reports that itself, this only protects our memory.
 const MAX_UPLOAD_BYTES: u64 = 100 * 1024 * 1024;
 
-async fn read_files(paths: &[PathBuf]) -> Result<Vec<Upload>, String> {
+async fn read_files(files: &[(PathBuf, bool)]) -> Result<Vec<Upload>, String> {
     let mut uploads = Vec::new();
-    for path in paths {
-        let name = path
+    for (path, spoiler) in files {
+        let base = path
             .file_name()
             .map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned());
+        // Discord marks a spoiler attachment by prefixing its filename.
+        let name = if *spoiler && !base.starts_with("SPOILER_") {
+            format!("SPOILER_{base}")
+        } else {
+            base
+        };
         let size = tokio::fs::metadata(path)
             .await
             .map_err(|err| format!("Couldn't read {name}: {err}"))?
@@ -1199,12 +1205,25 @@ mod tests {
         let path = std::env::temp_dir().join(format!("oxicord-upload-{}.txt", std::process::id()));
         tokio::fs::write(&path, b"hello").await.unwrap();
 
-        let uploads = read_files(std::slice::from_ref(&path)).await.unwrap();
+        let uploads = read_files(&[(path.clone(), false)]).await.unwrap();
         tokio::fs::remove_file(&path).await.unwrap();
 
         assert_eq!(uploads.len(), 1);
         assert!(uploads[0].filename.starts_with("oxicord-upload-"));
         assert_eq!(uploads[0].data.as_slice(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn spoiler_files_get_the_spoiler_prefix() {
+        let path = std::env::temp_dir().join(format!("oxicord-spoil-{}.txt", std::process::id()));
+        tokio::fs::write(&path, b"secret").await.unwrap();
+
+        let uploads = read_files(&[(path.clone(), true)]).await.unwrap();
+        tokio::fs::remove_file(&path).await.unwrap();
+
+        assert_eq!(uploads.len(), 1);
+        assert!(uploads[0].filename.starts_with("SPOILER_"), "{}", uploads[0].filename);
+        assert_eq!(uploads[0].data.as_slice(), b"secret");
     }
 
     #[tokio::test]
