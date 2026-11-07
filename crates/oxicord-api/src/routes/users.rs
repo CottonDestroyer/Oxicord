@@ -23,7 +23,9 @@ impl ApiClient {
         user: Snowflake,
         guild: Option<Snowflake>,
     ) -> Result<oxicord_model::Profile, ApiError> {
-        let mut path = format!("/users/{user}/profile?with_mutual_guilds=true&with_mutual_friends_count=true");
+        let mut path = format!(
+            "/users/{user}/profile?with_mutual_guilds=true&with_mutual_friends=true&with_mutual_friends_count=true"
+        );
         if let Some(guild) = guild {
             path.push_str(&format!("&guild_id={guild}"));
         }
@@ -120,20 +122,67 @@ impl ApiClient {
         .await
     }
 
-    /// The display name of a game, for a profile's favorite game.
-    pub async fn game_name(&self, game: Snowflake) -> Result<String, ApiError> {
+    /// Names and covers of games, for the profile's game widgets. Games
+    /// Discord doesn't know are left out.
+    pub async fn games(
+        &self,
+        ids: &[Snowflake],
+    ) -> Result<std::collections::HashMap<Snowflake, oxicord_model::Game>, ApiError> {
+        #[derive(Deserialize)]
+        struct Media {
+            #[serde(default)]
+            cover_url: Option<String>,
+            #[serde(default)]
+            cover: Option<Cover>,
+        }
+        #[derive(Deserialize)]
+        struct Cover {
+            #[serde(rename = "type", default)]
+            kind: String,
+            #[serde(default)]
+            value: String,
+        }
         #[derive(Deserialize)]
         struct Game {
+            id: Snowflake,
+            #[serde(default)]
             name: String,
+            #[serde(default)]
+            icon_hash: Option<String>,
+            #[serde(default)]
+            media: Option<Media>,
         }
+        if ids.is_empty() {
+            return Ok(Default::default());
+        }
+        let query: Vec<String> = ids.iter().map(|id| format!("game_ids={id}")).collect();
         let games: Vec<Game> = self
-            .json(
-                Method::GET,
-                &format!("/games?game_ids={game}"),
-                "GET /games",
-                None,
-            )
+            .json(Method::GET, &format!("/games?{}", query.join("&")), "GET /games", None)
             .await?;
-        Ok(games.into_iter().next().map(|game| game.name).unwrap_or_default())
+        Ok(games
+            .into_iter()
+            .map(|game| {
+                let id = game.id;
+                // The cover is either a picture hosted elsewhere or a hash of
+                // one of the application's own assets.
+                let cover_url = game.media.and_then(|media| {
+                    media.cover_url.filter(|u| !u.is_empty()).or_else(|| {
+                        media.cover.filter(|c| !c.value.is_empty()).map(|c| {
+                            if c.kind == "url" {
+                                c.value
+                            } else {
+                                format!("https://cdn.discordapp.com/app-icons/{id}/{}.png?size=256", c.value)
+                            }
+                        })
+                    })
+                });
+                let cover_url = cover_url.or_else(|| {
+                    game.icon_hash
+                        .filter(|h| !h.is_empty())
+                        .map(|h| format!("https://cdn.discordapp.com/app-icons/{id}/{h}.png?size=256"))
+                });
+                (id, oxicord_model::Game { name: game.name, cover_url })
+            })
+            .collect())
     }
 }

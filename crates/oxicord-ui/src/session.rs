@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use gpui_kit::{Context, EventEmitter};
+use gpui_kit::{Context, EventEmitter, Pixels, Point};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
 use oxicord_model::{Channel, Message, Profile, SavedMessage, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
@@ -67,7 +67,9 @@ pub struct Session {
     /// Profiles fetched so far, so reopening a card is instant.
     pub profiles: HashMap<Snowflake, Profile>,
     /// People whose profile was asked for already, answered or not.
-    profile_requested: HashSet<Snowflake>,
+    /// Whose profile was asked for, and in which server, since a server's
+    /// roles and join date come only with the profile asked for there.
+    profile_requested: HashMap<Snowflake, Option<Snowflake>>,
     /// The voice call we are in or joining.
     pub voice: VoiceCall,
     /// The microphone and speakers picked in the voice menus, by name.
@@ -253,6 +255,10 @@ pub struct ShowProfile {
     pub user: Snowflake,
     /// The server the click happened in, for server specific details.
     pub guild: Option<Snowflake>,
+    /// Where the click was, so the small card can open beside it.
+    pub at: Option<Point<Pixels>>,
+    /// Open the large profile instead of the small card.
+    pub full: bool,
 }
 
 impl EventEmitter<ShowProfile> for Session {}
@@ -289,7 +295,7 @@ impl Session {
             preview_requested: HashSet::new(),
             status: ClientStatus::default(),
             profiles: HashMap::new(),
-            profile_requested: HashSet::new(),
+            profile_requested: HashMap::new(),
             voice: VoiceCall::default(),
             audio_input: None,
             audio_output: None,
@@ -876,14 +882,30 @@ impl Session {
         }
     }
 
-    pub fn show_profile(&mut self, user: Snowflake, guild: Option<Snowflake>, cx: &mut Context<Self>) {
-        cx.emit(ShowProfile { user, guild });
+    /// Asks for the small card beside `at`.
+    pub fn show_profile(
+        &mut self,
+        user: Snowflake,
+        guild: Option<Snowflake>,
+        at: Option<Point<Pixels>>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.emit(ShowProfile { user, guild, at, full: false });
+    }
+
+    /// Asks for the large profile.
+    pub fn show_full_profile(&mut self, user: Snowflake, guild: Option<Snowflake>, cx: &mut Context<Self>) {
+        cx.emit(ShowProfile { user, guild, at: None, full: true });
     }
 
     /// Returns true the first time a profile is wanted, which is when it is
     /// worth asking the server.
-    pub fn should_fetch_profile(&mut self, user: Snowflake) -> bool {
-        self.profile_requested.insert(user)
+    pub fn should_fetch_profile(&mut self, user: Snowflake, guild: Option<Snowflake>) -> bool {
+        match self.profile_requested.insert(user, guild) {
+            None => true,
+            // Asked before outside a server, now inside one: ask again.
+            Some(before) => before != guild && guild.is_some(),
+        }
     }
 
     pub fn apply_profile(

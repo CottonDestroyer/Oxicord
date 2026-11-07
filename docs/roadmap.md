@@ -29,12 +29,13 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Syntax highlighting in code blocks
 - [x] Reply ping toggle (`allowed_mentions.replied_user`)
 - [ ] Avatar and banner upload, (server nickname done) (`PATCH /guilds/:id/members/@me`), server profile
+- [x] Profile cards matched to the web client: the popout beside a name (banner, avatar ring, server tag, badges, mutuals, clamped bio, game collection, current activity, roles) and the full profile (board with favorite, liked and wanted games, activity, mutual friends and servers, connections, note). Not done: nameplates, profile effects and avatar decorations, a per service connection icon, Spotify's listen along buttons, a popout message box that sends (it opens the conversation), the cards for yourself beyond Edit Profile
 - [x] Private user notes (`/users/@me/notes/:id`) and friend nicknames (`PATCH /users/@me/relationships/:id`), both done; `USER_NOTE_UPDATE` and `RELATIONSHIP_UPDATE` from other devices are not handled yet
 
 ## Phase 3: servers you can't fully use yet
 
 - [ ] Rules screening (`/guilds/:id/member-verification`), onboarding, welcome screen
-- [x] Member moderation: kick, ban, timeout, roles, as buttons on the profile card (not the right click menu), each gated on its own permission. Kick has no confirmation yet and there is no role hierarchy check
+- [x] Member moderation: kick, ban, timeout, roles, in the three dots menu of the profile cards (not the right click menu), each gated on its own permission. Kick has no confirmation yet and there is no role hierarchy check
 
 ## Phase 4: bots
 

@@ -10,6 +10,10 @@
 //! leave               leave the call
 //! mute                toggle mute
 //! deafen              toggle deafen
+//! profile <user> [server id]   the small card, as if clicked in the member list
+//! full <user> [server id]      the full profile
+//! tab <board|activity|friends|servers>   switch the full profile's tab
+//! close               close the card
 //! ```
 //!
 //! The file is `OXICORD_DEV_CMD`, or `oxicord-dev-cmd.txt` in the temp folder.
@@ -26,6 +30,11 @@ pub enum DevCommand {
     Leave,
     Mute,
     Deafen,
+    Profile(Snowflake, Option<Snowflake>),
+    Full(Snowflake, Option<Snowflake>),
+    /// 0 board, 1 activity, 2 friends, 3 servers.
+    Tab(u8),
+    Close,
 }
 
 pub fn command_path() -> PathBuf {
@@ -37,7 +46,18 @@ pub fn parse(line: &str) -> Option<DevCommand> {
     let mut words = line.split_whitespace();
     let command = words.next()?;
     let id = || words.clone().next()?.parse().ok().map(Snowflake);
+    let second = || words.clone().nth(1)?.parse().ok().map(Snowflake);
     match command {
+        "profile" => id().map(|user| DevCommand::Profile(user, second())),
+        "full" => id().map(|user| DevCommand::Full(user, second())),
+        "tab" => match words.clone().next()? {
+            "board" => Some(DevCommand::Tab(0)),
+            "activity" => Some(DevCommand::Tab(1)),
+            "friends" => Some(DevCommand::Tab(2)),
+            "servers" => Some(DevCommand::Tab(3)),
+            _ => None,
+        },
+        "close" => Some(DevCommand::Close),
         "goto" => id().map(DevCommand::Goto),
         "join" => id().map(DevCommand::Join),
         "leave" => Some(DevCommand::Leave),
@@ -66,6 +86,15 @@ mod tests {
         assert_eq!(parse("leave"), Some(DevCommand::Leave));
         assert_eq!(parse("mute"), Some(DevCommand::Mute));
         assert_eq!(parse("deafen"), Some(DevCommand::Deafen));
+    }
+
+    #[test]
+    fn profile_commands_take_a_person_and_an_optional_server() {
+        assert_eq!(parse("profile 5"), Some(DevCommand::Profile(Snowflake(5), None)));
+        assert_eq!(parse("full 5 9"), Some(DevCommand::Full(Snowflake(5), Some(Snowflake(9)))));
+        assert_eq!(parse("tab servers"), Some(DevCommand::Tab(3)));
+        assert_eq!(parse("tab nowhere"), None);
+        assert_eq!(parse("close"), Some(DevCommand::Close));
     }
 
     #[test]

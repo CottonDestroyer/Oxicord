@@ -586,25 +586,17 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     describe_request(&err)
                 });
                 if let Ok(profile) = &mut result {
-                    // The note and every game name are independent lookups, so
+                    // The note and the game covers are independent lookups, so
                     // run them side by side instead of one after another.
-                    let lookup = |game| {
+                    let ids = profile.game_ids();
+                    let games = {
                         let api = api.clone();
-                        tokio::spawn(async move { api.game_name(game).await.ok().filter(|n| !n.is_empty()) })
+                        tokio::spawn(async move { api.games(&ids).await.unwrap_or_default() })
                     };
-                    let favorite = profile.favorite_game_id.map(lookup);
-                    let played: Vec<_> = profile.played_game_ids.iter().map(|&game| lookup(game)).collect();
                     if let Ok(note) = api.user_note(user).await {
                         profile.note = note;
                     }
-                    if let Some(task) = favorite {
-                        profile.favorite_game = task.await.ok().flatten();
-                    }
-                    for task in played {
-                        if let Some(name) = task.await.ok().flatten() {
-                            profile.played_games.push(name);
-                        }
-                    }
+                    profile.games = games.await.unwrap_or_default();
                 }
                 let _ = events.send(Event::Profile { user, result }).await;
             });

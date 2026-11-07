@@ -28,6 +28,11 @@ pub fn default_avatar(user: Snowflake) -> String {
     format!("{CDN}/embed/avatars/{}.png", (user.0 >> 22) % 6)
 }
 
+/// A server tag's badge picture.
+pub fn clan_badge(guild: Snowflake, hash: &str, size: u32) -> String {
+    format!("{CDN}/clan-badges/{guild}/{hash}.png?size={size}")
+}
+
 pub fn guild_icon(guild: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/icons/{guild}/{hash}.png?size={size}")
 }

@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 use crate::Snowflake;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct User {
     pub id: Snowflake,
     #[serde(default)]
@@ -56,6 +56,43 @@ pub struct LinkedAccount {
     pub name: String,
     #[serde(default)]
     pub verified: bool,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    pub metadata: AccountMetadata,
+}
+
+/// The extras a linked account can carry. Both arrive as text.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct AccountMetadata {
+    /// When the account was made on the other service.
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub game_count: Option<String>,
+}
+
+/// The server tag shown next to a name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerTag {
+    pub tag: String,
+    pub guild_id: Snowflake,
+    /// The badge picture hash, when the tag has one.
+    pub badge: Option<String>,
+}
+
+/// A game a person put on their profile, with what they wrote about it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GameEntry {
+    pub id: Snowflake,
+    pub comment: String,
+    /// Tag keys such as `obsessed` or `looking_for_group`.
+    pub tags: Vec<String>,
+}
+
+/// What a game lookup returns: enough to draw its cover.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Game {
+    pub name: String,
+    pub cover_url: Option<String>,
 }
 
 /// The extra details behind a profile card. Discord nests the bio under
@@ -67,26 +104,44 @@ pub struct Profile {
     pub pronouns: String,
     pub banner: Option<String>,
     pub accent_color: Option<u32>,
-    pub server_tag: Option<String>,
+    pub server_tag: Option<ServerTag>,
     pub badges: Vec<Badge>,
     pub mutual_guilds: Vec<MutualGuild>,
+    /// The people we both know, when Discord listed them.
+    pub mutual_friend_users: Vec<User>,
     pub mutual_friends: u32,
     pub accounts: Vec<LinkedAccount>,
     /// When they started boosting or subscribed, as sent.
     pub premium_since: Option<String>,
     /// When they joined the server the card was opened from.
     pub joined_server: Option<String>,
+    /// Their roles in that server, as the profile lists them.
+    pub member_roles: Vec<Snowflake>,
+    /// Their nickname there.
+    pub member_nick: Option<String>,
     /// The note we wrote about them, visible only to us.
     pub note: String,
-    /// The id of a game they pinned to their profile, if any.
-    pub favorite_game_id: Option<Snowflake>,
-    /// The name of that game, filled in after a lookup.
-    pub favorite_game: Option<String>,
-    /// Games they have played, as ids from the profile widgets.
-    pub played_game_ids: Vec<Snowflake>,
-    /// Their display names, filled in after lookup.
-    pub played_games: Vec<String>,
+    /// The games of the three profile widgets.
+    pub favorite_games: Vec<GameEntry>,
+    pub played_games: Vec<GameEntry>,
+    pub want_to_play_games: Vec<GameEntry>,
+    /// Names and covers of those games, filled in after a lookup.
+    pub games: std::collections::HashMap<Snowflake, Game>,
 }
+
+impl Profile {
+    /// Every game id the widgets mention, once each.
+    pub fn game_ids(&self) -> Vec<Snowflake> {
+        let mut ids: Vec<Snowflake> = Vec::new();
+        for entry in self.favorite_games.iter().chain(&self.played_games).chain(&self.want_to_play_games) {
+            if !ids.contains(&entry.id) {
+                ids.push(entry.id);
+            }
+        }
+        ids
+    }
+}
+
 #[derive(Default, Deserialize)]
 struct RawProfile {
     #[serde(default)]
@@ -97,6 +152,8 @@ struct RawProfile {
     badges: Vec<Badge>,
     #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
     mutual_guilds: Vec<MutualGuild>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    mutual_friends: Vec<User>,
     #[serde(default)]
     mutual_friends_count: Option<u32>,
     #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
@@ -115,6 +172,10 @@ struct RawProfile {
 struct GuildMemberFields {
     #[serde(default)]
     joined_at: Option<String>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    roles: Vec<Snowflake>,
+    #[serde(default)]
+    nick: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -123,6 +184,10 @@ struct PrimaryGuildFields {
     tag: Option<String>,
     #[serde(default)]
     identity_enabled: Option<bool>,
+    #[serde(default)]
+    identity_guild_id: Option<Snowflake>,
+    #[serde(default)]
+    badge: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -135,7 +200,7 @@ struct WidgetFields {
 struct WidgetData {
     #[serde(rename = "type", default)]
     kind: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
     games: Vec<WidgetGame>,
 }
 
@@ -143,6 +208,10 @@ struct WidgetData {
 struct WidgetGame {
     #[serde(rename = "game_id", default)]
     game_id: Option<Snowflake>,
+    #[serde(default)]
+    comment: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -155,6 +224,9 @@ struct ProfileFields {
     banner: Option<String>,
     #[serde(default)]
     accent_color: Option<u32>,
+    /// Newer responses carry the server tag on the user.
+    #[serde(default)]
+    primary_guild: Option<PrimaryGuildFields>,
 }
 
 impl<'de> Deserialize<'de> for Profile {
@@ -167,7 +239,10 @@ impl<'de> Deserialize<'de> for Profile {
 
 impl From<RawProfile> for Profile {
     fn from(raw: RawProfile) -> Self {
-        let sources = [raw.user_profile, raw.user];
+        let mut sources = [raw.user_profile, raw.user];
+        let primary_guild = raw
+            .primary_guild
+            .or_else(|| sources.iter_mut().flatten().find_map(|s| s.primary_guild.take()));
         let first = |field: fn(&ProfileFields) -> Option<&String>| {
             sources
                 .iter()
@@ -175,6 +250,22 @@ impl From<RawProfile> for Profile {
                 .find_map(|s| field(s).filter(|v| !v.is_empty()))
                 .cloned()
         };
+        let games = |kind: &str| -> Vec<GameEntry> {
+            raw.widgets
+                .iter()
+                .filter(|widget| widget.data.kind == kind)
+                .flat_map(|widget| &widget.data.games)
+                .filter_map(|game| {
+                    Some(GameEntry {
+                        id: game.game_id?,
+                        comment: game.comment.clone().unwrap_or_default(),
+                        tags: game.tags.clone(),
+                    })
+                })
+                .collect()
+        };
+        let (favorite_games, played_games, want_to_play_games) =
+            (games("favorite_games"), games("played_games"), games("want_to_play_games"));
         Self {
             bio: first(|s| s.bio.as_ref()).unwrap_or_default(),
             pronouns: first(|s| s.pronouns.as_ref()).unwrap_or_default(),
@@ -182,40 +273,27 @@ impl From<RawProfile> for Profile {
             accent_color: sources.iter().flatten().find_map(|s| s.accent_color),
             badges: raw.badges,
             mutual_guilds: raw.mutual_guilds,
-            mutual_friends: raw.mutual_friends_count.unwrap_or(0),
+            mutual_friends: raw.mutual_friends_count.unwrap_or(0).max(raw.mutual_friends.len() as u32),
+            mutual_friend_users: raw.mutual_friends,
             accounts: raw.connected_accounts,
             premium_since: raw.premium_since,
-            joined_server: raw.guild_member.and_then(|m| m.joined_at),
-            server_tag: raw.primary_guild.and_then(|g| {
+            joined_server: raw.guild_member.as_ref().and_then(|m| m.joined_at.clone()),
+            member_nick: raw.guild_member.as_ref().and_then(|m| m.nick.clone()).filter(|n| !n.is_empty()),
+            member_roles: raw.guild_member.map(|m| m.roles).unwrap_or_default(),
+            server_tag: primary_guild.and_then(|g| {
                 if g.identity_enabled == Some(false) {
-                    None
-                } else {
-                    g.tag.filter(|t| !t.is_empty())
+                    return None;
                 }
-            }),
-            favorite_game_id: raw
-                .widgets
-                .iter()
-                .find_map(|widget| {
-                    if widget.data.kind == "favorite_games" {
-                        widget.data.games.iter().find_map(|game| game.game_id)
-                    } else {
-                        None
-                    }
-                }),
-            played_game_ids: raw
-                .widgets
-                .into_iter()
-                .find_map(|widget| {
-                    if widget.data.kind == "played_games" {
-                        Some(widget.data.games.into_iter().filter_map(|game| game.game_id).collect())
-                    } else {
-                        None
-                    }
+                Some(ServerTag {
+                    tag: g.tag.filter(|t| !t.is_empty())?,
+                    guild_id: g.identity_guild_id?,
+                    badge: g.badge.filter(|b| !b.is_empty()),
                 })
-                .unwrap_or_default(),
-            favorite_game: None,
-            played_games: Vec::new(),
+            }),
+            favorite_games,
+            played_games,
+            want_to_play_games,
+            games: Default::default(),
             note: String::new(),
         }
     }
@@ -256,6 +334,45 @@ mod tests {
         assert_eq!(p.mutual_friends, 3);
         assert_eq!(p.accounts[0].name, "me");
         assert_eq!(p.joined_server.as_deref(), Some("2021-02-03"));
+    }
+
+    #[test]
+    fn widgets_the_server_tag_and_friend_lists_are_read() {
+        let p: Profile = serde_json::from_str(
+            r#"{"user":{"id":"1","primary_guild":{"identity_guild_id":"9","identity_enabled":true,"tag":"LWIQ","badge":"b1"}},
+                "mutual_friends":[{"id":"7","username":"pal"},"junk"],
+                "guild_member":{"nick":"Cookie","roles":["3","4"]},
+                "connected_accounts":[{"type":"steam","name":"me","metadata":{"created_at":"2020-03-26T17:41:16","game_count":"49","item_count_tf2":"-1"}},
+                                      {"type":"odd","name":"x","metadata":{"game_count":5}}],
+                "widgets":[
+                  {"data":{"type":"favorite_games","games":[{"game_id":"5","comment":"peak","tags":["obsessed"]}]}},
+                  {"data":{"type":"played_games","games":[{"game_id":"5","comment":null,"tags":[]},{"game_id":"6"}]}},
+                  {"data":{"type":"want_to_play_games","games":[{"game_id":"8"}]}}]}"#,
+        )
+        .unwrap();
+        let tag = p.server_tag.as_ref().unwrap();
+        assert_eq!((tag.tag.as_str(), tag.guild_id, tag.badge.as_deref()), ("LWIQ", Snowflake(9), Some("b1")));
+        assert_eq!((p.mutual_friend_users.len(), p.mutual_friends), (1, 1));
+        assert_eq!(p.accounts[0].metadata.game_count.as_deref(), Some("49"));
+        // A metadata block we can't read costs only the metadata.
+        assert_eq!(p.accounts[1].metadata, AccountMetadata::default());
+        assert_eq!(p.favorite_games[0].comment, "peak");
+        assert_eq!(p.member_roles, [Snowflake(3), Snowflake(4)]);
+        assert_eq!(p.member_nick.as_deref(), Some("Cookie"));
+        assert_eq!(p.favorite_games[0].tags, ["obsessed"]);
+        assert_eq!(p.played_games.len(), 2);
+        assert_eq!(p.want_to_play_games[0].id, Snowflake(8));
+        // Five is in two widgets but is looked up once.
+        assert_eq!(p.game_ids(), [Snowflake(5), Snowflake(6), Snowflake(8)]);
+    }
+
+    #[test]
+    fn a_server_tag_the_person_turned_off_is_hidden() {
+        let p: Profile = serde_json::from_str(
+            r#"{"primary_guild":{"identity_guild_id":"9","identity_enabled":false,"tag":"LWIQ"}}"#,
+        )
+        .unwrap();
+        assert_eq!(p.server_tag, None);
     }
 
 }

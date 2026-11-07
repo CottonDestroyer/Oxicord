@@ -36,7 +36,6 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    profile,
     session::{MentionUser, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
     theme,
 };
@@ -56,7 +55,6 @@ pub struct ChatView {
     media: Entity<Media>,
     backend: Backend,
     channel: Option<Snowflake>,
-    profile_modal: Option<Snowflake>,
     list: ListState,
     rows: Vec<Row>,
     /// Channels whose first page of history has been requested this session.
@@ -205,7 +203,6 @@ impl ChatView {
             media,
             backend,
             channel: None,
-            profile_modal: None,
             list,
             rows: Vec::new(),
             fetched: HashSet::new(),
@@ -299,13 +296,14 @@ impl ChatView {
         });
     }
 
-    fn open_profile(&mut self, user: Snowflake, cx: &mut Context<Self>) {
-        let guild = self
-            .channel
-            .and_then(|c| self.session.read(cx).store.channel(c))
-            .and_then(|c| c.guild_id);
-        self.session
-            .update(cx, |session, cx| session.show_profile(user, guild, cx));
+    fn open_profile(&mut self, user: Snowflake, at: Option<gpui_kit::Point<gpui_kit::Pixels>>, cx: &mut Context<Self>) {
+        let guild = self.guild(cx);
+        self.session.update(cx, |session, cx| session.show_profile(user, guild, at, cx));
+    }
+
+    fn open_full_profile(&mut self, user: Snowflake, cx: &mut Context<Self>) {
+        let guild = self.guild(cx);
+        self.session.update(cx, |session, cx| session.show_full_profile(user, guild, cx));
     }
 
     /// Goes to a message: straight there when it is loaded, otherwise after
@@ -1319,7 +1317,7 @@ impl ChatView {
                 .id(("avatar", id.0))
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| this.user_menu_at(user, event, cx)))
                 .cursor_pointer()
-                .on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, cx)))
+                .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| this.open_profile(user, Some(event.position()), cx)))
                 .child(avatar(&self.media, &url, GUTTER, &author, cx))
                 .into_any_element()
         };
@@ -1342,7 +1340,7 @@ impl ChatView {
                             .hover(|s| s.underline())
                             .on_click(cx.listener({
                                 let user = message.author.id;
-                                move |this, _, _, cx| this.open_profile(user, cx)
+                                move |this, event: &ClickEvent, _, cx| this.open_profile(user, Some(event.position()), cx)
                             }))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(rgb(theme::TEXT_BRIGHT))
@@ -1719,7 +1717,7 @@ impl ChatView {
                             .and_then(|id| this.session.read(cx).store.channel(id))
                             .and_then(|c| c.recipients.first().map(|u| u.id))
                         {
-                            this.open_profile(user, cx);
+                            this.open_profile(user, None, cx);
                         }
                     },
                 ))
@@ -1732,8 +1730,7 @@ impl ChatView {
                             .and_then(|id| this.session.read(cx).store.channel(id))
                             .and_then(|c| c.recipients.first().map(|u| u.id))
                         {
-                            this.profile_modal = Some(user);
-                            cx.notify();
+                            this.open_full_profile(user, cx);
                         }
                     },
                 ))
@@ -2215,291 +2212,6 @@ impl Render for ChatView {
             )
             .children(picker.map(|panel| {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
-            }))
-            .children(self.profile_modal.map(|user| {
-                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts, accent_color, banner, mutual_guilds, presence, server_tag, note, friends_since, favorite_game, played_games) = {
-                    let session = self.session.read(cx);
-                    let store = &session.store;
-                    let account = store.user(user);
-                    let profile = session.profiles.get(&user);
-                    (
-                        account.map(|u| u.display_name().to_owned()).unwrap_or_default(),
-                        account.map(|u| u.username.clone()).unwrap_or_default(),
-                        profile.map(|p| p.pronouns.clone()).unwrap_or_default(),
-                        account.map(|u| cdn::user_avatar(u.id, u.avatar.as_deref(), 128)).unwrap_or_default(),
-                        account.and_then(|u| store.activities(u.id).first().map(|a| {
-                            if a.kind == oxicord_model::presence::ActivityType::Custom {
-                                a.state.clone().unwrap_or_else(|| a.name.clone())
-                            } else {
-                                let prefix = match a.kind {
-                                    oxicord_model::presence::ActivityType::Playing => "Playing",
-                                    oxicord_model::presence::ActivityType::Streaming => "Streaming",
-                                    oxicord_model::presence::ActivityType::Listening => "Listening to",
-                                    oxicord_model::presence::ActivityType::Watching => "Watching",
-                                    oxicord_model::presence::ActivityType::Competing => "Competing in",
-                                    _ => "",
-                                };
-                                if prefix.is_empty() {
-                                    a.name.clone()
-                                } else {
-                                    format!("{} {}", prefix, a.name)
-                                }
-                            }
-                        })).unwrap_or_default(),
-                        profile.map(|p| p.bio.clone()).unwrap_or_default(),
-                        profile.map(|p| p.mutual_friends).unwrap_or(0),
-                        profile.map(|p| p.mutual_guilds.len()).unwrap_or(0),
-                        profile.map(|p| p.badges.clone()).unwrap_or_default(),
-                        profile.and_then(|p| p.joined_server.clone()),
-                        profile.and_then(|p| p.premium_since.clone()),
-                        profile.map(|p| p.accounts.clone()).unwrap_or_default(),
-                        profile.and_then(|p| p.accent_color),
-                        profile.and_then(|p| p.banner.clone()),
-                        profile.map(|p| p.mutual_guilds.clone()).unwrap_or_default(),
-                        store.presence(user),
-                        profile.and_then(|p| p.server_tag.clone()),
-                        profile.map(|p| p.note.clone()).unwrap_or_default(),
-                        store.relationship_since(user),
-                        profile.and_then(|p| p.favorite_game.clone()),
-                        profile.map(|p| p.played_games.clone()).unwrap_or_default(),
-                    )
-                };
-                let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
-                    this.profile_modal = None;
-                    cx.notify();
-                });
-                profile::modal(
-                    div()
-                        .w(px(420.))
-                        .h(px(400.))
-                        .bg(rgb(theme::BG_PANEL))
-                        .rounded(px(theme::RADIUS))
-                        .p_4()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .child(
-                            div()
-                                .flex()
-                                .justify_end()
-                                .child(
-                                    div()
-                                        .id("close-profile-modal")
-                                        .size(px(28.))
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .rounded(px(4.))
-                                        .cursor_pointer()
-                                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                            this.profile_modal = None;
-                                            cx.notify();
-                                        }))
-                                        .child(icon("x", 16., theme::TEXT_MUTED)),
-                                ),
-                        )
-                        .children(accent_color.map(|color| {
-                            div()
-                                .h(px(72.))
-                                .w_full()
-                                .rounded(px(theme::RADIUS))
-                                .bg(rgb(color))
-                        }))
-                        .children(banner.clone().map(|url| {
-                            div()
-                                .h(px(72.))
-                                .w_full()
-                                .rounded(px(theme::RADIUS))
-                                .child(div().child(url.clone()))
-                        }))
-                        .child(avatar(&self.media, &avatar_url, 64., &name, cx))
-                        .child(div().font_weight(FontWeight::BOLD).child(name.clone()))
-                        .children((!username.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("@{}", username))))
-                        .children((!pronouns.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(pronouns)))
-                        .children(server_tag.map(|tag| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("Server Tag: {}", tag))))
-                        .children((!status.is_empty()).then(|| div().text_color(rgb(theme::TEXT_MUTED)).child(status)))
-                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(match presence {
-                            oxicord_model::presence::Status::Online => "Online",
-                            oxicord_model::presence::Status::Idle => "Idle",
-                            oxicord_model::presence::Status::Dnd => "Do Not Disturb",
-                            oxicord_model::presence::Status::Offline => "Offline",
-                        }))
-                        .children((!bio.is_empty()).then(|| div().text_size(px(13.)).child(bio)))
-                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Friends", mutual_friends)))
-                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Servers", mutual_servers)))
-                        .children((!mutual_guilds.is_empty()).then(|| {
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_1()
-                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Mutual Servers"))
-                                .children(mutual_guilds.iter().map(|g| {
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(theme::TEXT_MUTED))
-                                        .child(g.nick.clone().unwrap_or_else(|| g.id.to_string()))
-                                }))
-                        }))
-                        .children((!badges.is_empty()).then(|| {
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_1()
-                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Badges"))
-                                .children(badges.iter().map(|badge| {
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(theme::TEXT_MUTED))
-                                        .child(if badge.description.is_empty() {
-                                            badge.id.clone()
-                                        } else {
-                                            badge.description.clone()
-                                        })
-                                }))
-                        }))
-                        .child(div()
-                            .text_size(px(12.))
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .child(format!(
-                                "Member Since: {}",
-                                joined_server.clone().unwrap_or_else(|| user.datetime().format("%b %d, %Y").to_string())
-                            )))
-                        .children(premium_since.map(|since| {
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(theme::TEXT_MUTED))
-                                .child(format!("Boosting Since: {}", since))
-                        }))
-                        .children((!note.is_empty()).then(|| {
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(theme::TEXT_MUTED))
-                                .child(format!("Note: {}", note))
-                        }))
-                        .children(friends_since.map(|since| {
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(theme::TEXT_MUTED))
-                                .child(format!("Friends Since: {}", since))
-                        }))
-                        .children(favorite_game.map(|game| {
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(theme::TEXT_MUTED))
-                                .child(format!("Favorite Game: {}", game))
-                        }))
-                        .children((!played_games.is_empty()).then(|| {
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_1()
-                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Played Games"))
-                                .children(played_games.iter().map(|game| {
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(theme::TEXT_MUTED))
-                                        .child(game.clone())
-                                }))
-                        }))
-                        .children((!accounts.is_empty()).then(|| {
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_1()
-                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Connections"))
-                                .children(accounts.iter().map(|account| {
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(theme::TEXT_MUTED))
-                                        .child(format!(
-                                            "{}: {}{}",
-                                            account.kind,
-                                            account.name,
-                                            if account.verified { " (verified)" } else { "" }
-                                        ))
-                                }))
-                        }))
-                        .child(
-                            div()
-                                .id("copy-user-id")
-                                .mt(px(8.))
-                                .px(px(8.))
-                                .py(px(4.))
-                                .rounded(px(4.))
-                                .bg(rgb(theme::BG_HOVER))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
-                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
-                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string()));
-                                }))
-                                .child(div().text_size(px(12.)).child("Copy User ID")),
-                        )
-                        .child(
-                            div()
-                                .id("copy-profile-link")
-                                .mt(px(4.))
-                                .px(px(8.))
-                                .py(px(4.))
-                                .rounded(px(4.))
-                                .bg(rgb(theme::BG_HOVER))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
-                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
-                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(format!("https://discord.com/users/{}", user)));
-                                }))
-                                .child(div().text_size(px(12.)).child("Share Profile")),
-                        )
-                        .child(
-                            div()
-                                .id("message-user")
-                                .mt(px(4.))
-                                .px(px(8.))
-                                .py(px(4.))
-                                .rounded(px(4.))
-                                .bg(rgb(theme::ACCENT))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
-                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                    this.profile_modal = None;
-                                    this.backend.send(Command::OpenDm(user));
-                                    cx.notify();
-                                }))
-                                .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_BRIGHT)).child("Message")),
-                        )
-                        .child(
-                            div()
-                                .id("copy-avatar-url")
-                                .mt(px(4.))
-                                .px(px(8.))
-                                .py(px(4.))
-                                .rounded(px(4.))
-                                .bg(rgb(theme::BG_HOVER))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
-                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
-                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(avatar_url.clone()));
-                                }))
-                                .child(div().text_size(px(12.)).child("Copy Avatar URL")),
-                        )
-                        .children(banner.clone().map(|url| {
-                            div()
-                                .id("copy-banner-url")
-                                .mt(px(4.))
-                                .px(px(8.))
-                                .py(px(4.))
-                                .rounded(px(4.))
-                                .bg(rgb(theme::BG_HOVER))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
-                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
-                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(url.clone()));
-                                }))
-                                .child(div().text_size(px(12.)).child("Copy Banner URL"))
-                        }))
-                        .into_any_element(),
-                    Box::new(on_close),
-                )
             }))
     }
 }

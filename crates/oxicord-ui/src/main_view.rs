@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
@@ -123,6 +123,8 @@ pub struct MainView {
     channel_status_modal: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
+    /// The tab of the full profile.
+    profile_tab: profile::Tab,
     /// The editable note box shown in a profile card.
     note_input: Entity<InputState>,
     /// Which profile the note box was last filled for, so we don't overwrite
@@ -236,7 +238,7 @@ impl MainView {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| RolesDialog::new(session, backend, window, cx))
         };
-        let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
+        let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Click to add a note"));
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
             cx.new(|cx| QuickSwitcher::new(session, media, window, cx))
@@ -483,7 +485,7 @@ impl MainView {
                 this.open_menu(open.target, open.at, cx);
             }),
             cx.subscribe(&session, |this, _, shown: &ShowProfile, cx| {
-                this.open_profile(shown.user, shown.guild, cx);
+                this.show_profile(shown.user, shown.guild, shown.at, shown.full, cx);
             }),
         ];
         let chat = {
@@ -532,6 +534,7 @@ impl MainView {
             status_dialog_open: false,
             channel_status_modal: false,
             profile: None,
+            profile_tab: profile::Tab::Board,
             settings_open: false,
             call_chat_open: false,
             _clock: clock,
@@ -664,20 +667,27 @@ impl MainView {
         }
     }
 
-    /// Moves along the rail, home first, then servers in folder order.
-    fn step_server(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+    /// Every server in the order the rail shows them, folders opened out.
+    fn server_order(&self, cx: &App) -> Vec<Snowflake> {
         let known: Vec<Snowflake> = self.session.read(cx).store.guilds().map(|g| g.id).collect();
         let layout = match &self.session.read(cx).account.settings {
             Load::Ready(settings) => settings.folders().to_vec(),
             _ => Vec::new(),
         };
-        let mut order = vec![None];
+        let mut order = Vec::new();
         for entry in rail::arrange(&layout, &known) {
             match entry {
-                Entry::Guild(id) => order.push(Some(id)),
-                Entry::Folder { guilds, .. } => order.extend(guilds.into_iter().map(Some)),
+                Entry::Guild(id) => order.push(id),
+                Entry::Folder { guilds, .. } => order.extend(guilds),
             }
         }
+        order
+    }
+
+    /// Moves along the rail, home first, then servers in folder order.
+    fn step_server(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let order: Vec<Option<Snowflake>> =
+            std::iter::once(None).chain(self.server_order(cx).into_iter().map(Some)).collect();
         let n = order.len();
         let at = order.iter().position(|&g| g == self.guild).unwrap_or(0);
         let next = if forward { (at + 1) % n } else { (at + n - 1) % n };
@@ -717,7 +727,14 @@ impl MainView {
             .on_action(cx.listener(|this, _: &keys::NextServer, window, cx| this.step_server(true, window, cx)))
             .on_action(cx.listener(|this, _: &keys::MarkChannelRead, _, cx| this.mark_channel_read(cx)))
             // A text field hands Escape on when it has nothing to close.
-            .on_action(cx.listener(|this, _: &Escape, _, cx| this.mark_channel_read(cx)))
+            .on_action(cx.listener(|this, _: &Escape, _, cx| {
+                // An open profile card is what Escape closes first.
+                if this.profile.take().is_some() {
+                    cx.notify();
+                } else {
+                    this.mark_channel_read(cx);
+                }
+            }))
             .on_action(cx.listener(|this, _: &keys::MarkServerRead, _, cx| {
                 if let Some(guild) = this.guild {
                     context_menu::mark_guild_read(&this.session, &this.backend, guild, cx);
@@ -920,6 +937,21 @@ impl MainView {
             DevCommand::Leave => self.session.update(cx, |s, cx| s.leave_voice(&backend, cx)),
             DevCommand::Mute => self.session.update(cx, |s, cx| s.toggle_voice_mute(&backend, cx)),
             DevCommand::Deafen => self.session.update(cx, |s, cx| s.toggle_voice_deafen(&backend, cx)),
+            DevCommand::Profile(user, guild) => {
+                // As if the person was clicked in the member list.
+                let at = gpui_kit::point(window.viewport_size().width - px(100.), px(146.));
+                self.show_profile(user, guild, Some(at), false, cx);
+            }
+            DevCommand::Full(user, guild) => self.show_profile(user, guild, None, true, cx),
+            DevCommand::Tab(tab) => {
+                self.profile_tab = [profile::Tab::Board, profile::Tab::Activity, profile::Tab::Friends, profile::Tab::Servers]
+                    [usize::from(tab).min(3)];
+                cx.notify();
+            }
+            DevCommand::Close => {
+                self.profile = None;
+                cx.notify();
+            }
         }
     }
 
@@ -930,145 +962,286 @@ impl MainView {
         self.select_channel(channel, window, cx);
     }
 
-    fn open_profile(&mut self, user: Snowflake, guild: Option<Snowflake>, cx: &mut Context<Self>) {
-        let fetch = self.session.update(cx, |s, _| s.should_fetch_profile(user));
+    /// Opens the small card for a person, beside `at` when we know where the
+    /// click was.
+    fn open_profile(&mut self, user: Snowflake, guild: Option<Snowflake>, at: Option<Point<Pixels>>, cx: &mut Context<Self>) {
+        self.show_profile(user, guild, at, false, cx);
+    }
+
+    fn show_profile(
+        &mut self,
+        user: Snowflake,
+        guild: Option<Snowflake>,
+        at: Option<Point<Pixels>>,
+        full: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let fetch = self.session.update(cx, |s, _| s.should_fetch_profile(user, guild));
         if fetch {
             self.backend.send(Command::LoadProfile { user, guild });
         }
-        self.profile = Some(ShowProfile { user, guild });
+        self.profile = Some(ShowProfile { user, guild, at, full });
         // Let the note box refill from the stored note when it next renders.
         self.note_prefilled_for = None;
         cx.notify();
     }
 
+    /// The date as the profile cards write it, in our own time zone:
+    /// `Sep 7, 2025`.
+    fn card_date(date: chrono::DateTime<chrono::FixedOffset>) -> String {
+        date.with_timezone(&chrono::Local).format("%b %-d, %Y").to_string()
+    }
+
     /// Gathers what a person's card shows. `guild` adds their nickname and roles there.
-    fn build_card(&self, user: Snowflake, guild: Option<Snowflake>, cx: &App) -> Option<profile::Card> {
-        let card = {
+    fn build_card(&self, user: Snowflake, guild: Option<Snowflake>, cx: &mut App) -> Option<profile::Card> {
+        let rail_order = self.server_order(cx);
+        let avatar_url;
+        let mut card = {
             let session = self.session.read(cx);
             let store = &session.store;
             let account = store.user(user)?;
             let member = guild.and_then(|g| store.member_in_guild(g, user));
             let profile = session.profiles.get(&user);
+            avatar_url = cdn::user_avatar(user, account.avatar.as_deref(), 128);
+
+            // The member list knows roles only for people it has scrolled past,
+            // so the profile's own list fills in for the rest.
+            let roles: Vec<(String, Option<u32>)> = match (&member, guild.and_then(|g| store.guild(g)), profile) {
+                (Some((_, roles)), _, _) => {
+                    roles.iter().map(|r| (r.name.clone(), (r.color != 0).then_some(r.color))).collect()
+                }
+                (None, Some(server), Some(profile)) => {
+                    let mut listed: Vec<_> =
+                        server.roles.iter().filter(|r| r.id != server.id && profile.member_roles.contains(&r.id)).collect();
+                    listed.sort_by_key(|r| std::cmp::Reverse(r.position));
+                    listed.iter().map(|r| (r.name.clone(), (r.color != 0).then_some(r.color))).collect()
+                }
+                _ => Vec::new(),
+            };
+
+            let date = |text: &str| {
+                chrono::DateTime::parse_from_rfc3339(text)
+                    .ok()
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S")
+                            .ok()
+                            .map(|d| d.and_utc().fixed_offset())
+                    })
+                    .map(Self::card_date)
+            };
+            let game = |entry: &oxicord_model::GameEntry| {
+                let known = profile.and_then(|p| p.games.get(&entry.id));
+                profile::Game {
+                    name: known.map(|g| g.name.clone()).unwrap_or_default(),
+                    cover: known.and_then(|g| g.cover_url.clone()),
+                    comment: entry.comment.clone(),
+                    tags: entry.tags.clone(),
+                }
+            };
+            let widget = |title: &'static str, featured: bool, entries: Option<&Vec<oxicord_model::GameEntry>>| {
+                entries.filter(|e| !e.is_empty()).map(|entries| profile::Widget {
+                    title,
+                    featured,
+                    games: entries.iter().map(game).collect(),
+                })
+            };
+            let board: Vec<profile::Widget> = profile
+                .map(|p| {
+                    [
+                        widget("Favorite Game", true, Some(&p.favorite_games)),
+                        widget("Games I Like", false, Some(&p.played_games)),
+                        widget("Want to Play", false, Some(&p.want_to_play_games)),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect()
+                })
+                .unwrap_or_default();
+
+            let now = chrono::Utc::now().timestamp_millis().max(0) as u64;
+            let activities = store
+                .activities(user)
+                .iter()
+                .filter(|a| !a.is_custom_status())
+                .map(|a| profile::ActivityCard {
+                    header: match a.verb() {
+                        Some(verb) => format!("{verb} {}", a.name),
+                        None => a.name.clone(),
+                    },
+                    title: a.details.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| a.name.clone()),
+                    line: a.state.clone().unwrap_or_default(),
+                    image: a.image_url(),
+                    progress: a
+                        .timestamps
+                        .and_then(|t| Some((t.start?, t.end?)))
+                        .map(|(start, end)| (now.saturating_sub(start), end.saturating_sub(start))),
+                })
+                .collect();
 
             profile::Card {
                 name: member
                     .as_ref()
                     .and_then(|(nick, _)| nick.clone())
+                    .or_else(|| profile.and_then(|p| p.member_nick.clone()))
                     .filter(|n| !n.is_empty())
                     .unwrap_or_else(|| account.display_name().to_owned()),
                 username: account.username.clone(),
+                bot: account.bot,
                 pronouns: profile.map(|p| p.pronouns.clone()).unwrap_or_default(),
-                avatar_url: cdn::user_avatar(user, account.avatar.as_deref(), 128),
+                avatar_url: avatar_url.clone(),
                 status: store.presence(user),
                 bio: profile.map(|p| p.bio.clone()).unwrap_or_default(),
-                created: user.datetime().format("%b %d, %Y").to_string(),
-                roles: member
-                    .map(|(_, roles)| {
-                        roles
-                            .iter()
-                            .map(|r| (r.name.clone(), (r.color != 0).then_some(r.color)))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                created: Self::card_date(user.datetime().fixed_offset()),
+                roles,
                 banner_url: profile
                     .and_then(|p| p.banner.as_deref())
                     .map(|hash| cdn::user_banner(user, hash, 600)),
-                accent: profile.and_then(|p| p.accent_color).unwrap_or(theme::ACCENT),
+                accent: profile.and_then(|p| p.accent_color).unwrap_or(0),
                 badges: profile
                     .map(|p| p.badges.iter().map(|b| (b.description.clone(), cdn::badge_icon(&b.icon))).collect())
                     .unwrap_or_default(),
+                tag: profile.and_then(|p| p.server_tag.as_ref()).map(|t| {
+                    (t.tag.clone(), t.badge.as_deref().map(|b| cdn::clan_badge(t.guild_id, b, 32)))
+                }),
                 joined_server: profile
                     .and_then(|p| p.joined_server.as_deref())
-                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                    .map(|d| d.format("%b %d, %Y").to_string())
+                    .and_then(date)
                     .unwrap_or_default(),
+                server: guild.and_then(|g| store.guild(g)).map(|g| {
+                    (g.name.clone(), g.icon.as_deref().map(|h| cdn::guild_icon(g.id, h, 32)))
+                }),
+                // In the order of our own server list, as the official client has them.
                 mutual_servers: profile
                     .map(|p| {
-                        p.mutual_guilds
+                        rail_order
                             .iter()
-                            .filter_map(|m| store.guild(m.id))
-                            .map(|g| (g.name.clone(), g.icon.as_deref().map(|h| cdn::guild_icon(g.id, h, 64))))
+                            .filter_map(|id| {
+                                let g = store.guild(*id)?;
+                                let m = p.mutual_guilds.iter().find(|m| m.id == g.id)?;
+                                Some(profile::Mutual {
+                                    name: g.name.clone(),
+                                    picture: g.icon.as_deref().map(|h| cdn::guild_icon(g.id, h, 64)),
+                                    detail: m.nick.clone().filter(|n| !n.is_empty()),
+                                })
+                            })
                             .collect()
                     })
                     .unwrap_or_default(),
-                mutual_friends: profile.map_or(0, |p| p.mutual_friends),
-                accounts: profile
-                    .map(|p| p.accounts.iter().map(|a| format!("{}: {}", a.kind, a.name)).collect())
+                mutual_friends: profile
+                    .map(|p| {
+                        p.mutual_friend_users
+                            .iter()
+                            .map(|u| profile::Mutual {
+                                name: u.display_name().to_owned(),
+                                picture: Some(cdn::user_avatar(u.id, u.avatar.as_deref(), 64)),
+                                detail: Some(u.username.clone()),
+                            })
+                            .collect()
+                    })
                     .unwrap_or_default(),
+                mutual_friend_count: profile.map_or(0, |p| p.mutual_friends),
+                accounts: profile
+                    .map(|p| {
+                        p.accounts
+                            .iter()
+                            .map(|a| profile::Connection {
+                                kind: a.kind.clone(),
+                                name: a.name.clone(),
+                                since: a.metadata.created_at.as_deref().and_then(date),
+                                games: a.metadata.game_count.clone().filter(|n| n.parse::<i64>().is_ok_and(|n| n >= 0)),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                board,
+                activities,
                 is_me: store.me().is_some_and(|me| me.id == user),
                 actions: Vec::new(),
                 note_input: self.note_input.clone(),
             }
         };
-        let mut card = card;
+        // With no accent or banner the card takes after the avatar, as the
+        // official client does.
+        if card.accent == 0 {
+            card.accent = self.media.update(cx, |m, _| m.dominant_color(&avatar_url)).unwrap_or(0x232428);
+        }
         if !card.is_me {
-            let kind = self.session.read(cx).store.relationship(user);
-            card.actions = self.relationship_actions(user, kind);
-            // Server moderation: each action needs its own permission, and
-            // none of them can target the server owner.
-            if let Some(guild) = guild {
-                let (permissions, is_owner) = {
-                    let session = self.session.read(cx);
-                    let store = &session.store;
-                    let is_owner = store.guild(guild).and_then(|g| g.owner_id) == Some(user);
-                    (store.guild_permissions(guild), is_owner)
-                };
-                if !is_owner && permissions.contains(oxicord_model::Permissions::KICK_MEMBERS) {
-                    let backend = self.backend.clone();
-                    card.actions.push(profile::CardAction {
-                        label: "Kick",
-                        danger: true,
-                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, _: &mut App| {
-                            backend.send(Command::KickMember { guild, user });
-                        }) as Box<profile::Handler>,
-                    });
-                }
-                if !is_owner && permissions.contains(oxicord_model::Permissions::BAN_MEMBERS) {
-                    let session = self.session.downgrade();
-                    card.actions.push(profile::CardAction {
-                        label: "Ban",
-                        danger: true,
-                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                            if let Some(session) = session.upgrade() {
-                                session.update(cx, |_, cx| cx.emit(OpenBanMember(guild, user)));
-                            }
-                        }) as Box<profile::Handler>,
-                    });
-                }
-                if !is_owner && permissions.contains(oxicord_model::Permissions::MODERATE_MEMBERS) {
-                    let session = self.session.downgrade();
-                    card.actions.push(profile::CardAction {
-                        label: "Timeout",
-                        danger: true,
-                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                            if let Some(session) = session.upgrade() {
-                                session.update(cx, |_, cx| cx.emit(OpenTimeoutMember(guild, user)));
-                            }
-                        }) as Box<profile::Handler>,
-                    });
-                }
-                // Editing roles needs its own permission and opens a dialog.
-                let can_manage_roles = self
-                    .session
-                    .read(cx)
-                    .store
-                    .guild_permissions(guild)
-                    .contains(oxicord_model::Permissions::MANAGE_ROLES);
-                if can_manage_roles && !is_owner {
-                    let session = self.session.downgrade();
-                    card.actions.push(profile::CardAction {
-                        label: "Roles",
-                        danger: false,
-                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                            if let Some(session) = session.upgrade() {
-                                session.update(cx, |_, cx| cx.emit(OpenRolesMember(guild, user)));
-                            }
-                        }) as Box<profile::Handler>,
-                    });
-                }
-            }
+            card.actions = self.card_actions(user, guild, cx);
         }
         Some(card)
+    }
+
+    /// The buttons of someone's card: what to do about the relationship, and
+    /// in a server, each moderation action their permissions allow. None of
+    /// them can target the server owner.
+    fn card_actions(&self, user: Snowflake, guild: Option<Snowflake>, cx: &App) -> Vec<profile::CardAction> {
+        let kind = self.session.read(cx).store.relationship(user);
+        let mut actions = self.relationship_actions(user, kind);
+        let Some(guild) = guild else { return actions };
+        let (permissions, is_owner) = {
+            let store = &self.session.read(cx).store;
+            (store.guild_permissions(guild), store.guild(guild).and_then(|g| g.owner_id) == Some(user))
+        };
+        if is_owner {
+            return actions;
+        }
+        let session = self.session.downgrade();
+        let backend = self.backend.clone();
+        let emit = |label: &'static str, glyph: &'static str, danger: bool, run: profile::Action| profile::CardAction {
+            label,
+            glyph,
+            danger,
+            run,
+        };
+        if permissions.contains(oxicord_model::Permissions::KICK_MEMBERS) {
+            let backend = backend.clone();
+            actions.push(emit(
+                "Kick",
+                "log-out",
+                true,
+                Rc::new(move |_: &mut Window, _: &mut App| backend.send(Command::KickMember { guild, user })),
+            ));
+        }
+        if permissions.contains(oxicord_model::Permissions::BAN_MEMBERS) {
+            let session = session.clone();
+            actions.push(emit(
+                "Ban",
+                "ban",
+                true,
+                Rc::new(move |_: &mut Window, cx: &mut App| {
+                    if let Some(session) = session.upgrade() {
+                        session.update(cx, |_, cx| cx.emit(OpenBanMember(guild, user)));
+                    }
+                }),
+            ));
+        }
+        if permissions.contains(oxicord_model::Permissions::MODERATE_MEMBERS) {
+            let session = session.clone();
+            actions.push(emit(
+                "Timeout",
+                "clock",
+                true,
+                Rc::new(move |_: &mut Window, cx: &mut App| {
+                    if let Some(session) = session.upgrade() {
+                        session.update(cx, |_, cx| cx.emit(OpenTimeoutMember(guild, user)));
+                    }
+                }),
+            ));
+        }
+        // Editing roles needs its own permission and opens a dialog.
+        if permissions.contains(oxicord_model::Permissions::MANAGE_ROLES) {
+            actions.push(emit(
+                "Roles",
+                "shield",
+                false,
+                Rc::new(move |_: &mut Window, cx: &mut App| {
+                    if let Some(session) = session.upgrade() {
+                        session.update(cx, |_, cx| cx.emit(OpenRolesMember(guild, user)));
+                    }
+                }),
+            ));
+        }
+        actions
     }
 
     /// Sends the note typed in the open profile's box to Discord.
@@ -1078,9 +1251,38 @@ impl MainView {
         self.backend.send(Command::SetUserNote { user: profile.user, note });
     }
 
+    /// The menu behind the card's three dots: everything the buttons don't
+    /// already offer, plus copying the id.
+    fn open_card_menu(&mut self, user: Snowflake, guild: Option<Snowflake>, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let actions: Vec<profile::CardAction> = self
+            .card_actions(user, guild, cx)
+            .into_iter()
+            .filter(|a| !matches!(a.label, "Add Friend" | "Accept" | "Unblock"))
+            .collect();
+        let mut entries: Vec<crate::popup::Entry> = actions
+            .iter()
+            .map(|a| if a.danger { crate::popup::Entry::danger(a.label, a.glyph) } else { crate::popup::Entry::item(a.label, a.glyph) })
+            .collect();
+        if !entries.is_empty() {
+            entries.push(crate::popup::Entry::Separator);
+        }
+        let copy = entries.len();
+        entries.push(crate::popup::Entry::item("Copy User ID", "hash"));
+        let pick = Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
+            if index == copy {
+                cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string()));
+            } else if let Some(action) = actions.get(index) {
+                (action.run)(window, cx);
+            }
+        });
+        self.popup_open = true;
+        self.popup.update(cx, |popup, cx| popup.show(at, entries, pick, cx));
+        cx.notify();
+    }
+
     /// The card for the person we are looking at, over everything else.
     fn render_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let (user, guild) = self.profile.as_ref().map(|p| (p.user, p.guild))?;
+        let (user, guild, at, full) = self.profile.as_ref().map(|p| (p.user, p.guild, p.at, p.full))?;
         let card = self.build_card(user, guild, cx)?;
 
         // Fill the note box from the stored note the first time we show a user,
@@ -1092,20 +1294,53 @@ impl MainView {
             self.note_prefilled_for = Some(user);
         }
 
-        let on_message =
-            cx.listener(move |this, _: &ClickEvent, _, cx| this.message_from_card(user, cx));
-        let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
-            this.profile = None;
-            cx.notify();
-        });
-        Some(profile::overlay(
-            card,
-            &self.media,
-            Box::new(on_message),
-            Box::new(on_close),
-            window,
-            cx,
-        ))
+        let view = cx.entity().downgrade();
+        let act = |run: fn(&mut Self, Snowflake, Option<Snowflake>, &mut Window, &mut Context<Self>)| -> profile::Action {
+            let view = view.clone();
+            Rc::new(move |window: &mut Window, cx: &mut App| {
+                view.update(cx, |this, cx| run(this, user, guild, window, cx)).ok();
+            })
+        };
+        let handlers = profile::Handlers {
+            message: act(|this, user, _, _, cx| this.message_from_card(user, cx)),
+            full: act(|this, user, guild, _, cx| this.show_profile(user, guild, None, true, cx)),
+            close: act(|this, _, _, _, cx| {
+                this.profile = None;
+                cx.notify();
+            }),
+            edit: act(|this, _, _, _, cx| {
+                this.profile = None;
+                this.settings_open = true;
+                this.settings_view.update(cx, |view, cx| view.open_profile(cx));
+                cx.notify();
+            }),
+            more: {
+                let view = view.clone();
+                Rc::new(move |at: Point<Pixels>, _: &mut Window, cx: &mut App| {
+                    view.update(cx, |this, cx| this.open_card_menu(user, guild, at, cx)).ok();
+                })
+            },
+            tab: {
+                let view = view.clone();
+                Rc::new(move |tab: profile::Tab, _: &mut Window, cx: &mut App| {
+                    view.update(cx, |this, cx| {
+                        this.profile_tab = tab;
+                        if let Some(shown) = &mut this.profile {
+                            shown.full = true;
+                            shown.at = None;
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                })
+            },
+        };
+        let media = self.media.clone();
+        Some(if full {
+            profile::full(card, &handlers, self.profile_tab, &media, window, cx)
+        } else {
+            profile::popout(card, &handlers, at, &media, window, cx)
+        })
     }
 
     /// The relationship buttons for someone's card, by how we know them.
@@ -1114,23 +1349,28 @@ impl MainView {
         user: Snowflake,
         kind: Option<RelationshipKind>,
     ) -> Vec<profile::CardAction> {
-        let send = |command: fn(Snowflake) -> Command| {
+        let send = |command: fn(Snowflake) -> Command| -> profile::Action {
             let backend = self.backend.clone();
-            Box::new(move |_: &ClickEvent, _: &mut Window, _: &mut App| backend.send(command(user)))
-                as Box<profile::Handler>
+            Rc::new(move |_: &mut Window, _: &mut App| backend.send(command(user)))
         };
-        let add = |label| profile::CardAction { label, danger: false, handler: send(Command::AcceptFriend) };
-        let remove = |label| profile::CardAction { label, danger: true, handler: send(Command::RemoveRelationship) };
-        let block = profile::CardAction { label: "Block", danger: true, handler: send(Command::BlockUser) };
+        let add = |label| profile::CardAction {
+            label,
+            glyph: if label == "Accept" { "user-check" } else { "user-plus" },
+            danger: false,
+            run: send(Command::AcceptFriend),
+        };
+        let remove = |label, glyph| profile::CardAction { label, glyph, danger: true, run: send(Command::RemoveRelationship) };
+        let block = profile::CardAction { label: "Block", glyph: "ban", danger: true, run: send(Command::BlockUser) };
 
         match kind {
-            Some(RelationshipKind::Friend) => vec![remove("Remove Friend"), block],
-            Some(RelationshipKind::IncomingRequest) => vec![add("Accept"), remove("Ignore"), block],
-            Some(RelationshipKind::OutgoingRequest) => vec![remove("Cancel Request"), block],
+            Some(RelationshipKind::Friend) => vec![remove("Remove Friend", "user-minus"), block],
+            Some(RelationshipKind::IncomingRequest) => vec![add("Accept"), remove("Ignore", "user-x"), block],
+            Some(RelationshipKind::OutgoingRequest) => vec![remove("Cancel Request", "user-x"), block],
             Some(RelationshipKind::Blocked) => vec![profile::CardAction {
                 label: "Unblock",
+                glyph: "ban",
                 danger: false,
-                handler: send(Command::RemoveRelationship),
+                run: send(Command::RemoveRelationship),
             }],
             _ => vec![add("Add Friend"), block],
         }
@@ -1166,7 +1406,7 @@ impl MainView {
     ) {
         use user_menu::Choice;
         match choice {
-            Choice::Profile => self.open_profile(user, guild, cx),
+            Choice::Profile => self.show_profile(user, guild, None, true, cx),
             Choice::Mention => self.session.update(cx, |_, cx| cx.emit(MentionUser(user))),
             Choice::Message => self.message_from_card(user, cx),
             Choice::AddFriend => {
@@ -1226,7 +1466,7 @@ impl MainView {
     /// conversation, which the docked card shows.
     fn fetch_dm_profile(&mut self, cx: &mut Context<Self>) {
         let Some(user) = self.dm_peer(cx) else { return };
-        if self.session.update(cx, |s, _| s.should_fetch_profile(user)) {
+        if self.session.update(cx, |s, _| s.should_fetch_profile(user, None)) {
             self.backend.send(Command::LoadProfile { user, guild: None });
         }
     }
@@ -1288,7 +1528,7 @@ impl MainView {
                     .rounded(px(theme::RADIUS))
                     .cursor_pointer()
                     .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, None, cx)))
+                    .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| this.open_profile(user, None, Some(event.position()), cx)))
                     .child(div().relative().flex_none().child(avatar(&self.media, &url, 32., &name, cx)).child(presence_dot(status)))
                     .child(div().flex_1().min_w_0().truncate().child(name)),
             );
@@ -1785,7 +2025,9 @@ impl MainView {
                     )
                     .child(div().flex_1().min_w_0().truncate().child(m.name.clone()));
                 let user = m.user;
-                row = row.on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, this.guild, cx)));
+                row = row.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                    this.open_profile(user, this.guild, Some(event.position()), cx)
+                }));
                 if m.streaming {
                     row = row.child(
                         div()

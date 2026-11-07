@@ -1,5 +1,5 @@
 use gpui_kit::{
-    AnyElement, App, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    AnyElement, App, ClickEvent, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ListAlignment, ListOffset, ListState, MouseButton, MouseDownEvent,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
 };
@@ -195,9 +195,9 @@ impl MemberList {
                     // Offline people fade out until the pointer is on them.
                     .when(offline, |row| row.opacity(0.3).hover(|s| s.opacity(1.).bg(rgb(theme::BG_HOVER))))
                     .when(!offline, |row| row.hover(|s| s.bg(rgb(theme::BG_HOVER))))
-                    .on_click(cx.listener(move |this, _, _, cx| {
+                    .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                         this.session
-                            .update(cx, |session, cx| session.show_profile(user, Some(guild), cx));
+                            .update(cx, |session, cx| session.show_profile(user, Some(guild), Some(event.position()), cx));
                     }))
                     .child(
                         div()
