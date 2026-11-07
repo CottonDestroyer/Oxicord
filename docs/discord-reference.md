@@ -244,3 +244,21 @@ Observed in Cotton's full profile.
   - Block
   - Report User Profile
   - Copy User ID
+
+## Server context menu
+
+Observed on "Low iq gaymers".
+
+Menu items include:
+- Mark as read
+- Mute Server
+- Notification Settings
+- Suppress @everyone and @here
+- Hide Muted Channels
+- Server Settings
+- Privacy Settings
+- Edit Per-server Profile
+- Create Event
+- Move to...
+- Leave Server
+- Copy Server ID

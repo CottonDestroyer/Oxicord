@@ -317,6 +317,12 @@ impl Render for ContextMenu {
         }
 
         if is_guild {
+            menu = menu.child(self.item("server-settings", "Server Settings", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Guild(guild)) = this.target {
+                    this.session.update(cx, |_, cx| cx.emit(OpenServerSettings(guild)));
+                }
+                this.close(cx);
+            }, cx));
             menu = menu.child(div().my(px(2.)).h(px(1.)).bg(rgb(theme::BORDER)));
             let armed = self.confirm_leave;
             menu = menu.child(self.item(
