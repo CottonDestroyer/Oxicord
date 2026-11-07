@@ -15,7 +15,7 @@ use oxicord_gateway::{ConnectionState, GatewayConfig, GatewayEvent, GatewayHandl
 use oxicord_model::{SearchPage, Snowflake, User, gateway::DispatchEvent};
 use oxicord_ui::{AccountEvent, AccountRequest, AdminEvent, AdminRequest, Backend, Command, Event};
 
-use crate::credentials;
+use crate::{credentials, voice::Voice};
 
 pub fn start() -> Backend {
     let (command_tx, command_rx) = async_channel::unbounded();
@@ -114,11 +114,13 @@ fn fetch_image(fetcher: &Fetcher, url: String, events: Sender<Event>) {
 struct Live {
     gateway: GatewayHandle,
     api: ApiClient,
+    voice: Voice,
 }
 
 /// Swaps in a new session, closing the previous gateway connection.
 fn replace(slot: &mut Option<Live>, new: Option<Live>) {
     if let Some(old) = std::mem::replace(slot, new) {
+        old.voice.shutdown();
         old.gateway.shutdown();
     }
 }
@@ -130,6 +132,9 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
     let (api, events) = (live.api.clone(), events.clone());
 
     match command {
+        Command::JoinVoice { guild, channel } => live.voice.join(guild, channel),
+        Command::LeaveVoice => live.voice.leave(),
+        Command::SetVoiceFlags { mute, deafen } => live.voice.set_flags(mute, deafen),
         Command::LoadHistory { channel, before } => {
             tokio::spawn(async move {
                 let result = load_history(&api, channel, before).await;
@@ -1018,8 +1023,8 @@ async fn begin_login(
             return None;
         }
     };
-    let gateway = connect(token, props, identity, user, events.clone());
-    Some(Live { gateway, api })
+    let (gateway, voice) = connect(token, props, identity, user, events.clone());
+    Some(Live { gateway, api, voice })
 }
 
 /// Picks the identity to present with this token: the one the sign-in window
@@ -1144,12 +1149,14 @@ fn connect(
     identity: Option<Identity>,
     user: User,
     events: Sender<Event>,
-) -> GatewayHandle {
+) -> (GatewayHandle, Voice) {
     let config = GatewayConfig {
         props,
         ..GatewayConfig::new(token.clone())
     };
     let (handle, mut gateway_events) = oxicord_gateway::spawn(config);
+    let voice = Voice::new(handle.clone(), events.clone());
+    let watcher = voice.clone();
 
     tokio::spawn(async move {
         let mut waiting = true;
@@ -1158,6 +1165,9 @@ fn connect(
         while let Some(event) = gateway_events.recv().await {
             if let GatewayEvent::State(state) = &event {
                 tracing::info!(?state, waiting_for_ready = waiting, "gateway state");
+            }
+            if let GatewayEvent::Dispatch(dispatch) = &event {
+                watcher.observe(dispatch);
             }
             let routed = route(waiting, &event);
 
@@ -1190,7 +1200,7 @@ fn connect(
             }
         }
     });
-    handle
+    (handle, voice)
 }
 
 #[cfg(test)]

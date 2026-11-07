@@ -861,6 +861,14 @@ impl MainView {
         cx.notify();
     }
 
+    /// Joins a voice channel of the open server and shows the call panel.
+    fn join_voice(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        let (guild, backend) = (self.guild, self.backend.clone());
+        self.session
+            .update(cx, |session, cx| session.join_voice(&backend, guild, channel, cx));
+        self.open_panel(PanelKind::VoiceDetails, window, cx);
+    }
+
     /// Goes to any channel we know, for example from a search result.
     fn show_channel(
         &mut self,
@@ -1708,6 +1716,9 @@ impl MainView {
         members
             .iter()
             .map(|m| {
+                // A green ring around the avatar of whoever is talking.
+                let speaking = self.session.read(cx).voice.speaking.contains(&m.user);
+                let ring = if speaking { theme::ONLINE } else { theme::BG_SIDEBAR };
                 let mut row = div()
                     .id(("voice-member", m.user.0))
                     .h(px(28.))
@@ -1721,7 +1732,14 @@ impl MainView {
                     .text_size(px(14.))
                     .text_color(rgb(theme::TEXT_MUTED))
                     .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT)))
-                    .child(avatar(&self.media, &m.avatar, 20., &m.name, cx))
+                    .child(
+                        div()
+                            .flex_none()
+                            .rounded(px(12.))
+                            .border_2()
+                            .border_color(rgb(ring))
+                            .child(avatar(&self.media, &m.avatar, 20., &m.name, cx)),
+                    )
                     .child(div().flex_1().min_w_0().truncate().child(m.name.clone()));
                 let user = m.user;
                 row = row.on_click(cx.listener(move |this, _, _, cx| this.open_profile(user, this.guild, cx)));
@@ -1773,6 +1791,7 @@ impl MainView {
         };
 
         let indent = if channel.kind.is_thread() { 18. } else { 0. };
+        let joins_voice = is_voice(channel.kind);
         let participants = self.render_voice_members(&channel.voice, cx);
 
         let row = div()
@@ -1799,7 +1818,12 @@ impl MainView {
                 let s = s.bg(rgb(theme::BG_HOVER));
                 if channel.muted { s } else { s.text_color(rgb(theme::TEXT_BRIGHT)) }
             })
-            .on_click(cx.listener(move |this, _, window, cx| this.select_channel(id, window, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.select_channel(id, window, cx);
+                if joins_voice {
+                    this.join_voice(id, window, cx);
+                }
+            }))
             .child(icon(glyph, 20., color))
             .child(
                 div()

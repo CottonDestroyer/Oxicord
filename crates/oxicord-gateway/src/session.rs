@@ -29,6 +29,13 @@ pub(crate) enum Command {
     SubscribeMembers { guild: Snowflake, channel: Snowflake },
     /// Look up some people of `guild` by id. The answer is a member chunk.
     RequestMembers { guild: Snowflake, ids: Vec<Snowflake> },
+    /// Join, move between or leave voice channels.
+    SetVoiceState {
+        guild: Option<Snowflake>,
+        channel: Option<Snowflake>,
+        self_mute: bool,
+        self_deaf: bool,
+    },
     Shutdown,
 }
 
@@ -162,7 +169,7 @@ impl Runtime {
                     Some(Command::SubscribeMembers { guild, channel }) => {
                         self.members = Some((guild, channel));
                     }
-                    Some(Command::RequestMembers { .. }) => {}
+                    Some(Command::RequestMembers { .. } | Command::SetVoiceState { .. }) => {}
                     Some(Command::Shutdown) | None => return false,
                 },
             }
@@ -288,6 +295,14 @@ impl Runtime {
                                     return RECONNECT;
                                 }
                             }
+                        }
+                    }
+                    Some(Command::SetVoiceState { guild, channel, self_mute, self_deaf }) => {
+                        // A call does not survive a new session, so there is
+                        // nothing to replay after a reconnect.
+                        let frame = protocol::voice_state_update(guild, channel, self_mute, self_deaf);
+                        if conn.ready && !conn.send(&frame).await {
+                            return RECONNECT;
                         }
                     }
                     Some(Command::Shutdown) | None => {

@@ -8,7 +8,7 @@ use oxicord_store::{Changes, Store};
 use crate::{
     AccountEvent, AccountRequest, Settings,
     account::{AccountState, Load},
-    backend::{Backend, Command},
+    backend::{Backend, Command, VoiceNotice},
 };
 
 /// The signed in client state. Views observe this entity and listen for the
@@ -68,6 +68,27 @@ pub struct Session {
     pub profiles: HashMap<Snowflake, Profile>,
     /// People whose profile was asked for already, answered or not.
     profile_requested: HashSet<Snowflake>,
+    /// The voice call we are in or joining.
+    pub voice: VoiceCall,
+}
+
+/// Where our own voice call stands.
+#[derive(Clone, Debug, Default)]
+pub struct VoiceCall {
+    /// The server (none for a private call) and channel we asked for, set
+    /// from the moment we ask until the call ends.
+    pub target: Option<(Option<Snowflake>, Snowflake)>,
+    /// False while still joining.
+    pub connected: bool,
+    pub muted: bool,
+    pub deafened: bool,
+    /// Whether the call is end-to-end encrypted, with the code to compare.
+    pub encrypted: bool,
+    pub code: Option<String>,
+    /// Things that do not work, like no speakers or no microphone.
+    pub warnings: Vec<String>,
+    /// Who is talking right now.
+    pub speaking: HashSet<Snowflake>,
 }
 
 impl EventEmitter<Changes> for Session {}
@@ -263,7 +284,90 @@ impl Session {
             status: ClientStatus::default(),
             profiles: HashMap::new(),
             profile_requested: HashSet::new(),
+            voice: VoiceCall::default(),
         }
+    }
+
+    /// Joins a voice channel, leaving the call we were in if any.
+    pub fn join_voice(
+        &mut self,
+        backend: &Backend,
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+        cx: &mut Context<Self>,
+    ) {
+        if self.voice.target == Some((guild, channel)) {
+            return;
+        }
+        self.voice = VoiceCall {
+            target: Some((guild, channel)),
+            muted: self.voice.muted,
+            deafened: self.voice.deafened,
+            ..VoiceCall::default()
+        };
+        backend.send(Command::JoinVoice { guild, channel });
+        cx.notify();
+    }
+
+    pub fn leave_voice(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        if self.voice.target.is_none() {
+            return;
+        }
+        backend.send(Command::LeaveVoice);
+        self.voice = VoiceCall { muted: self.voice.muted, deafened: self.voice.deafened, ..VoiceCall::default() };
+        cx.notify();
+    }
+
+    pub fn toggle_voice_mute(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.voice.muted = !self.voice.muted;
+        self.send_voice_flags(backend, cx);
+    }
+
+    pub fn toggle_voice_deafen(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.voice.deafened = !self.voice.deafened;
+        self.send_voice_flags(backend, cx);
+    }
+
+    fn send_voice_flags(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        // Deafening implies muting, as in the official client.
+        backend.send(Command::SetVoiceFlags {
+            mute: self.voice.muted || self.voice.deafened,
+            deafen: self.voice.deafened,
+        });
+        cx.notify();
+    }
+
+    pub fn apply_voice(&mut self, notice: VoiceNotice, cx: &mut Context<Self>) {
+        match notice {
+            VoiceNotice::Connected => self.voice.connected = true,
+            VoiceNotice::Warning(text) => {
+                if !self.voice.warnings.contains(&text) {
+                    self.voice.warnings.push(text);
+                }
+            }
+            VoiceNotice::Speaking { user, speaking } => {
+                if speaking {
+                    self.voice.speaking.insert(user);
+                } else {
+                    self.voice.speaking.remove(&user);
+                }
+            }
+            VoiceNotice::Encryption { active, code } => {
+                self.voice.encrypted = active;
+                self.voice.code = code;
+            }
+            VoiceNotice::Left(reason) => {
+                self.voice = VoiceCall {
+                    muted: self.voice.muted,
+                    deafened: self.voice.deafened,
+                    ..VoiceCall::default()
+                };
+                if reason.is_some() {
+                    self.notice = reason;
+                }
+            }
+        }
+        cx.notify();
     }
 
     pub fn open_panel(&mut self, kind: PanelKind, cx: &mut Context<Self>) {

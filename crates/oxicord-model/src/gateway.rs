@@ -262,6 +262,32 @@ pub struct VoiceChannelStatus {
     pub status: Option<String>,
 }
 
+/// VOICE_SERVER_UPDATE: where to connect to join the call we asked for. The
+/// endpoint is missing while Discord is still picking a server.
+#[derive(Clone, Deserialize)]
+pub struct VoiceServer {
+    pub token: String,
+    /// Set for a server voice channel.
+    #[serde(default)]
+    pub guild_id: Option<Snowflake>,
+    /// Set instead of the guild for a private call.
+    #[serde(default)]
+    pub channel_id: Option<Snowflake>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+}
+
+// Left out of derive so the token never lands in a log line.
+impl std::fmt::Debug for VoiceServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VoiceServer")
+            .field("guild_id", &self.guild_id)
+            .field("channel_id", &self.channel_id)
+            .field("endpoint", &self.endpoint)
+            .finish_non_exhaustive()
+    }
+}
+
 /// MESSAGE_REACTION_ADD_MANY: busy channels batch many people's reactions to
 /// one message into a single event.
 #[derive(Clone, Debug, Deserialize)]
@@ -453,6 +479,7 @@ pub enum DispatchEvent {
     ChannelDelete(Box<Channel>),
     PresenceUpdate(PresenceUpdate),
     VoiceStateUpdate(Box<crate::VoiceState>),
+    VoiceServerUpdate(VoiceServer),
     RelationshipAdd(Box<Relationship>),
     RelationshipRemove(RelationshipRemove),
     ReactionsCleared(ReactionsCleared),
@@ -503,6 +530,7 @@ impl DispatchEvent {
             "CHANNEL_DELETE" => Self::ChannelDelete(Box::new(de(data)?)),
             "PRESENCE_UPDATE" => Self::PresenceUpdate(de(data)?),
             "VOICE_STATE_UPDATE" => Self::VoiceStateUpdate(Box::new(de(data)?)),
+            "VOICE_SERVER_UPDATE" => Self::VoiceServerUpdate(de(data)?),
             "RELATIONSHIP_ADD" => Self::RelationshipAdd(Box::new(de(data)?)),
             "RELATIONSHIP_REMOVE" => Self::RelationshipRemove(de(data)?),
             "USER_GUILD_SETTINGS_UPDATE" => Self::GuildSettingsUpdate(Box::new(de(data)?)),
@@ -677,6 +705,28 @@ mod tests {
         let ListOp::Sync { items, .. } = &u.ops[0] else { panic!("expected SYNC first") };
         assert!(matches!(items[0], ListItem::Group { .. }));
         assert!(matches!(&items[1], ListItem::Member { member } if member.roles == vec![Snowflake(9)]));
+    }
+
+    #[test]
+    fn voice_server_update_names_the_guild_or_the_private_channel() {
+        let guild = DispatchEvent::parse(
+            "VOICE_SERVER_UPDATE",
+            json!({ "token": "t", "guild_id": "5", "endpoint": "c-ams.discord.media:443" }),
+        )
+        .unwrap();
+        let DispatchEvent::VoiceServerUpdate(server) = guild else { panic!("wrong variant") };
+        assert_eq!(server.guild_id, Some(Snowflake(5)));
+        assert_eq!(server.endpoint.as_deref(), Some("c-ams.discord.media:443"));
+
+        let call = DispatchEvent::parse(
+            "VOICE_SERVER_UPDATE",
+            json!({ "token": "t", "channel_id": "9", "guild_id": null, "endpoint": null }),
+        )
+        .unwrap();
+        let DispatchEvent::VoiceServerUpdate(server) = call else { panic!("wrong variant") };
+        assert_eq!((server.guild_id, server.channel_id), (None, Some(Snowflake(9))));
+        assert!(server.endpoint.is_none());
+        assert!(!format!("{server:?}").contains("\"t\""));
     }
 
     #[test]

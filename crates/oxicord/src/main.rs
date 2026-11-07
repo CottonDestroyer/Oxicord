@@ -10,6 +10,7 @@ mod logging;
 #[cfg(not(debug_assertions))]
 use tracing_subscriber as _;
 mod settings;
+mod voice;
 
 use gpui_kit::{
     AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size,

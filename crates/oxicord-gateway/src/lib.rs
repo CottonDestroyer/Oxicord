@@ -93,6 +93,19 @@ impl GatewayHandle {
         let _ = self.tx.send(Command::RequestMembers { guild, ids });
     }
 
+    /// Joins `channel` (in `guild`, or a private call when `None`), moves
+    /// there from another channel, or leaves voice when `channel` is `None`.
+    /// The answers come back as `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE`.
+    pub fn set_voice_state(
+        &self,
+        guild: Option<Snowflake>,
+        channel: Option<Snowflake>,
+        self_mute: bool,
+        self_deaf: bool,
+    ) {
+        let _ = self.tx.send(Command::SetVoiceState { guild, channel, self_mute, self_deaf });
+    }
+
     pub fn shutdown(&self) {
         let _ = self.tx.send(Command::Shutdown);
     }
