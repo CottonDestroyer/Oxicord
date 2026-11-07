@@ -1502,6 +1502,13 @@ impl ChatView {
                 ),
             );
         }
+        if allowed.reply {
+            bar = bar.child(
+                action_button(("reply", id.0), "reply", theme::TEXT_MUTED).on_click(
+                    cx.listener(move |this, _, window, cx| this.start_reply(id, window, cx)),
+                ),
+            );
+        }
         if allowed.thread {
             bar = bar.child(
                 action_button(("thread", id.0), "messages-square", theme::TEXT_MUTED).on_click(
