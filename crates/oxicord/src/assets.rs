@@ -38,10 +38,17 @@ impl<A> Assets<A> {
 
 impl<A: AssetSource> AssetSource for Assets<A> {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
-        match self.override_for(path) {
-            Some(bytes) => Ok(Some(Cow::Owned(bytes))),
-            None => self.inner.load(path),
+        if let Some(bytes) = self.override_for(path) {
+            return Ok(Some(Cow::Owned(bytes)));
         }
+        // These two only exist in Discord's folder. Without it, draw a
+        // similar bundled icon instead of failing on every frame.
+        let path = match path {
+            "icons/friends.svg" => "icons/users.svg",
+            "icons/clyde.svg" => "icons/bot.svg",
+            other => other,
+        };
+        self.inner.load(path)
     }
 
     fn list(&self, path: &str) -> gpui_kit::Result<Vec<SharedString>> {

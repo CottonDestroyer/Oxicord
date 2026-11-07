@@ -1,7 +1,14 @@
+// Release builds are a GUI app, so Windows shouldn't open a console for them.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod assets;
 mod bridge;
 mod credentials;
+#[cfg(debug_assertions)]
 mod logging;
+// Only the debug build installs a subscriber.
+#[cfg(not(debug_assertions))]
+use tracing_subscriber as _;
 mod settings;
 
 use gpui_kit::{
@@ -83,6 +90,7 @@ fn load_fonts(cx: &mut gpui_kit::App) {
 }
 
 fn main() {
+    #[cfg(debug_assertions)]
     logging::init();
 
     let backend = bridge::start();

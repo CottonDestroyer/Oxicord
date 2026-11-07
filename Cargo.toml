@@ -25,7 +25,8 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 flate2 = "1"
 thiserror = "2"
-tracing = "0.1"
+# Release builds compile every log call out and install no subscriber.
+tracing = { version = "0.1", features = ["release_max_level_off"] }
 base64 = "0.22"
 percent-encoding = "2"
 
