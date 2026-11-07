@@ -2182,7 +2182,25 @@ impl Render for ChatView {
                         account.map(|u| u.username.clone()).unwrap_or_default(),
                         profile.map(|p| p.pronouns.clone()).unwrap_or_default(),
                         account.map(|u| cdn::user_avatar(u.id, u.avatar.as_deref(), 128)).unwrap_or_default(),
-                        account.and_then(|u| store.activities(u.id).first().map(|a| a.name.clone())).unwrap_or_default(),
+                        account.and_then(|u| store.activities(u.id).first().map(|a| {
+                            if a.kind == oxicord_model::presence::ActivityType::Custom {
+                                a.state.clone().unwrap_or_else(|| a.name.clone())
+                            } else {
+                                let prefix = match a.kind {
+                                    oxicord_model::presence::ActivityType::Playing => "Playing",
+                                    oxicord_model::presence::ActivityType::Streaming => "Streaming",
+                                    oxicord_model::presence::ActivityType::Listening => "Listening to",
+                                    oxicord_model::presence::ActivityType::Watching => "Watching",
+                                    oxicord_model::presence::ActivityType::Competing => "Competing in",
+                                    _ => "",
+                                };
+                                if prefix.is_empty() {
+                                    a.name.clone()
+                                } else {
+                                    format!("{} {}", prefix, a.name)
+                                }
+                            }
+                        })).unwrap_or_default(),
                         profile.map(|p| p.bio.clone()).unwrap_or_default(),
                         profile.map(|p| p.mutual_friends).unwrap_or(0),
                         profile.map(|p| p.mutual_guilds.len()).unwrap_or(0),
