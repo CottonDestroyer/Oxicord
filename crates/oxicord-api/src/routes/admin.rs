@@ -62,7 +62,7 @@ impl ApiClient {
             Method::PUT,
             &format!("/guilds/{guild}/bans/{user}"),
             "PUT /guilds/:id/bans/:id",
-            Some(&json!({ "delete_message_days": delete_message_days })),
+            Some(&json!({ "delete_message_seconds": delete_message_days * 86_400 })),
         )
         .await
     }

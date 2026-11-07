@@ -962,18 +962,16 @@ impl MainView {
         if !card.is_me {
             let kind = self.session.read(cx).store.relationship(user);
             card.actions = self.relationship_actions(user, kind);
-            // Server moderation: a "Kick" button for members we are allowed to remove.
+            // Server moderation: each action needs its own permission, and
+            // none of them can target the server owner.
             if let Some(guild) = guild {
-                let (can_kick, is_owner) = {
+                let (permissions, is_owner) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
-                    let can_kick = store
-                        .guild_permissions(guild)
-                        .contains(oxicord_model::Permissions::KICK_MEMBERS);
                     let is_owner = store.guild(guild).and_then(|g| g.owner_id) == Some(user);
-                    (can_kick, is_owner)
+                    (store.guild_permissions(guild), is_owner)
                 };
-                if can_kick && !is_owner {
+                if !is_owner && permissions.contains(oxicord_model::Permissions::KICK_MEMBERS) {
                     let backend = self.backend.clone();
                     card.actions.push(profile::CardAction {
                         label: "Kick",
@@ -982,44 +980,30 @@ impl MainView {
                             backend.send(Command::KickMember { guild, user });
                         }) as Box<profile::Handler>,
                     });
-                    // Banning needs its own permission and opens a confirm dialog.
-                    let can_ban = self
-                        .session
-                        .read(cx)
-                        .store
-                        .guild_permissions(guild)
-                        .contains(oxicord_model::Permissions::BAN_MEMBERS);
-                    if can_ban {
-                        let session = self.session.downgrade();
-                        card.actions.push(profile::CardAction {
-                            label: "Ban",
-                            danger: true,
-                            handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                                if let Some(session) = session.upgrade() {
-                                    session.update(cx, |_, cx| cx.emit(OpenBanMember(guild, user)));
-                                }
-                            }) as Box<profile::Handler>,
-                        });
-                        // Timing out needs its own permission and opens a dialog.
-                        let can_timeout = self
-                            .session
-                            .read(cx)
-                            .store
-                            .guild_permissions(guild)
-                            .contains(oxicord_model::Permissions::MODERATE_MEMBERS);
-                        if can_timeout {
-                            let session = self.session.downgrade();
-                            card.actions.push(profile::CardAction {
-                                label: "Timeout",
-                                danger: true,
-                                handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                                    if let Some(session) = session.upgrade() {
-                                        session.update(cx, |_, cx| cx.emit(OpenTimeoutMember(guild, user)));
-                                    }
-                                }) as Box<profile::Handler>,
-                            });
-                        }
-                    }
+                }
+                if !is_owner && permissions.contains(oxicord_model::Permissions::BAN_MEMBERS) {
+                    let session = self.session.downgrade();
+                    card.actions.push(profile::CardAction {
+                        label: "Ban",
+                        danger: true,
+                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                            if let Some(session) = session.upgrade() {
+                                session.update(cx, |_, cx| cx.emit(OpenBanMember(guild, user)));
+                            }
+                        }) as Box<profile::Handler>,
+                    });
+                }
+                if !is_owner && permissions.contains(oxicord_model::Permissions::MODERATE_MEMBERS) {
+                    let session = self.session.downgrade();
+                    card.actions.push(profile::CardAction {
+                        label: "Timeout",
+                        danger: true,
+                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                            if let Some(session) = session.upgrade() {
+                                session.update(cx, |_, cx| cx.emit(OpenTimeoutMember(guild, user)));
+                            }
+                        }) as Box<profile::Handler>,
+                    });
                 }
                 // Editing roles needs its own permission and opens a dialog.
                 let can_manage_roles = self

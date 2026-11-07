@@ -50,12 +50,11 @@ pub const ACCENT: u32 = 0x5865f2;
 pub const DANGER: u32 = 0xeb5f5e;
 /// background-feedback-notification.
 pub const BADGE: u32 = 0xd22d39;
-/// Status colors matched to Discord's current client palette.
-pub const ONLINE: u32 = 0x23a55a;
-pub const IDLE: u32 = 0xf0b232;
-pub const DND: u32 = 0xf23f43;
+pub const ONLINE: u32 = 0x3d9e60;
+pub const IDLE: u32 = 0xfdb833;
+pub const DND: u32 = 0xda3e44;
 /// text-status-offline.
-pub const OFFLINE: u32 = 0x80848e;
+pub const OFFLINE: u32 = 0x9d9ea5;
 
 static GG_SANS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 

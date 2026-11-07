@@ -580,24 +580,25 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     describe_request(&err)
                 });
                 if let Ok(profile) = &mut result {
+                    // The note and every game name are independent lookups, so
+                    // run them side by side instead of one after another.
+                    let lookup = |game| {
+                        let api = api.clone();
+                        tokio::spawn(async move { api.game_name(game).await.ok().filter(|n| !n.is_empty()) })
+                    };
+                    let favorite = profile.favorite_game_id.map(lookup);
+                    let played: Vec<_> = profile.played_game_ids.iter().map(|&game| lookup(game)).collect();
                     if let Ok(note) = api.user_note(user).await {
                         profile.note = note;
                     }
-                    if let Some(game) = profile.favorite_game_id
-                        && let Ok(name) = api.game_name(game).await
-                        && !name.is_empty()
-                    {
-                        profile.favorite_game = Some(name);
+                    if let Some(task) = favorite {
+                        profile.favorite_game = task.await.ok().flatten();
                     }
-                    let mut played = Vec::new();
-                    for game in profile.played_game_ids.clone() {
-                        if let Ok(name) = api.game_name(game).await
-                            && !name.is_empty()
-                        {
-                            played.push(name);
+                    for task in played {
+                        if let Some(name) = task.await.ok().flatten() {
+                            profile.played_games.push(name);
                         }
                     }
-                    profile.played_games = played;
                 }
                 let _ = events.send(Event::Profile { user, result }).await;
             });
@@ -639,14 +640,14 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         }
         Command::TimeoutMember { guild, user, until } => {
             tokio::spawn(async move {
-                if let Err(err) = api.set_timeout(guild, user, until.clone()).await {
+                if let Err(err) = api.set_timeout(guild, user, until).await {
                     notify(&events, "time out that member", &err).await;
                 }
             });
         }
         Command::SetMemberRoles { guild, user, roles } => {
             tokio::spawn(async move {
-                if let Err(err) = api.set_member_roles(guild, user, roles.clone()).await {
+                if let Err(err) = api.set_member_roles(guild, user, roles).await {
                     notify(&events, "change that member's roles", &err).await;
                 }
             });
@@ -1235,7 +1236,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_missing_file_is_reported_by_name() {
-        let err = read_files(&[PathBuf::from("no-such-dir/ghost.bin")]).await.unwrap_err();
+        let err = read_files(&[(PathBuf::from("no-such-dir/ghost.bin"), false)]).await.unwrap_err();
         assert!(err.contains("ghost.bin"), "{err}");
     }
 
