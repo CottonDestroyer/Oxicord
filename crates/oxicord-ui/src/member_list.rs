@@ -302,7 +302,18 @@ pub fn status_shape(status: Status, size: f32, backdrop: u32) -> Div {
     match status {
         Status::Online => disc,
         Status::Idle => disc.child(cut(-0.15, -0.15, 0.65, 0.65)),
-        Status::Dnd => disc.child(cut(0.2, 0.4, 0.6, 0.2)),
+        // Do Not Disturb: a solid red disc with a white bar in the middle,
+        // matching Discord (the bar is white, not a hole in the background).
+        Status::Dnd => disc.child(
+            div()
+                .absolute()
+                .left(px(size * 0.2))
+                .top(px(size * 0.42))
+                .w(px(size * 0.6))
+                .h(px(size * 0.16))
+                .rounded_full()
+                .bg(rgb(0xffffff)),
+        ),
         Status::Offline => disc.child(cut(0.25, 0.25, 0.5, 0.5)),
     }
 }
