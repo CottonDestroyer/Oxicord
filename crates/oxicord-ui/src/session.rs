@@ -134,6 +134,11 @@ pub struct OpenServerSettings(pub Snowflake);
 
 impl EventEmitter<OpenServerSettings> for Session {}
 
+/// Someone wants to edit their per-server profile.
+pub struct OpenServerProfile(pub Snowflake);
+
+impl EventEmitter<OpenServerProfile> for Session {}
+
 /// Someone wants to forward a message: its channel, server and id.
 pub struct OpenForward {
     pub channel: Snowflake,
