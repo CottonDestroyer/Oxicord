@@ -12,7 +12,7 @@ use gpui_kit::{
     Pixels, Point, StatefulInteractiveElement as _, Styled as _, StyledImage as _, Window, div, img, px, rgb, rgba,
     component::input::{Input, InputState},
 };
-use oxicord_model::Status;
+use oxicord_model::{Snowflake, Status};
 
 pub use full::full;
 pub use popout::popout;
@@ -31,6 +31,8 @@ pub struct Card {
     pub bot: bool,
     pub pronouns: String,
     pub avatar_url: String,
+    /// The shop frame around the avatar.
+    pub decoration: Option<Snowflake>,
     pub status: Status,
     /// Empty until the profile arrives, or when the person wrote none.
     pub bio: String,
@@ -226,6 +228,7 @@ pub(crate) fn avatar_with_status(card: &Card, media: &Entity<Media>, size: f32, 
                 .relative()
                 .size(px(size))
                 .child(avatar(media, &card.avatar_url, size, &card.name, cx))
+                .children(card.decoration.and_then(|sku| crate::media::decoration(media, sku, size, cx)))
                 .child(
                     div()
                         .absolute()

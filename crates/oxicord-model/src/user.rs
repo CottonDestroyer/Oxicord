@@ -16,9 +16,37 @@ pub struct User {
     pub avatar: Option<String>,
     #[serde(default)]
     pub bot: bool,
+    /// A frame drawn around the avatar, bought from the shop.
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    pub avatar_decoration_data: Option<ShopItem>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    pub collectibles: Option<Collectibles>,
+}
+
+/// A shop item such as a decoration or a nameplate, named by its listing.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct ShopItem {
+    pub sku_id: Snowflake,
+}
+
+/// Cosmetics a person owns and has switched on.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct Collectibles {
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    pub nameplate: Option<ShopItem>,
 }
 
 impl User {
+    /// The listing of the frame around their avatar, if they have one on.
+    pub fn decoration(&self) -> Option<Snowflake> {
+        self.avatar_decoration_data.as_ref().map(|d| d.sku_id)
+    }
+
+    /// The listing of the banner behind their name in lists, if they have one on.
+    pub fn nameplate(&self) -> Option<Snowflake> {
+        self.collectibles.as_ref()?.nameplate.as_ref().map(|n| n.sku_id)
+    }
+
     pub fn display_name(&self) -> &str {
         self.global_name
             .as_deref()
@@ -333,6 +361,20 @@ impl From<RawProfile> for Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cosmetics_are_read_and_odd_ones_ignored() {
+        let user: User = serde_json::from_str(
+            r#"{"id":"1","avatar_decoration_data":{"asset":"a_x","sku_id":"7"},
+                "collectibles":{"nameplate":{"sku_id":"8","asset":"n/","palette":"cobalt"}}}"#,
+        )
+        .unwrap();
+        assert_eq!((user.decoration(), user.nameplate()), (Some(Snowflake(7)), Some(Snowflake(8))));
+        let none: User = serde_json::from_str(r#"{"id":"1","avatar_decoration_data":null,"collectibles":null}"#).unwrap();
+        assert_eq!((none.decoration(), none.nameplate()), (None, None));
+        let odd: User = serde_json::from_str(r#"{"id":"1","avatar_decoration_data":"x","collectibles":{"nameplate":5}}"#).unwrap();
+        assert_eq!((odd.decoration(), odd.nameplate()), (None, None));
+    }
 
     #[test]
     fn profile_prefers_the_nested_bio_and_tolerates_gaps() {

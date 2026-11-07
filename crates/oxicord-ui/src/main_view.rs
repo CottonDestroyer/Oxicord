@@ -1099,6 +1099,7 @@ impl MainView {
                 bot: account.bot,
                 pronouns: profile.map(|p| p.pronouns.clone()).unwrap_or_default(),
                 avatar_url: avatar_url.clone(),
+                decoration: account.decoration(),
                 status: store.presence(user),
                 bio: profile.map(|p| p.bio.clone()).unwrap_or_default(),
                 created: Self::card_date(user.datetime().fixed_offset()),
