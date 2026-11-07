@@ -385,6 +385,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::CreateGuild { name } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.create_guild(&name).await {
+                    notify(&events, "create that server", &err).await;
+                }
+            });
+        }
         Command::CreateInvite { channel, max_age, max_uses } => {
             tokio::spawn(async move {
                 let result = api.create_invite(channel, max_age, max_uses).await.map_err(|err| {

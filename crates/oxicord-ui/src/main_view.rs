@@ -1828,7 +1828,8 @@ impl MainView {
                     })
                     .child(channel.name),
             )
-            .children(channel.user_limit.map(|_| {
+            .children(channel.user_limit.map(|max| {
+                let n = channel.voice.len();
                 div()
                     .px(px(4.))
                     .rounded(px(3.))
@@ -1836,7 +1837,7 @@ impl MainView {
                     .text_size(px(10.))
                     .font_weight(gpui_kit::FontWeight::BOLD)
                     .text_color(rgb(theme::TEXT_BRIGHT))
-                    .child("LIMITED")
+                    .child(format!("{n}/{max}"))
             }))
             .children(channel.can_invite.then(|| {
                 div()

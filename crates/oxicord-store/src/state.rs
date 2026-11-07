@@ -258,6 +258,28 @@ impl Store {
         self.relationships.get(&user).and_then(|r| r.nickname.clone())
     }
 
+    /// Updates (or clears with `None`) the personal nickname we keep for a
+    /// friend. Mirrors what Discord does the moment you save: the local copy
+    /// changes at once so the friends list and DMs reflect it immediately,
+    /// independent of the round-trip to the server.
+    pub fn set_relationship_nick(&mut self, user: Snowflake, nick: Option<String>) {
+        match self.relationships.get_mut(&user) {
+            Some(relationship) => relationship.nickname = nick,
+            None => {
+                self.relationships.insert(
+                    user,
+                    Relationship {
+                        id: user,
+                        kind: RelationshipKind::Friend,
+                        user: None,
+                        nickname: nick,
+                        since: None,
+                    },
+                );
+            }
+        }
+    }
+
     /// What to show in the DM list for a channel.
     pub fn dm_name(&self, channel: &Channel) -> String {
         if let Some(name) = channel.name.as_deref().filter(|n| !n.is_empty()) {

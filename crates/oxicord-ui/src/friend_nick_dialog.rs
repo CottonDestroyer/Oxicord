@@ -63,6 +63,12 @@ impl FriendNickDialog {
     }
 
     fn send(&mut self, user: Snowflake, nick: Option<String>, cx: &mut Context<Self>) {
+        // Apply the change locally right away so the friends list and DMs update
+        // immediately, then persist it to Discord.
+        self.session.update(cx, |session, cx| {
+            session.store.set_relationship_nick(user, nick.clone());
+            cx.notify();
+        });
         self.backend.send(Command::SetFriendNick { user, nick });
         cx.emit(CloseFriendNick);
     }
