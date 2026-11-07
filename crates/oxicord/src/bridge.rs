@@ -595,6 +595,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::BlockUser(user) => {
             tokio::spawn(async move {
                 if let Err(err) = api.block_user(user).await {
                     notify(&events, "block that person", &err).await;
