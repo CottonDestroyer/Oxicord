@@ -154,7 +154,7 @@ impl ContextMenu {
 impl Render for ContextMenu {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(target) = self.target else { return div().into_any_element() };
-        let (muted, level, suppress, own_level, in_guild) = {
+        let (muted, level, suppress, own_level, in_guild, hide_muted) = {
             let store = &self.session.read(cx).store;
             match target {
                 Target::Guild(g) => (
@@ -163,6 +163,7 @@ impl Render for ContextMenu {
                     store.suppresses_everyone(g),
                     None,
                     true,
+                    store.hide_muted_channels(g),
                 ),
                 Target::Channel(id) => store
                     .channel(id)
@@ -173,9 +174,10 @@ impl Render for ContextMenu {
                             false,
                             store.channel_level_override(c),
                             c.guild_id.is_some(),
+                            false,
                         )
                     })
-                    .unwrap_or((false, None, false, None, false)),
+                    .unwrap_or((false, None, false, None, false, false)),
             }
         };
         let is_guild = matches!(target, Target::Guild(_));
@@ -331,6 +333,14 @@ impl Render for ContextMenu {
                     theme::TEXT_BRIGHT,
                     suppress,
                     move |this, _, _, cx| this.run(Action::SuppressEveryone(!suppress), cx),
+                    cx,
+                ));
+                menu = menu.child(self.item(
+                    "hide-muted",
+                    "Hide Muted Channels",
+                    theme::TEXT_BRIGHT,
+                    hide_muted,
+                    move |this, _, _, cx| this.run(Action::HideMutedChannels(!hide_muted), cx),
                     cx,
                 ));
             }
