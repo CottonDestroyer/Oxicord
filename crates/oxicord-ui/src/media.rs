@@ -27,6 +27,8 @@ enum Slot {
 pub struct Media {
     backend: Backend,
     images: HashMap<String, Slot>,
+    /// The main color of each picture we have looked at, found once.
+    dominant: HashMap<String, Option<u32>>,
 }
 
 impl Media {
@@ -34,7 +36,20 @@ impl Media {
         Self {
             backend,
             images: HashMap::new(),
+            dominant: HashMap::new(),
         }
+    }
+
+    /// The main color of a picture, for backgrounds that take after it. None
+    /// until the picture has loaded.
+    pub fn dominant_color(&mut self, url: &str) -> Option<u32> {
+        if let Some(found) = self.dominant.get(url) {
+            return *found;
+        }
+        let image = self.get(url)?;
+        let found = dominant_color_of(&image.bytes);
+        self.dominant.insert(url.to_owned(), found);
+        found
     }
 
     pub fn get(&mut self, url: &str) -> Option<Arc<Image>> {
@@ -134,5 +149,73 @@ mod tests {
     #[test]
     fn placeholder_color_is_stable_per_name() {
         assert_eq!(color_for("ada"), color_for("ada"));
+    }
+}
+
+/// The color most of a picture is made of, as 0xrrggbb. Near white and near
+/// black are skipped, so a flag on a white ground still gives its blue.
+fn dominant_color_of(bytes: &[u8]) -> Option<u32> {
+    let picture = image::load_from_memory(bytes).ok()?.thumbnail(48, 48).to_rgba8();
+    // Sixteen steps per channel, each bucket remembering its own average.
+    let mut buckets: HashMap<(u8, u8, u8), (u32, [u32; 3])> = HashMap::new();
+    for pixel in picture.pixels() {
+        let [r, g, b, a] = pixel.0;
+        let bright = r > 235 && g > 235 && b > 235;
+        let dark = r < 20 && g < 20 && b < 20;
+        if a < 128 || bright || dark {
+            continue;
+        }
+        let bucket = buckets.entry((r >> 4, g >> 4, b >> 4)).or_default();
+        bucket.0 += 1;
+        for (sum, value) in bucket.1.iter_mut().zip([r, g, b]) {
+            *sum += u32::from(value);
+        }
+    }
+    let (count, sums) = buckets.into_values().max_by_key(|(count, _)| *count)?;
+    let [r, g, b] = sums.map(|sum| sum / count);
+    Some((r << 16) | (g << 8) | b)
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::*;
+
+    fn png(pixels: &[[u8; 4]]) -> Vec<u8> {
+        let side = (pixels.len() as f64).sqrt() as u32;
+        let picture = image::RgbaImage::from_fn(side, side, |x, y| image::Rgba(pixels[(y * side + x) as usize]));
+        let mut bytes = Vec::new();
+        picture
+            .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        bytes
+    }
+
+    /// Resizing may be off by a step in a channel.
+    fn close(found: Option<u32>, wanted: u32) -> bool {
+        found.is_some_and(|found| {
+            (0..3).all(|shift| {
+                let (a, b) = ((found >> (shift * 8)) & 0xff, (wanted >> (shift * 8)) & 0xff);
+                a.abs_diff(b) <= 2
+            })
+        })
+    }
+
+    #[test]
+    fn a_flat_picture_gives_its_own_color() {
+        assert!(close(dominant_color_of(&png(&[[200, 100, 50, 255]; 16])), 0xc86432));
+    }
+
+    #[test]
+    fn white_ground_does_not_hide_the_color_on_it() {
+        // Ten white pixels and six blue: the blue is what we want.
+        let mut pixels = vec![[255, 255, 255, 255]; 10];
+        pixels.extend([[13, 62, 177, 255]; 6]);
+        assert!(close(dominant_color_of(&png(&pixels)), 0x0d3eb1));
+    }
+
+    #[test]
+    fn a_blank_picture_has_no_color() {
+        assert_eq!(dominant_color_of(&png(&[[255, 255, 255, 255]; 4])), None);
+        assert_eq!(dominant_color_of(b"not a picture"), None);
     }
 }

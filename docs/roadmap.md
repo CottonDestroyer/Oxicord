@@ -62,8 +62,11 @@ Gateway events we ignore today, so things go out of date until a restart.
 ## Voice (added 2026-11-07)
 
 - [x] Join and leave voice channels and private calls, hear everyone (native voice protocol v8, Opus, AES-GCM or XChaCha20 transport, end-to-end encryption through DAVE)
-- [x] Speak: microphone capture with a simple voice gate, mute and deafen sent to Discord, speaking ring in the channel list
-- [ ] Verified live against a real call (written from the protocol docs, not yet tried against Discord)
-- [ ] Choose input and output devices, input volume, push to talk, per-user volume
+- [x] Speak: microphone capture with a simple voice gate, mute and deafen sent to Discord
+- [x] Live check: joined a real call from the app and heard it connect (audio quality not judged)
+- [x] Call UI matched to the web client: connection block, tiles colored from the avatar, name pills, speaking ring (derived from the audio, so it ends when talking ends), control bar, the page before joining, call clock, text chat beside the call, microphone and speaker choice from the arrows
+- [x] The user card floats across the rail and the list like the official one
+- [ ] Camera, screen share, activities and soundboard (buttons are drawn, they do nothing)
+- [ ] Pop out, Krisp noise suppression, input volume, push to talk, per-user volume
 - [ ] Resume a call after a dropped voice websocket (today it ends and has to be joined again)
 - [ ] Video, screen share and Go Live

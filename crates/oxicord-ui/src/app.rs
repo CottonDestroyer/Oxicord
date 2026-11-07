@@ -30,6 +30,9 @@ pub struct AppView {
     /// Shown on the next login screen, for example after a revoked token.
     notice: Option<SharedString>,
     _pump: Task<()>,
+    /// Debug builds poll a command file so a script can steer the app.
+    #[cfg(debug_assertions)]
+    _dev: Task<()>,
 }
 
 impl AppView {
@@ -58,6 +61,29 @@ impl AppView {
             }
         });
 
+        #[cfg(debug_assertions)]
+        let dev = cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                let commands = crate::dev_control::take();
+                if commands.is_empty() {
+                    continue;
+                }
+                let Ok(main) = this.update(cx, |this, _| match &this.screen {
+                    Screen::Main(main) => Some(main.clone()),
+                    Screen::Login(_) => None,
+                }) else {
+                    break;
+                };
+                let Some(main) = main else { continue };
+                for command in commands {
+                    if main.update_in(cx, |main, window, cx| main.dev_command(command, window, cx)).is_err() {
+                        return;
+                    }
+                }
+            }
+        });
+
         Self {
             backend,
             session,
@@ -65,6 +91,8 @@ impl AppView {
             screen: Screen::Login(login),
             notice: None,
             _pump: pump,
+            #[cfg(debug_assertions)]
+            _dev: dev,
         }
     }
 

@@ -315,6 +315,8 @@ pub enum Command {
     LeaveVoice,
     /// Our mute and deafen switches, which also decide whether we hear anyone.
     SetVoiceFlags { mute: bool, deafen: bool },
+    /// The microphone and speakers to use, by name. `None` is the default.
+    SetAudioDevices { input: Option<String>, output: Option<String> },
 }
 
 /// How the call we are in is doing.

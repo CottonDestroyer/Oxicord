@@ -5,7 +5,7 @@ use std::{
     collections::HashMap,
     future::pending,
     net::SocketAddr,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use futures_util::{SinkExt, StreamExt};
@@ -27,8 +27,43 @@ use crate::{
 };
 
 const KEEPALIVE: Duration = Duration::from_secs(5);
+/// How long after someone's last audio they still count as talking.
+const TALK_HANGOVER: Duration = Duration::from_millis(300);
 /// What Discord sends in place of audio when someone stops talking.
 const SILENCE: [u8; 3] = [0xf8, 0xff, 0xfe];
+
+/// Who is talking, worked out from the audio that arrives. The gateway only
+/// says which stream belongs to whom, and never says when someone stops.
+#[derive(Default)]
+struct Talkers {
+    last_heard: HashMap<u64, Instant>,
+}
+
+impl Talkers {
+    /// Notes audio from `user`. True when this starts a stretch of talking.
+    fn heard(&mut self, user: u64, now: Instant) -> bool {
+        self.last_heard.insert(user, now).is_none()
+    }
+
+    /// People who have been quiet for longer than the hangover.
+    fn expire(&mut self, now: Instant) -> Vec<u64> {
+        let quiet: Vec<u64> = self
+            .last_heard
+            .iter()
+            .filter(|(_, at)| now.duration_since(**at) > TALK_HANGOVER)
+            .map(|(&user, _)| user)
+            .collect();
+        for user in &quiet {
+            self.last_heard.remove(user);
+        }
+        quiet
+    }
+
+    /// Someone left or was told to be silent. True if they were talking.
+    fn stop(&mut self, user: u64) -> bool {
+        self.last_heard.remove(&user).is_some()
+    }
+}
 
 pub(crate) struct Closed {
     pub code: Option<u16>,
@@ -73,6 +108,8 @@ struct Call {
     /// Where the microphone delivers its frames.
     frames_tx: mpsc::UnboundedSender<Vec<i16>>,
     capture: Option<Capture>,
+    input_device: Option<String>,
+    output_device: Option<String>,
     encoder: Option<Encoder>,
     gate: Gate,
     /// Whether we are currently sending speech.
@@ -82,6 +119,7 @@ struct Call {
     heard: u64,
     sequence: u16,
     nonce: u32,
+    talkers: Talkers,
 }
 
 async fn serve(
@@ -116,17 +154,25 @@ async fn serve(
         muted: false,
         frames_tx,
         capture: None,
+        input_device: None,
+        output_device: None,
         encoder: None,
         gate: Gate::default(),
         talking: false,
         heard: 0,
         sequence: 0,
         nonce: 0,
+        talkers: Talkers::default(),
     };
+
+    call.input_device = call.params.input_device.clone();
+    call.output_device = call.params.output_device.clone();
 
     let mut beat: Option<Interval> = None;
     let mut keepalive = interval(KEEPALIVE);
     keepalive.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let mut talk_check = interval(Duration::from_millis(100));
+    talk_check.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut buf = vec![0u8; 2048];
 
     loop {
@@ -183,11 +229,15 @@ async fn serve(
 
             _ = keepalive.tick() => call.send_keepalive().await,
 
+            _ = talk_check.tick() => call.expire_talkers(),
+
             Some(frame) = frames_rx.recv() => call.on_frame(&frame, &mut out),
 
             command = commands.recv() => match command {
                 Some(Command::SetDeafened(deafened)) => call.set_deafened(deafened),
                 Some(Command::SetMuted(muted)) => call.set_muted(muted, &mut out),
+                Some(Command::SetInputDevice(device)) => call.set_input_device(device),
+                Some(Command::SetOutputDevice(device)) => call.set_output_device(device),
                 Some(Command::Leave) | None => {
                     let _ = sink.send(Message::Close(None)).await;
                     return Ok(());
@@ -220,6 +270,37 @@ impl Call {
         }
     }
 
+    /// Switches microphone: the old one is let go and the new one opened.
+    fn set_input_device(&mut self, device: Option<String>) {
+        self.input_device = device;
+        self.capture = None;
+        self.sync_capture();
+    }
+
+    /// Switches speakers, keeping whatever was deafened.
+    fn set_output_device(&mut self, device: Option<String>) {
+        self.output_device = device;
+        if self.cipher.is_none() {
+            return;
+        }
+        self.playback = None;
+        match Playback::start(self.output_device.clone()) {
+            Ok(playback) => {
+                playback.set_deafened(self.deafened);
+                self.playback = Some(playback);
+            }
+            Err(reason) => {
+                let _ = self.events.send(VoiceEvent::Warning(format!("You can't hear anyone: {reason}.")));
+            }
+        }
+    }
+
+    fn expire_talkers(&mut self) {
+        for user in self.talkers.expire(Instant::now()) {
+            let _ = self.events.send(VoiceEvent::Speaking { user, speaking: false });
+        }
+    }
+
     fn set_muted(&mut self, muted: bool, out: &mut Vec<Out>) {
         self.muted = muted;
         if muted {
@@ -235,7 +316,7 @@ impl Call {
         if self.muted || !live {
             self.capture = None;
         } else if self.capture.is_none() {
-            match Capture::start(self.frames_tx.clone()) {
+            match Capture::start(self.frames_tx.clone(), self.input_device.clone()) {
                 Ok(capture) => self.capture = Some(capture),
                 Err(reason) => {
                     let _ = self
@@ -327,9 +408,14 @@ impl Call {
                 if let (Some(user), Some(ssrc)) = (user, data["ssrc"].as_u64()) {
                     self.users.insert(ssrc as u32, user);
                 }
-                if let Some(user) = user {
-                    let speaking = data["speaking"].as_u64().unwrap_or(0) != 0;
-                    let _ = self.events.send(VoiceEvent::Speaking { user, speaking });
+                // Only the stop is taken from here. Starting to talk is seen in
+                // the audio itself, so a missed stop can never leave someone
+                // marked as talking.
+                if let Some(user) = user
+                    && data["speaking"].as_u64().unwrap_or(0) == 0
+                    && self.talkers.stop(user)
+                {
+                    let _ = self.events.send(VoiceEvent::Speaking { user, speaking: false });
                 }
             }
             // Someone's streams: this is how we learn which ssrc is whose.
@@ -342,6 +428,7 @@ impl Call {
             Some(13) => {
                 if let Some(user) = id(&data["user_id"]) {
                     self.users.retain(|_, u| *u != user);
+                    self.talkers.stop(user);
                     let _ = self.events.send(VoiceEvent::Speaking { user, speaking: false });
                 }
             }
@@ -448,7 +535,7 @@ impl Call {
         let version = data["dave_protocol_version"].as_u64().unwrap_or(0) as u16;
         out.extend(self.dave.start(version));
 
-        match Playback::start() {
+        match Playback::start(self.output_device.clone()) {
             Ok(playback) => {
                 playback.set_deafened(self.deafened);
                 self.playback = Some(playback);
@@ -472,6 +559,15 @@ impl Call {
         }
         let sender = self.users.get(&header.ssrc).copied();
         let Some(opus) = self.dave.open(sender, payload) else { return };
+        // In an encrypted call the silence marker only shows after decrypting.
+        if opus == SILENCE {
+            return;
+        }
+        if let Some(user) = sender
+            && self.talkers.heard(user, Instant::now())
+        {
+            let _ = self.events.send(VoiceEvent::Speaking { user, speaking: true });
+        }
 
         let decoder = match self.decoders.entry(header.ssrc) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
@@ -503,4 +599,30 @@ async fn discover(udp: &UdpSocket, ssrc: u32) -> Result<(String, u16), Closed> {
 /// Discord sends ids as strings.
 fn id(value: &Value) -> Option<u64> {
     value.as_str().and_then(|s| s.parse().ok()).or_else(|| value.as_u64())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn someone_is_talking_from_their_first_packet_until_the_hangover_passes() {
+        let mut talkers = Talkers::default();
+        let start = Instant::now();
+        assert!(talkers.heard(7, start), "the first packet starts the talking");
+        assert!(!talkers.heard(7, start + Duration::from_millis(20)), "later ones do not");
+
+        assert!(talkers.expire(start + Duration::from_millis(200)).is_empty());
+        assert_eq!(talkers.expire(start + Duration::from_millis(400)), vec![7]);
+        // Talking again after a pause counts as a new start.
+        assert!(talkers.heard(7, start + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn a_silence_flag_from_the_gateway_ends_the_talking_at_once() {
+        let mut talkers = Talkers::default();
+        talkers.heard(7, Instant::now());
+        assert!(talkers.stop(7));
+        assert!(!talkers.stop(7));
+    }
 }
