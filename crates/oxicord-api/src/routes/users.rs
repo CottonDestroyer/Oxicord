@@ -1,4 +1,4 @@
-use oxicord_model::{Message, Snowflake, User};
+use oxicord_model::{Snowflake, User};
 use reqwest::Method;
 use serde::Deserialize;
 
@@ -79,16 +79,12 @@ impl ApiClient {
         .await
     }
 
-    /// Our saved/bookmarked messages.
-    pub async fn bookmarks(&self) -> Result<Vec<Message>, ApiError> {
-        #[derive(Deserialize)]
-        struct SavedMessage {
-            message: Message,
-        }
+    /// Our saved/bookmarked messages, including reminder due times.
+    pub async fn saved_messages(&self) -> Result<Vec<oxicord_model::SavedMessage>, ApiError> {
         #[derive(Deserialize)]
         struct SavedMessages {
             #[serde(default)]
-            results: Vec<SavedMessage>,
+            results: Vec<oxicord_model::SavedMessage>,
         }
         let response: SavedMessages = self
             .json(
@@ -98,6 +94,6 @@ impl ApiClient {
                 None,
             )
             .await?;
-        Ok(response.results.into_iter().map(|saved| saved.message).collect())
+        Ok(response.results)
     }
 }

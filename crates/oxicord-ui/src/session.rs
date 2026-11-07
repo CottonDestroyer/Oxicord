@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{Context, EventEmitter};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Channel, Message, Profile, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
+use oxicord_model::{Channel, Message, Profile, SavedMessage, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 use crate::{
@@ -32,7 +32,7 @@ pub struct Session {
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
     pub mentions: Load<Vec<Message>>,
-    pub bookmarks: Load<Vec<Message>>,
+    pub saved_messages: Load<Vec<SavedMessage>>,
     pub bookmarked: HashSet<Snowflake>,
     /// The latest search: what was asked and how it went.
     pub search: Option<(String, Load<SearchPage>)>,
@@ -209,7 +209,7 @@ impl Session {
             invite: Load::Idle,
             commands: HashMap::new(),
             mentions: Load::Idle,
-            bookmarks: Load::Idle,
+            saved_messages: Load::Idle,
             bookmarked: HashSet::new(),
             invite_joined: None,
             created_invite: Load::Idle,
@@ -271,16 +271,16 @@ impl Session {
         cx.notify();
     }
 
-    pub fn request_bookmarks(&mut self, backend: &Backend, cx: &mut Context<Self>) {
-        self.bookmarks = Load::Loading;
-        backend.send(Command::LoadBookmarks);
+    pub fn request_saved_messages(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.saved_messages = Load::Loading;
+        backend.send(Command::LoadSavedMessages);
         cx.notify();
     }
 
-    pub fn apply_bookmarks(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
-        self.bookmarks = match result {
+    pub fn apply_saved_messages(&mut self, result: Result<Vec<SavedMessage>, String>, cx: &mut Context<Self>) {
+        self.saved_messages = match result {
             Ok(list) => {
-                self.bookmarked = list.iter().map(|m| m.id).collect();
+                self.bookmarked = list.iter().map(|saved| saved.message.id).collect();
                 Load::Ready(list)
             }
             Err(error) => Load::Failed(error),

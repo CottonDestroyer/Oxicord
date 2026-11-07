@@ -534,13 +534,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
-        Command::LoadBookmarks => {
+        Command::LoadSavedMessages => {
             tokio::spawn(async move {
-                let result = api.bookmarks().await.map_err(|err| {
-                    tracing::debug!(?err, "could not load bookmarks");
+                let result = api.saved_messages().await.map_err(|err| {
+                    tracing::debug!(?err, "could not load saved messages");
                     describe_request(&err)
                 });
-                let _ = events.send(Event::Bookmarks(result)).await;
+                let _ = events.send(Event::SavedMessages(result)).await;
             });
         }
         Command::LoadProfile { user, guild } => {
