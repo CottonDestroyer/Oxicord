@@ -1,7 +1,7 @@
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement, StyledImage as _,
-    ListAlignment, ListOffset, ListState, MouseButton, MouseDownEvent,
-    ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, list, px, rgb,
+    AnyElement, App, ClickEvent, Context, Div, Entity, FontWeight, ImageSource, InteractiveElement as _, IntoElement,
+    ListAlignment, ListOffset, ListState, MouseButton, MouseDownEvent, ParentElement as _, Render,
+    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window, div, img, list, px, rgb,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_media::cdn;
@@ -18,6 +18,10 @@ use crate::{
 const GROUP_HEIGHT: f32 = 42.;
 const MEMBER_HEIGHT: f32 = 44.;
 
+/// Pixels across a nameplate's animation is decoded at: twice what the row
+/// shows, so it stays sharp on a dense screen.
+const NAMEPLATE_FRAME_WIDTH: u32 = 400;
+
 /// The people in the open guild, grouped by role or online state, as the
 /// server lays the list out.
 pub struct MemberList {
@@ -27,6 +31,8 @@ pub struct MemberList {
     list: ListState,
     /// How many slots the list state believes it has.
     slots: usize,
+    /// The person under the pointer, whose nameplate plays.
+    hovered: Option<Snowflake>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -48,6 +54,7 @@ impl MemberList {
             guild: None,
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             slots: 0,
+            hovered: None,
             _subscriptions: subscriptions,
         }
     }
@@ -196,16 +203,36 @@ impl MemberList {
                     .rounded(px(theme::RADIUS))
                     .cursor_pointer()
                     // A nameplate is a banner behind the name, from the avatar's middle to the edge.
+                    // It sits still until the pointer is on the row.
                     .children(nameplate.and_then(|sku| {
-                        let image = self.media.update(cx, |m, _| m.get(&cdn::collectible(sku)))?;
+                        let playing = if self.hovered == Some(user) {
+                            let url = cdn::collectible_animated(sku);
+                            self.media.update(cx, |m, cx| m.animation(&url, NAMEPLATE_FRAME_WIDTH, cx))
+                        } else {
+                            None
+                        };
+                        let source = match playing {
+                            Some(frames) => ImageSource::Render(frames),
+                            None => ImageSource::Image(self.media.update(cx, |m, _| m.get(&cdn::collectible(sku)))?),
+                        };
                         Some(
                             div().absolute().top_0().bottom_0().left(px(24.)).right_0().child(
-                                gpui_kit::img(gpui_kit::ImageSource::Image(image))
+                                img(source)
+                                    .id(("nameplate", user.0))
                                     .size_full()
                                     .object_fit(gpui_kit::ObjectFit::Cover),
                             ),
                         )
                     }))
+                    .when(nameplate.is_some(), |row| {
+                        row.on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                            let now = hovered.then_some(user);
+                            if *hovered || this.hovered == Some(user) {
+                                this.hovered = now;
+                                cx.notify();
+                            }
+                        }))
+                    })
                     .font_weight(FontWeight::MEDIUM)
                     // Offline people fade out until the pointer is on them.
                     .when(offline, |row| row.opacity(0.3).hover(|s| s.opacity(1.).bg(rgb(theme::BG_HOVER))))

@@ -49,6 +49,12 @@ pub fn collectible(sku: Snowflake) -> String {
     format!("{CDN}/media/v1/collectibles-shop/{sku}/static")
 }
 
+/// A nameplate's animation, an animated PNG that plays when the pointer is on
+/// the row. Plain nameplates have one too, so it may be the same artwork.
+pub fn collectible_animated(sku: Snowflake) -> String {
+    format!("{CDN}/media/v1/collectibles-shop/{sku}/animated")
+}
+
 pub fn guild_icon(guild: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/icons/{guild}/{hash}.png?size={size}")
 }
@@ -69,6 +75,18 @@ pub fn emoji(id: Snowflake, size: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shop_items_have_a_still_and_an_animated_picture() {
+        assert_eq!(
+            collectible(Snowflake(7)),
+            "https://cdn.discordapp.com/media/v1/collectibles-shop/7/static"
+        );
+        assert_eq!(
+            collectible_animated(Snowflake(7)),
+            "https://cdn.discordapp.com/media/v1/collectibles-shop/7/animated"
+        );
+    }
 
     #[test]
     fn avatar_with_hash_uses_the_user_path() {

@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use gpui_kit::{
-    App, Context, Entity, Image, ImageFormat, ImageSource, IntoElement, ParentElement as _,
+    App, Context, Entity, Image, ImageFormat, ImageSource, IntoElement, ParentElement as _, RenderImage,
     Styled as _, div, img, px, rgb,
 };
-use oxicord_media::{ImageKind, sniff};
+use oxicord_media::{ImageKind, apng, sniff};
 use oxicord_model::Snowflake;
 
 use crate::{
@@ -23,6 +23,16 @@ enum Slot {
     Failed,
 }
 
+/// Decoded animations kept at most this big, in bytes. A profile effect is
+/// tens of megabytes, so only the ones looked at lately stay.
+const ANIMATION_BUDGET: usize = 160 * 1024 * 1024;
+
+enum Animation {
+    Decoding,
+    Ready { image: Arc<RenderImage>, bytes: usize, used: u64 },
+    Failed,
+}
+
 /// Pictures we have downloaded, by URL. Asking for one that isn't here
 /// starts the download and returns nothing until it lands.
 pub struct Media {
@@ -30,6 +40,10 @@ pub struct Media {
     images: HashMap<String, Slot>,
     /// The main color of each picture we have looked at, found once.
     dominant: HashMap<String, Option<u32>>,
+    /// Animated pictures decoded at the width they are shown at.
+    animations: HashMap<(String, u32), Animation>,
+    /// Counts lookups, so the least recently used animation can be told.
+    tick: u64,
 }
 
 impl Media {
@@ -38,6 +52,91 @@ impl Media {
             backend,
             images: HashMap::new(),
             dominant: HashMap::new(),
+            animations: HashMap::new(),
+            tick: 0,
+        }
+    }
+
+    /// An animated PNG as frames scaled to `width` pixels across, playing
+    /// by itself when drawn with an element id. Nothing until the download
+    /// and the decoding, which runs off the interface thread, are done.
+    pub fn animation(&mut self, url: &str, width: u32, cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+        self.tick += 1;
+        let key = (url.to_owned(), width);
+        match self.animations.get_mut(&key) {
+            Some(Animation::Ready { image, used, .. }) => {
+                *used = self.tick;
+                return Some(image.clone());
+            }
+            Some(Animation::Decoding | Animation::Failed) => return None,
+            None => {}
+        }
+        let source = self.get(url)?;
+        self.animations.insert(key.clone(), Animation::Decoding);
+        cx.spawn(async move |this, cx| {
+            let frames = cx
+                .background_executor()
+                .spawn(async move { apng::decode(&source.bytes, width) })
+                .await;
+            this.update(cx, |this, cx| {
+                this.finish_animation(key, frames, cx);
+            })
+            .ok();
+        })
+        .detach();
+        None
+    }
+
+    fn finish_animation(&mut self, key: (String, u32), frames: Option<Vec<apng::Frame>>, cx: &mut Context<Self>) {
+        let slot = match frames {
+            Some(frames) if !frames.is_empty() => {
+                let bytes = frames.iter().map(|f| f.rgba.as_raw().len()).sum();
+                let frames: Vec<_> = frames
+                    .into_iter()
+                    .map(|frame| {
+                        let mut buffer = frame.rgba;
+                        // The renderer wants blue first.
+                        for pixel in buffer.chunks_exact_mut(4) {
+                            pixel.swap(0, 2);
+                        }
+                        let delay = image::Delay::from_numer_denom_ms(frame.delay_ms, 1);
+                        image::Frame::from_parts(buffer, 0, 0, delay)
+                    })
+                    .collect();
+                Animation::Ready { image: Arc::new(RenderImage::new(frames)), bytes, used: self.tick }
+            }
+            _ => Animation::Failed,
+        };
+        self.animations.insert(key, slot);
+        self.evict_animations();
+        cx.notify();
+    }
+
+    /// Drops the animations nobody asked for lately until the rest fit.
+    fn evict_animations(&mut self) {
+        loop {
+            let total: usize = self
+                .animations
+                .values()
+                .map(|a| if let Animation::Ready { bytes, .. } = a { *bytes } else { 0 })
+                .sum();
+            if total <= ANIMATION_BUDGET {
+                return;
+            }
+            let oldest = self
+                .animations
+                .iter()
+                .filter_map(|(key, a)| match a {
+                    Animation::Ready { used, .. } => Some((*used, key.clone())),
+                    _ => None,
+                })
+                .min();
+            match oldest {
+                Some((_, key)) => {
+                    self.animations.remove(&key);
+                }
+                None => return,
+            }
         }
     }
 
