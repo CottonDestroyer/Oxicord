@@ -1267,6 +1267,12 @@ impl ServerSettings {
                                         )),
                                     ),
                             )
+                            .child(button(SharedString::from(format!("copy-{code}")), "Copy", Tone::Plain, {
+                                let code = code.clone();
+                                move |_, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(code.clone()));
+                                }
+                            }))
                             .child(button(SharedString::from(format!("revoke-{code}")), "Revoke", Tone::Danger, {
                                 let view = cx.weak_entity();
                                 move |_, _, cx| {
