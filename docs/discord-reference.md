@@ -226,3 +226,17 @@ button are the missing pieces.
 
 For the smallest first-run change: add the header **Invite to Server** button
 reusing the existing `OpenInviteDialog(channel)` event + `InviteDialog`.
+
+## Channel hover "Edit Channel" (captured 2026-11-07)
+
+On hovering a text channel row in the sidebar, Discord reveals two icon buttons on
+the right: **Invite to Channel** (`user-plus`) and **Edit Channel** (pencil).
+Clicking the pencil opens a small "Edit Channel" dialog with the channel **name**
+and **topic** fields and Save/Cancel. The gateway reports the change back
+(`CHANNEL_UPDATE`), so the sidebar name updates.
+
+Oxicord already had the hover Invite button. Implemented: a hover **Edit
+Channel** pencil (shown for guild channels, hidden for DMs) that emits a new
+`OpenChannelSettings(channel)` session event, opening `EditChannelDialog`. The
+dialog prefills name + topic from the store and saves via the existing
+`AdminRequest::EditChannel` -> `api.edit_channel` admin path.
