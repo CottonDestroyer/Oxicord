@@ -2386,6 +2386,23 @@ impl Render for ChatView {
                         )
                         .child(
                             div()
+                                .id("message-user")
+                                .mt(px(4.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::ACCENT))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                    this.profile_modal = None;
+                                    this.backend.send(Command::OpenDm(user));
+                                    cx.notify();
+                                }))
+                                .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_BRIGHT)).child("Message")),
+                        )
+                        .child(
+                            div()
                                 .id("copy-avatar-url")
                                 .mt(px(4.))
                                 .px(px(8.))
