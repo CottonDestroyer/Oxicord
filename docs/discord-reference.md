@@ -39,6 +39,23 @@ navigation failed), so the Ban flow is implemented from documented Discord behav
 To verify against live Discord, re-run the member-popout capture once the browser
 CDP session is stable.
 
+## Member Timeout (documented assumption, 2026-11-07)
+
+Same live-capture limitation as Ban. Implemented from documented Discord behavior:
+
+- Entry point: the guild member profile card shows a red **"Timeout"** action,
+  gated on the `Timeout Members` (`MODERATE_MEMBERS`) permission and not the owner.
+- Dialog: titled `Time Out @<name>?`, with preset durations (60 seconds, 5/10
+  minutes, 1 hour, 1 day, 1 week, 30 days) and a **"Time Out"** confirm button.
+  We also surface a **"Remove Timeout"** button that lifts an active timeout.
+- Confirm sends `PATCH /guilds/:guild/members/:user` with
+  `{ "communication_disabled_until": "<RFC3339>" }`; lifting sends `null`.
+  The model already carries `Member.communication_disabled_until`.
+
+The UI wiring (mod, session event, profile-card action, render child) was landed
+in a prior commit; this change adds the API, command, bridge arm, the
+`TimeoutDialog` itself, and the `OpenTimeoutMember` event.
+
 
 
 ## Home / DM view

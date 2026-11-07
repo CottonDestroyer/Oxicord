@@ -630,6 +630,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::TimeoutMember { guild, user, until } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_timeout(guild, user, until.clone()).await {
+                    notify(&events, "time out that member", &err).await;
+                }
+            });
+        }
         Command::AddFriendByName(username) => {
             tokio::spawn(async move {
                 let result = api.add_friend_by_name(&username).await.map_err(|err| {
