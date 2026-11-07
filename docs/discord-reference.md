@@ -69,6 +69,22 @@ behavior:
   always including `@everyone` (id == guild id). We don't enforce the role
   hierarchy on the client; the API rejects out-of-reach roles.
 
+## Uploads: spoiler marking (documented assumption, 2026-11-07)
+
+Same live-capture limitation as the moderation work: the browser reaches
+Discord but our DOM selectors don't match the current client, so this follows
+documented Discord behavior:
+
+- The composer's pending-file chips (already rendered) each get an eye toggle.
+  Toggling it on marks that file as a spoiler.
+- On send, the bridge prefixes a spoiler file's name with `SPOILER_`, which is
+  how Discord hides the attachment until clicked. `read_files` adds the prefix
+  only when missing, so an already-prefixed name is left alone.
+- The send command now carries `(PathBuf, bool)` per file; the bool is the
+  spoiler flag. The `read_files` test covers the prefix behavior.
+
+Alt text for images is a separate, still-open item on the roadmap.
+
 
 
 ## Home / DM view

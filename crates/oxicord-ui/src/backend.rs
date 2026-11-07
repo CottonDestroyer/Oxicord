@@ -38,8 +38,10 @@ pub enum Command {
         reply_to: Option<Snowflake>,
         /// False to answer without pinging the author of `reply_to`.
         ping_reply: bool,
-        /// Local files to attach. Reading them is the backend's job.
-        files: Vec<PathBuf>,
+        /// Local files to attach, each paired with whether to send it as a
+        /// spoiler (the backend prefixes the filename with `SPOILER_`).
+        /// Reading the bytes is the backend's job.
+        files: Vec<(PathBuf, bool)>,
         stickers: Vec<Snowflake>,
     },
     /// Sends a copy of `message` to each of `targets`, then `note` after it.
