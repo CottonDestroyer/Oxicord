@@ -130,6 +130,13 @@ pub struct MainView {
     /// Which profile the note box was last filled for, so we don't overwrite
     /// what the user is typing when the profile reloads.
     note_prefilled_for: Option<Snowflake>,
+    /// The message box at the bottom of the small card.
+    card_message: Entity<InputState>,
+    /// Whose card the message box was last emptied for.
+    card_message_for: Option<Snowflake>,
+    /// A message typed on a card for someone we have no conversation with
+    /// yet, sent once the conversation exists.
+    pending_card_message: Option<(Snowflake, String)>,
     settings_open: bool,
     /// Whether the voice channel's text chat is shown beside the call.
     call_chat_open: bool,
@@ -239,6 +246,7 @@ impl MainView {
             cx.new(|cx| RolesDialog::new(session, backend, window, cx))
         };
         let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Click to add a note"));
+        let card_message = cx.new(|cx| InputState::new(window, cx));
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
             cx.new(|cx| QuickSwitcher::new(session, media, window, cx))
@@ -479,7 +487,15 @@ impl MainView {
             }),
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.subscribe_in(&session, window, |this, _, opened: &DmOpened, window, cx| {
+                if this.send_pending_card_message(opened.0, cx) {
+                    return;
+                }
                 this.show_dm(opened.0, window, cx);
+            }),
+            cx.subscribe_in(&card_message, window, |this, _, event: &InputEvent, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.send_card_message(window, cx);
+                }
             }),
             cx.subscribe(&session, |this, _, open: &OpenMenu, cx| {
                 this.open_menu(open.target, open.at, cx);
@@ -561,6 +577,9 @@ impl MainView {
             roles_dialog_open: false,
             note_input,
             note_prefilled_for: None,
+            card_message,
+            card_message_for: None,
+            pending_card_message: None,
             switcher,
             switcher_open: false,
             picker,
@@ -1167,6 +1186,7 @@ impl MainView {
                 is_me: store.me().is_some_and(|me| me.id == user),
                 actions: Vec::new(),
                 note_input: self.note_input.clone(),
+                message_input: self.card_message.clone(),
             }
         };
         // With no accent or banner the card takes after the avatar, as the
@@ -1253,6 +1273,61 @@ impl MainView {
         actions
     }
 
+    /// Sends what was typed in the small card's message box to that person,
+    /// starting the conversation first if there is none.
+    fn send_card_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(user) = self.profile.as_ref().map(|p| p.user) else { return };
+        let text = self.card_message.read(cx).value().trim().to_owned();
+        if text.is_empty() {
+            return;
+        }
+        match self.session.read(cx).store.dm_with(user) {
+            Some(channel) => self.backend.send(Command::SendMessage {
+                channel,
+                guild: None,
+                content: text,
+                reply_to: None,
+                ping_reply: true,
+                files: Vec::new(),
+                stickers: Vec::new(),
+            }),
+            None => {
+                self.pending_card_message = Some((user, text));
+                self.backend.send(Command::OpenDm(user));
+            }
+        }
+        self.card_message.update(cx, |input, cx| input.set_value("", window, cx));
+        self.profile = None;
+        cx.notify();
+    }
+
+    /// Sends a message that was waiting for `channel` to exist. True when
+    /// there was one, so the caller can stay where it is instead of
+    /// switching to the conversation.
+    fn send_pending_card_message(&mut self, channel: Snowflake, cx: &mut Context<Self>) -> bool {
+        let Some((user, _)) = &self.pending_card_message else { return false };
+        let is_theirs = self
+            .session
+            .read(cx)
+            .store
+            .channel(channel)
+            .is_some_and(|c| c.kind == ChannelType::Dm && c.recipients.first().is_some_and(|r| r.id == *user));
+        if !is_theirs {
+            return false;
+        }
+        let Some((_, content)) = self.pending_card_message.take() else { return false };
+        self.backend.send(Command::SendMessage {
+            channel,
+            guild: None,
+            content,
+            reply_to: None,
+            ping_reply: true,
+            files: Vec::new(),
+            stickers: Vec::new(),
+        });
+        true
+    }
+
     /// Sends the note typed in the open profile's box to Discord.
     fn save_note(&mut self, cx: &mut Context<Self>) {
         let Some(profile) = &self.profile else { return };
@@ -1301,6 +1376,10 @@ impl MainView {
                 self.note_input.update(cx, |input, cx| input.set_value(note, window, cx));
             }
             self.note_prefilled_for = Some(user);
+        }
+        if self.card_message_for != Some(user) {
+            self.card_message.update(cx, |input, cx| input.set_value("", window, cx));
+            self.card_message_for = Some(user);
         }
 
         let view = cx.entity().downgrade();
