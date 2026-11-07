@@ -129,6 +129,10 @@ pub struct MainView {
     /// what the user is typing when the profile reloads.
     note_prefilled_for: Option<Snowflake>,
     settings_open: bool,
+    /// Whether the voice channel's text chat is shown beside the call.
+    call_chat_open: bool,
+    /// Redraws once a second while in a call, for the clock.
+    _clock: gpui_kit::Task<()>,
     settings_view: Entity<SettingsView>,
     panel: Entity<SidePanel>,
     panel_open: bool,
@@ -498,6 +502,18 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| ForumView::new(session, media, backend, window, cx))
         };
+        let clock = cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+            let alive = this.update(cx, |this, cx| {
+                if this.session.read(cx).voice.since.is_some() {
+                    cx.notify();
+                }
+            });
+            if alive.is_err() {
+                break;
+            }
+        });
+
         Self {
             session,
             media,
@@ -517,6 +533,8 @@ impl MainView {
             channel_status_modal: false,
             profile: None,
             settings_open: false,
+            call_chat_open: false,
+            _clock: clock,
             settings_view,
             members_shown,
             panel,
@@ -880,6 +898,28 @@ impl MainView {
         self.select_channel(channel, window, cx);
         if let Some(message) = message {
             self.chat.update(cx, |chat, cx| chat.focus_message(message, cx));
+        }
+    }
+
+    /// Runs one command from the debug control file, see `dev_control`.
+    #[cfg(debug_assertions)]
+    pub(crate) fn dev_command(
+        &mut self,
+        command: crate::dev_control::DevCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::dev_control::DevCommand;
+        let backend = self.backend.clone();
+        match command {
+            DevCommand::Goto(channel) => self.show_channel(channel, None, window, cx),
+            DevCommand::Join(channel) => {
+                self.show_channel(channel, None, window, cx);
+                self.join_voice(channel, cx);
+            }
+            DevCommand::Leave => self.session.update(cx, |s, cx| s.leave_voice(&backend, cx)),
+            DevCommand::Mute => self.session.update(cx, |s, cx| s.toggle_voice_mute(&backend, cx)),
+            DevCommand::Deafen => self.session.update(cx, |s, cx| s.toggle_voice_deafen(&backend, cx)),
         }
     }
 
@@ -1479,6 +1519,7 @@ impl MainView {
             }
         }
 
+        let space = self.user_card_space(cx);
         div()
             .w(px(theme::RAIL_WIDTH))
             .h_full()
@@ -1487,7 +1528,7 @@ impl MainView {
             .flex_col()
             .items_center()
             .gap_2()
-            .pb(px(12.))
+            .pb(px(space))
             .bg(rgb(theme::BG_RAIL))
             .child(home)
             .child(div().w(px(32.)).h(px(1.)).bg(rgb(theme::BORDER)))
@@ -1624,7 +1665,15 @@ impl MainView {
                     .overflow_y_scroll()
                     .child(list),
             )
-            .child(self.render_user_panel(cx))
+            // Room for the user card, which floats over the bottom of the rail and the list.
+            .child(div().h(px(self.user_card_space(cx))).flex_none())
+    }
+
+    /// Height the user card takes at the bottom of the rail and the list,
+    /// margins included: the row, and the call block above it in a call.
+    fn user_card_space(&self, cx: &App) -> f32 {
+        let in_call = self.session.read(cx).voice.target.is_some();
+        58. + if in_call { 100. } else { 0. } + 16.
     }
 
     fn render_group(&mut self, group: GroupItem, cx: &mut Context<Self>) -> AnyElement {
@@ -1834,6 +1883,14 @@ impl MainView {
                     })
                     .child(channel.name),
             )
+            .children(in_call.then(|| {
+                let elapsed = self.session.read(cx).voice.since.map(|at| at.elapsed());
+                div()
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(rgb(theme::STATUS_POSITIVE))
+                    .child(call_clock(elapsed.unwrap_or_default()))
+            }))
             .children(channel.user_limit.map(|max| {
                 let n = channel.voice.len();
                 div()
@@ -2390,7 +2447,7 @@ impl MainView {
 
         // A card floating 8px in from the edges, as the official panels are.
         // While in a call the connection panel sits on top, inside the card.
-        div().flex_none().p(px(8.)).child(
+        div().flex_none().child(
         div()
             .flex()
             .flex_col()
@@ -2451,45 +2508,65 @@ impl MainView {
                     ),
             ),
             )
+            // Each of mute and deafen is a split button: the switch and, beside
+            // it, an arrow that opens the device list.
             .child(
                 div()
-                    .id("mute")
-                    .size(px(32.))
                     .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(theme::RADIUS))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let backend = this.backend.clone();
-                        this.session.update(cx, |session, cx| session.toggle_voice_mute(&backend, cx));
-                    }))
-                    .child(icon(
-                        if mic_off { "mic-off" } else { "mic" },
-                        20.,
-                        if mic_off { theme::DANGER } else { theme::TEXT_MUTED },
-                    )),
+                    .flex_none()
+                    .child(
+                        div()
+                            .id("mute")
+                            .size(px(32.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_l(px(theme::RADIUS))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let backend = this.backend.clone();
+                                this.session.update(cx, |session, cx| session.toggle_voice_mute(&backend, cx));
+                            }))
+                            .child(icon(
+                                if mic_off { "mic-off" } else { "mic" },
+                                20.,
+                                if mic_off { theme::DANGER } else { theme::TEXT_MUTED },
+                            )),
+                    )
+                    .child(
+                        device_arrow("input-options")
+                            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| this.open_device_menu(true, event, cx))),
+                    ),
             )
             .child(
                 div()
-                    .id("deafen")
-                    .size(px(32.))
                     .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(theme::RADIUS))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let backend = this.backend.clone();
-                        this.session.update(cx, |session, cx| session.toggle_voice_deafen(&backend, cx));
-                    }))
-                    .child(icon(
-                        if deafened { "headphone-off" } else { "headphones" },
-                        20.,
-                        if deafened { theme::DANGER } else { theme::TEXT_MUTED },
-                    )),
+                    .flex_none()
+                    .child(
+                        div()
+                            .id("deafen")
+                            .size(px(32.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_l(px(theme::RADIUS))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let backend = this.backend.clone();
+                                this.session.update(cx, |session, cx| session.toggle_voice_deafen(&backend, cx));
+                            }))
+                            .child(icon(
+                                if deafened { "headphone-off" } else { "headphones" },
+                                20.,
+                                if deafened { theme::DANGER } else { theme::TEXT_MUTED },
+                            )),
+                    )
+                    .child(
+                        device_arrow("output-options")
+                            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| this.open_device_menu(false, event, cx))),
+                    ),
             )
             .child(
                 div()
@@ -2525,6 +2602,34 @@ impl MainView {
         )
     }
 
+    /// Opens the list of microphones (`input`) or speakers under their arrow.
+    fn open_device_menu(&mut self, input: bool, event: &ClickEvent, cx: &mut Context<Self>) {
+        use crate::popup::Entry;
+        let devices = if input { oxicord_voice::input_devices() } else { oxicord_voice::output_devices() };
+        let chosen = {
+            let session = self.session.read(cx);
+            if input { session.audio_input.clone() } else { session.audio_output.clone() }
+        };
+        let kind = if input { "mic" } else { "headphones" };
+        let mark = |on: bool| if on { "check" } else { kind };
+        let mut entries = vec![Entry::item("System Default", mark(chosen.is_none()))];
+        entries.extend(devices.iter().map(|name| Entry::item(name.clone(), mark(chosen.as_deref() == Some(name)))));
+
+        let (session, backend) = (self.session.clone(), self.backend.clone());
+        let pick: crate::popup::Pick = std::rc::Rc::new(move |index, _, cx| {
+            let device = index.checked_sub(1).and_then(|ix| devices.get(ix)).cloned();
+            session.update(cx, |session, cx| {
+                if input {
+                    session.set_audio_input(&backend, device, cx);
+                } else {
+                    session.set_audio_output(&backend, device, cx);
+                }
+            });
+        });
+        let at = event.position();
+        self.session.update(cx, |_, cx| cx.emit(OpenPopup { at, entries, pick }));
+    }
+
     /// Whether the open channel is the voice channel we are in. Then the
     /// main area shows the call, as the official client does, not a chat.
     fn in_call_view(&self, cx: &App) -> bool {
@@ -2550,7 +2655,8 @@ impl MainView {
 
         // The biggest 16:9 tiles that fit the area, whatever the count.
         let viewport = window.viewport_size();
-        let area_w = f32::from(viewport.width) - theme::RAIL_WIDTH - theme::SIDEBAR_WIDTH - 2. * GAP;
+        let chat_w = if self.call_chat_open { CALL_CHAT_WIDTH } else { 0. };
+        let area_w = f32::from(viewport.width) - theme::RAIL_WIDTH - theme::SIDEBAR_WIDTH - chat_w - 2. * GAP;
         let area_h = f32::from(viewport.height) - title_bar::HEIGHT - theme::CHANNEL_HEADER_HEIGHT - 50. - 48.;
         let (tile_w, tile_h) = call_tile_size(people.len(), area_w, area_h, GAP);
 
@@ -2558,6 +2664,10 @@ impl MainView {
             .iter()
             .map(|person| {
                 let speaking = call.speaking.contains(&person.user);
+                let tile_color = self
+                    .media
+                    .update(cx, |media, _| media.dominant_color(&person.avatar))
+                    .unwrap_or(theme::CALL_TILE);
                 let avatar_size = (tile_h * 0.27).clamp(40., 80.);
                 let mut pill = div()
                     .flex()
@@ -2584,7 +2694,7 @@ impl MainView {
                     .h(px(tile_h))
                     .rounded(px(theme::RADIUS))
                     .overflow_hidden()
-                    .bg(rgb(theme::CALL_TILE))
+                    .bg(rgb(tile_color))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -2621,6 +2731,20 @@ impl MainView {
         let (mute_session, leave_session) = (self.session.clone(), self.session.clone());
         let mic_off = call.muted || call.deafened;
         let cluster = || div().flex().gap(px(GAP)).p(px(4.)).rounded(px(12.)).bg(rgb(theme::BG_PANEL));
+        let caret = |id: &'static str| {
+            div()
+                .id(id)
+                .w(px(21.))
+                .h(px(40.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_r(px(theme::RADIUS))
+                .cursor_pointer()
+                .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                .child(icon("chevron-down", 16., theme::TEXT_BRIGHT))
+        };
 
         div()
             .relative()
@@ -2630,24 +2754,7 @@ impl MainView {
             .flex()
             .flex_col()
             .bg(rgb(theme::BG_CHAT))
-            .child(
-                div()
-                    .h(px(theme::CHANNEL_HEADER_HEIGHT))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(16.))
-                    .child(icon("volume-2", 24., theme::TEXT_MUTED))
-                    .child(
-                        div()
-                            .text_size(px(16.))
-                            .line_height(px(20.))
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child(name),
-                    ),
-            )
+            .child(self.call_header(name, cx))
             .child(
                 div()
                     .flex_1()
@@ -2672,15 +2779,30 @@ impl MainView {
                     .gap(px(12.))
                     .child(
                         cluster()
+                            // Mute and camera each carry an arrow, as in the official bar.
                             .child(
-                                button("call-bar-mute", if mic_off { "mic-off" } else { "mic" }, if mic_off { theme::DANGER } else { theme::TEXT_BRIGHT })
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                                    .on_click(move |_, _, cx| {
-                                        mute_session.update(cx, |s, cx| s.toggle_voice_mute(&mute_backend, cx));
-                                    }),
+                                div()
+                                    .flex()
+                                    .child(
+                                        button("call-bar-mute", if mic_off { "mic-off" } else { "mic" }, if mic_off { theme::DANGER } else { theme::TEXT_BRIGHT })
+                                            .rounded_r(px(0.))
+                                            .cursor_pointer()
+                                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                            .on_click(move |_, _, cx| {
+                                                mute_session.update(cx, |s, cx| s.toggle_voice_mute(&mute_backend, cx));
+                                            }),
+                                    )
+                                    .child(
+                                        caret("call-input-options")
+                                            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| this.open_device_menu(true, event, cx))),
+                                    ),
                             )
-                            .child(button("call-bar-camera", "camera-off", theme::TEXT_BRIGHT)),
+                            .child(
+                                div()
+                                    .flex()
+                                    .child(button("call-bar-camera", "camera-off", theme::TEXT_BRIGHT).rounded_r(px(0.)))
+                                    .child(caret("call-camera-options")),
+                            ),
                     )
                     .child(
                         cluster()
@@ -2705,6 +2827,225 @@ impl MainView {
                                 leave_session.update(cx, |s, cx| s.leave_voice(&leave_backend, cx));
                             })
                             .child(icon("voice-hangup", 20., 0xffffff)),
+                    ),
+            )
+            // Pop out and full screen, at the right end of the bar, when
+            // there is room for them beside the centered controls.
+            .children((area_w >= 940.).then(|| {
+                div()
+                    .absolute()
+                    .right(px(16.))
+                    .bottom(px(29.))
+                    .flex()
+                    .items_center()
+                    .gap(px(20.))
+                    .child(
+                        div()
+                            .id("call-pop-out")
+                            .size(px(24.))
+                            .cursor_pointer()
+                            .child(icon("external-link", 24., theme::TEXT_BRIGHT)),
+                    )
+                    .child(
+                        div()
+                            .id("call-fullscreen")
+                            .size(px(24.))
+                            .cursor_pointer()
+                            .on_click(|_, window, _| window.toggle_fullscreen())
+                            .child(icon("maximize", 24., theme::TEXT_BRIGHT)),
+                    )
+            }))
+            .into_any_element()
+    }
+
+    /// The bar above a call: the channel and the button for its text chat.
+    fn call_header(&mut self, name: String, cx: &mut Context<Self>) -> AnyElement {
+        let open = self.call_chat_open;
+        div()
+            .h(px(theme::CHANNEL_HEADER_HEIGHT))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .px(px(16.))
+            .child(icon("volume-2", 24., theme::TEXT_MUTED))
+            .child(
+                div()
+                    .text_size(px(16.))
+                    .line_height(px(20.))
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(name),
+            )
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("call-chat-toggle")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.call_chat_open = !this.call_chat_open;
+                        cx.notify();
+                    }))
+                    .child(icon("message-circle", 20., if open { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED })),
+            )
+            .into_any_element()
+    }
+
+    /// The voice channel on screen, if the open channel is one.
+    fn voice_view_channel(&self, cx: &App) -> Option<Snowflake> {
+        let channel = self.channel?;
+        self.guild?;
+        self.session
+            .read(cx)
+            .store
+            .channel(channel)
+            .is_some_and(|c| is_voice(c.kind))
+            .then_some(channel)
+    }
+
+    /// A voice channel's screen: the call when we are in it, else the page
+    /// that invites us in, with its chat beside it when asked for.
+    fn render_voice_area(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let main = if self.in_call_view(cx) {
+            self.render_call_view(window, cx)
+        } else {
+            self.render_voice_splash(cx)
+        };
+        if !self.call_chat_open {
+            return main;
+        }
+        div()
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .child(main)
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .w(px(CALL_CHAT_WIDTH))
+                    .h_full()
+                    .border_l_1()
+                    .border_color(rgb(theme::BORDER))
+                    .child(self.chat.clone()),
+            )
+            .into_any_element()
+    }
+
+    /// What a voice channel shows before we join: who is in it and a button.
+    fn render_voice_splash(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(channel) = self.channel else { return div().into_any_element() };
+        let (name, people) = {
+            let store = &self.session.read(cx).store;
+            match store.channel(channel).map(|c| channel_item(store, c)) {
+                Some(item) => (item.name, item.voice),
+                None => (String::new(), Vec::new()),
+            }
+        };
+        let names: Vec<&str> = people.iter().map(|p| p.name.as_str()).collect();
+        let subtitle = splash_subtitle(&names);
+
+        let tiles: Vec<AnyElement> = people
+            .iter()
+            .map(|person| {
+                let color = self
+                    .media
+                    .update(cx, |media, _| media.dominant_color(&person.avatar))
+                    .unwrap_or(theme::CALL_TILE);
+                div()
+                    .id(("splash-tile", person.user.0))
+                    .w(px(160.))
+                    .h(px(90.))
+                    .flex_none()
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgb(color))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(avatar(&self.media, &person.avatar, 40., &person.name, cx))
+                    .into_any_element()
+            })
+            .collect();
+
+        div()
+            .relative()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(gpui_kit::linear_gradient(
+                180.,
+                gpui_kit::linear_color_stop(rgb(0x111221), 0.),
+                gpui_kit::linear_color_stop(rgb(0x25276b), 1.),
+            ))
+            // The soft glow on the bottom edge, as a stack of narrowing
+            // arches that each add a little light.
+            .children((0..22).map(|step| {
+                let share = 1.0 - step as f32 * 0.04;
+                div()
+                    .absolute()
+                    .bottom_0()
+                    .left(gpui_kit::relative((1.0 - share) / 2.))
+                    .w(gpui_kit::relative(share))
+                    .h(px(360. - step as f32 * 12.))
+                    .rounded_t(px(1200.))
+                    .bg(gpui_kit::linear_gradient(
+                        180.,
+                        gpui_kit::linear_color_stop(rgba(0x6470d800), 0.),
+                        gpui_kit::linear_color_stop(rgba(0x6470d810), 1.),
+                    ))
+            }))
+            .child(self.call_header(name.clone(), cx))
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .child(div().flex().gap(px(8.)).children(tiles))
+                    .child(
+                        div()
+                            .mt(px(32.))
+                            .text_size(px(32.))
+                            .line_height(px(40.))
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(name),
+                    )
+                    .child(
+                        div()
+                            .mt(px(8.))
+                            .text_size(px(14.))
+                            .line_height(px(18.))
+                            .text_color(rgb(theme::TEXT))
+                            .child(subtitle),
+                    )
+                    .child(
+                        div()
+                            .id("join-voice")
+                            .mt(px(24.))
+                            .h(px(40.))
+                            .px(px(24.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(theme::RADIUS))
+                            .bg(rgb(0xffffff))
+                            .text_size(px(16.))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_color(rgb(0x000000))
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |this, _, _, cx| this.join_voice(channel, cx)))
+                            .child("Join Voice"),
                     ),
             )
             .into_any_element()
@@ -2831,9 +3172,9 @@ impl Render for MainView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rail = self.render_rail(cx);
         let sidebar = self.render_sidebar(cx);
-        let in_call = self.in_call_view(cx);
+        let in_call = self.voice_view_channel(cx).is_some();
         let content = if in_call {
-            self.render_call_view(window, cx)
+            self.render_voice_area(window, cx)
         } else if self.guild.is_none() && self.channel.is_none() {
             self.friends.clone().into_any_element()
         } else if self.channel.is_some_and(|c| self.is_forum(c, cx)) {
@@ -2920,6 +3261,13 @@ impl Render for MainView {
         });
 
         let title = self.window_title(cx);
+        // The user card floats across the bottom of the rail and the channel list.
+        let user_card = div()
+            .absolute()
+            .left(px(8.))
+            .bottom(px(8.))
+            .w(px(theme::RAIL_WIDTH + theme::SIDEBAR_WIDTH - 16.))
+            .child(self.render_user_panel(cx));
         let root = div().size_full().relative().track_focus(&self.focus);
         self.on_shortcuts(root, cx)
             // A click on bare background parks focus here, so Ctrl+K still
@@ -2960,6 +3308,7 @@ impl Render for MainView {
                             }),
                     ),
             )
+            .child(user_card)
             .children(profile)
             .children(account)
             .children(status_dialog)
@@ -3096,6 +3445,46 @@ fn is_voice(kind: ChannelType) -> bool {
     matches!(kind, ChannelType::GuildVoice | ChannelType::GuildStageVoice)
 }
 
+/// The little arrow beside mute and deafen that opens their device lists.
+fn device_arrow(id: &'static str) -> gpui_kit::Stateful<gpui_kit::Div> {
+    div()
+        .id(id)
+        .w(px(16.))
+        .h(px(32.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_r(px(theme::RADIUS))
+        .cursor_pointer()
+        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+        .child(icon("chevron-down", 16., theme::TEXT_MUTED))
+}
+
+/// Width of the text chat opened beside a call.
+const CALL_CHAT_WIDTH: f32 = 420.;
+
+/// "A and B are currently in voice", as the page before joining says it.
+fn splash_subtitle(names: &[&str]) -> String {
+    match names {
+        [] => "No one is currently in voice".to_owned(),
+        [one] => format!("{one} is currently in voice"),
+        [a, b] => format!("{a} and {b} are currently in voice"),
+        [a, b, c] => format!("{a}, {b} and {c} are currently in voice"),
+        [a, b, rest @ ..] => format!("{a}, {b} and {} others are currently in voice", rest.len()),
+    }
+}
+
+/// A running call's length the way the channel list shows it: 4:07, or 1:15:43.
+fn call_clock(elapsed: std::time::Duration) -> String {
+    let secs = elapsed.as_secs();
+    let (hours, minutes, seconds) = (secs / 3600, secs % 3600 / 60, secs % 60);
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
+}
+
 /// The size of the biggest 16:9 tiles that fit `count` of them into an area.
 /// Like the official client it fills rows before stacking: never fewer columns
 /// than the square root of the count, so two people sit side by side.
@@ -3199,6 +3588,23 @@ fn thread_items(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_page_before_joining_names_who_is_there() {
+        assert_eq!(splash_subtitle(&[]), "No one is currently in voice");
+        assert_eq!(splash_subtitle(&["Cotton"]), "Cotton is currently in voice");
+        assert_eq!(splash_subtitle(&["Cotton", "Mervo"]), "Cotton and Mervo are currently in voice");
+        assert_eq!(splash_subtitle(&["A", "B", "C"]), "A, B and C are currently in voice");
+        assert_eq!(splash_subtitle(&["A", "B", "C", "D", "E"]), "A, B and 3 others are currently in voice");
+    }
+
+    #[test]
+    fn the_call_clock_adds_hours_only_when_needed() {
+        use std::time::Duration;
+        assert_eq!(call_clock(Duration::from_secs(7)), "0:07");
+        assert_eq!(call_clock(Duration::from_secs(247)), "4:07");
+        assert_eq!(call_clock(Duration::from_secs(4543)), "1:15:43");
+    }
 
     #[test]
     fn two_people_in_a_wide_area_sit_side_by_side_like_the_official_client() {

@@ -41,6 +41,9 @@ struct Inner {
     generation: u64,
     mute: bool,
     deafen: bool,
+    /// The microphone and speakers chosen, the system defaults when `None`.
+    input_device: Option<String>,
+    output_device: Option<String>,
 }
 
 #[derive(Clone)]
@@ -61,6 +64,8 @@ impl Voice {
                 generation: 0,
                 mute: false,
                 deafen: false,
+                input_device: None,
+                output_device: None,
             })),
             gateway,
             events,
@@ -110,6 +115,8 @@ impl Voice {
             user_id: user.0,
             session_id,
             token: server.token.clone(),
+            input_device: inner.input_device.clone(),
+            output_device: inner.output_device.clone(),
         });
         handle.set_deafened(inner.deafen);
         handle.set_muted(inner.mute || inner.deafen);
@@ -219,6 +226,22 @@ impl Voice {
         drop(inner);
         if let Some(want) = want {
             self.gateway.set_voice_state(want.guild, Some(want.channel), mute, deafen);
+        }
+    }
+
+    /// Picks the microphone and speakers, for this call and the next ones.
+    pub fn set_devices(&self, input: Option<String>, output: Option<String>) {
+        let mut inner = self.lock();
+        let (input_changed, output_changed) = (inner.input_device != input, inner.output_device != output);
+        inner.input_device = input.clone();
+        inner.output_device = output.clone();
+        if let Some(call) = &inner.call {
+            if input_changed {
+                call.set_input_device(input);
+            }
+            if output_changed {
+                call.set_output_device(output);
+            }
         }
     }
 

@@ -1,4 +1,6 @@
 mod account;
+#[cfg(debug_assertions)]
+mod dev_control;
 mod admin;
 mod app;
 mod ban_dialog;

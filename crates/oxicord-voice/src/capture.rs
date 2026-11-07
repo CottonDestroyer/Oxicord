@@ -101,10 +101,29 @@ where
     )
 }
 
-fn open(frames: UnboundedSender<Vec<i16>>) -> Result<cpal::Stream, String> {
-    let device = cpal::default_host()
-        .default_input_device()
-        .ok_or("no microphone found")?;
+/// Names of the microphones we can record from.
+pub fn input_devices() -> Vec<String> {
+    cpal::default_host()
+        .input_devices()
+        .map(|devices| devices.filter_map(|d| d.description().ok().map(|d| d.name().to_owned())).collect())
+        .unwrap_or_default()
+}
+
+/// The device called `name`, or the default one when it is not given or gone.
+fn find_input(name: Option<&str>) -> Result<cpal::Device, String> {
+    let host = cpal::default_host();
+    let named = name.and_then(|name| {
+        host.input_devices()
+            .ok()?
+            .find(|d| d.description().is_ok_and(|d| d.name() == name))
+    });
+    named
+        .or_else(|| host.default_input_device())
+        .ok_or_else(|| "no microphone found".to_owned())
+}
+
+fn open(frames: UnboundedSender<Vec<i16>>, device: Option<&str>) -> Result<cpal::Stream, String> {
+    let device = find_input(device)?;
     let supported = device.default_input_config().map_err(|e| e.to_string())?;
     let config = supported.config();
     let stream = match supported.sample_format() {
@@ -125,13 +144,13 @@ pub struct Capture {
 }
 
 impl Capture {
-    pub fn start(frames: UnboundedSender<Vec<i16>>) -> Result<Self, String> {
+    pub fn start(frames: UnboundedSender<Vec<i16>>, device: Option<String>) -> Result<Self, String> {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
 
         thread::Builder::new()
             .name("oxicord-audio-in".into())
-            .spawn(move || match open(frames) {
+            .spawn(move || match open(frames, device.as_deref()) {
                 Ok(stream) => {
                     let _ = ready_tx.send(Ok(()));
                     let _ = stop_rx.recv();

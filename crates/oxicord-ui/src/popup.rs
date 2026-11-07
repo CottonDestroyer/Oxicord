@@ -118,8 +118,8 @@ impl Render for PopupMenu {
                                     pick(index, window, cx);
                                 }
                             }))
-                            .child(label.clone())
-                            .child(icon(glyph, 16., color)),
+                            .child(div().flex_1().min_w_0().truncate().child(label.clone()))
+                            .child(div().ml_2().flex_none().child(icon(glyph, 16., color))),
                     )
                 }
             };

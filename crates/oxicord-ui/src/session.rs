@@ -70,6 +70,10 @@ pub struct Session {
     profile_requested: HashSet<Snowflake>,
     /// The voice call we are in or joining.
     pub voice: VoiceCall,
+    /// The microphone and speakers picked in the voice menus, by name.
+    /// `None` is the system default.
+    pub audio_input: Option<String>,
+    pub audio_output: Option<String>,
 }
 
 /// Where our own voice call stands.
@@ -89,6 +93,8 @@ pub struct VoiceCall {
     pub warnings: Vec<String>,
     /// Who is talking right now.
     pub speaking: HashSet<Snowflake>,
+    /// When the call went live, for the clock beside the channel.
+    pub since: Option<std::time::Instant>,
 }
 
 impl EventEmitter<Changes> for Session {}
@@ -285,6 +291,8 @@ impl Session {
             profiles: HashMap::new(),
             profile_requested: HashSet::new(),
             voice: VoiceCall::default(),
+            audio_input: None,
+            audio_output: None,
         }
     }
 
@@ -318,6 +326,24 @@ impl Session {
         cx.notify();
     }
 
+    pub fn set_audio_input(&mut self, backend: &Backend, device: Option<String>, cx: &mut Context<Self>) {
+        self.audio_input = device;
+        self.send_audio_devices(backend, cx);
+    }
+
+    pub fn set_audio_output(&mut self, backend: &Backend, device: Option<String>, cx: &mut Context<Self>) {
+        self.audio_output = device;
+        self.send_audio_devices(backend, cx);
+    }
+
+    fn send_audio_devices(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        backend.send(Command::SetAudioDevices {
+            input: self.audio_input.clone(),
+            output: self.audio_output.clone(),
+        });
+        cx.notify();
+    }
+
     pub fn toggle_voice_mute(&mut self, backend: &Backend, cx: &mut Context<Self>) {
         self.voice.muted = !self.voice.muted;
         self.send_voice_flags(backend, cx);
@@ -339,7 +365,10 @@ impl Session {
 
     pub fn apply_voice(&mut self, notice: VoiceNotice, cx: &mut Context<Self>) {
         match notice {
-            VoiceNotice::Connected => self.voice.connected = true,
+            VoiceNotice::Connected => {
+                self.voice.connected = true;
+                self.voice.since = Some(std::time::Instant::now());
+            }
             VoiceNotice::Warning(text) => {
                 if !self.voice.warnings.contains(&text) {
                     self.voice.warnings.push(text);

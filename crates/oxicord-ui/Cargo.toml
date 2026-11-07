@@ -12,9 +12,13 @@ oxicord-store.workspace = true
 oxicord-gateway.workspace = true
 oxicord-media.workspace = true
 oxicord-markdown.workspace = true
+# Only to list the microphones and speakers for the voice menus.
+oxicord-voice.workspace = true
 async-channel.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 emojis.workspace = true
+# Reads an avatar to pick the color of a call tile.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 

@@ -1,0 +1,78 @@
+//! Debug builds only. Lets a script steer the running app by dropping lines
+//! into a text file, so checking a screen does not mean restarting the app
+//! and hunting for it with the mouse.
+//!
+//! One command per line:
+//!
+//! ```text
+//! goto <channel id>   open any channel we know, its server included
+//! join <channel id>   open it and join it as a voice channel
+//! leave               leave the call
+//! mute                toggle mute
+//! deafen              toggle deafen
+//! ```
+//!
+//! The file is `OXICORD_DEV_CMD`, or `oxicord-dev-cmd.txt` in the temp folder.
+//! It is read and deleted every half second.
+
+use std::path::PathBuf;
+
+use oxicord_model::Snowflake;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DevCommand {
+    Goto(Snowflake),
+    Join(Snowflake),
+    Leave,
+    Mute,
+    Deafen,
+}
+
+pub fn command_path() -> PathBuf {
+    std::env::var_os("OXICORD_DEV_CMD")
+        .map_or_else(|| std::env::temp_dir().join("oxicord-dev-cmd.txt"), PathBuf::from)
+}
+
+pub fn parse(line: &str) -> Option<DevCommand> {
+    let mut words = line.split_whitespace();
+    let command = words.next()?;
+    let id = || words.clone().next()?.parse().ok().map(Snowflake);
+    match command {
+        "goto" => id().map(DevCommand::Goto),
+        "join" => id().map(DevCommand::Join),
+        "leave" => Some(DevCommand::Leave),
+        "mute" => Some(DevCommand::Mute),
+        "deafen" => Some(DevCommand::Deafen),
+        _ => None,
+    }
+}
+
+/// Reads and clears the command file.
+pub fn take() -> Vec<DevCommand> {
+    let path = command_path();
+    let Ok(text) = std::fs::read_to_string(&path) else { return Vec::new() };
+    let _ = std::fs::remove_file(&path);
+    text.lines().filter_map(parse).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn commands_are_read_one_per_line() {
+        assert_eq!(parse("goto 123"), Some(DevCommand::Goto(Snowflake(123))));
+        assert_eq!(parse("  join   9 "), Some(DevCommand::Join(Snowflake(9))));
+        assert_eq!(parse("leave"), Some(DevCommand::Leave));
+        assert_eq!(parse("mute"), Some(DevCommand::Mute));
+        assert_eq!(parse("deafen"), Some(DevCommand::Deafen));
+    }
+
+    #[test]
+    fn nonsense_is_ignored() {
+        assert_eq!(parse(""), None);
+        assert_eq!(parse("goto"), None);
+        assert_eq!(parse("goto abc"), None);
+        assert_eq!(parse("fly 3"), None);
+    }
+}

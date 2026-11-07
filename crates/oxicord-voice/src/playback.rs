@@ -169,7 +169,7 @@ pub struct Playback {
 }
 
 impl Playback {
-    pub fn start() -> Result<Self, String> {
+    pub fn start(device: Option<String>) -> Result<Self, String> {
         let mixer = Arc::new(Mutex::new(Mixer::default()));
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
@@ -178,7 +178,7 @@ impl Playback {
         thread::Builder::new()
             .name("oxicord-audio-out".into())
             .spawn(move || {
-                let stream = open(shared);
+                let stream = open(shared, device.as_deref());
                 match stream {
                     Ok(stream) => {
                         let _ = ready_tx.send(Ok(()));
@@ -212,10 +212,29 @@ impl Playback {
     }
 }
 
-fn open(mixer: Arc<Mutex<Mixer>>) -> Result<cpal::Stream, String> {
-    let device = cpal::default_host()
-        .default_output_device()
-        .ok_or("no audio output device")?;
+/// Names of the speakers and headphones we can play on.
+pub fn output_devices() -> Vec<String> {
+    cpal::default_host()
+        .output_devices()
+        .map(|devices| devices.filter_map(|d| d.description().ok().map(|d| d.name().to_owned())).collect())
+        .unwrap_or_default()
+}
+
+/// The device called `name`, or the default one when it is not given or gone.
+fn find_output(name: Option<&str>) -> Result<cpal::Device, String> {
+    let host = cpal::default_host();
+    let named = name.and_then(|name| {
+        host.output_devices()
+            .ok()?
+            .find(|d| d.description().is_ok_and(|d| d.name() == name))
+    });
+    named
+        .or_else(|| host.default_output_device())
+        .ok_or_else(|| "no audio output device".to_owned())
+}
+
+fn open(mixer: Arc<Mutex<Mixer>>, device: Option<&str>) -> Result<cpal::Stream, String> {
+    let device = find_output(device)?;
     let supported = device.default_output_config().map_err(|e| e.to_string())?;
     let config = supported.config();
     let stream = match supported.sample_format() {
