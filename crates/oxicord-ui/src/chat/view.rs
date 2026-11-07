@@ -37,7 +37,7 @@ use crate::{
     context_menu::Target,
     dm_picker::Purpose,
     profile,
-    session::{MentionUser, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
+    session::{MentionUser, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -2019,6 +2019,11 @@ impl ChatView {
                                 }
                             }))
                             .child(Textarea::new(&self.input).appearance(false).bordered(false)),
+                    )
+                    .child(
+                        toolbar_button("gift", "gift", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, _, cx| this.session.update(cx, |_, cx| cx.emit(OpenGift)),
+                        )),
                     )
                     .child(
                         toolbar_button("gif", "images", theme::TEXT_MUTED).on_click(cx.listener(
