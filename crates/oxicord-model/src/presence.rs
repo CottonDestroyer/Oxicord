@@ -41,6 +41,21 @@ pub struct Activity {
     pub emoji: Option<Emoji>,
     #[serde(default)]
     pub timestamps: Option<ActivityTimestamps>,
+    // Only used for pictures, so an odd value must not cost the whole
+    // presence, which arrives inside the login payload.
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    pub application_id: Option<crate::Snowflake>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    pub assets: Option<ActivityAssets>,
+}
+
+/// The pictures an activity carries.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct ActivityAssets {
+    #[serde(default)]
+    pub large_image: Option<String>,
+    #[serde(default)]
+    pub large_text: Option<String>,
 }
 
 /// When an activity began and, for something with a set length, ends.
@@ -67,6 +82,21 @@ impl Activity {
         }
     }
 
+    /// The address of the big picture, whichever service it lives on.
+    /// Spotify and proxied images are named by a prefix, an application's
+    /// own art by its id.
+    pub fn image_url(&self) -> Option<String> {
+        let image = self.assets.as_ref()?.large_image.as_deref().filter(|i| !i.is_empty())?;
+        if let Some(rest) = image.strip_prefix("spotify:") {
+            Some(format!("https://i.scdn.co/image/{rest}"))
+        } else if let Some(rest) = image.strip_prefix("mp:external/") {
+            Some(format!("https://media.discordapp.net/external/{rest}"))
+        } else {
+            let app = self.application_id?;
+            Some(format!("https://cdn.discordapp.com/app-assets/{app}/{image}.png"))
+        }
+    }
+
     pub fn is_custom_status(&self) -> bool {
         self.kind == ActivityType::Custom
     }
@@ -89,5 +119,29 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "name": "Custom Status", "type": 4, "state": "busy" })).unwrap();
         assert!(custom.is_custom_status() && custom.verb().is_none());
         assert!(custom.timestamps.is_none());
+    }
+
+    #[test]
+    fn the_picture_address_follows_the_prefix() {
+        let make = |image: &str| -> Activity {
+            serde_json::from_value(serde_json::json!({
+                "name": "x", "type": 2, "application_id": "42", "assets": { "large_image": image }
+            }))
+            .unwrap()
+        };
+        assert_eq!(make("spotify:abc").image_url().as_deref(), Some("https://i.scdn.co/image/abc"));
+        assert_eq!(
+            make("mp:external/k/https/h/p.png").image_url().as_deref(),
+            Some("https://media.discordapp.net/external/k/https/h/p.png")
+        );
+        assert_eq!(make("9f").image_url().as_deref(), Some("https://cdn.discordapp.com/app-assets/42/9f.png"));
+        // Odd shapes are dropped without losing the activity.
+        let odd: Activity = serde_json::from_value(serde_json::json!({
+            "name": "x", "application_id": {"nope": 1}, "assets": "text"
+        }))
+        .unwrap();
+        assert_eq!((odd.application_id, odd.image_url()), (None, None));
+        let bare: Activity = serde_json::from_value(serde_json::json!({ "name": "x" })).unwrap();
+        assert_eq!(bare.image_url(), None);
     }
 }

@@ -35,8 +35,10 @@ pub fn is_allowed(url: &str) -> bool {
     let Some(host) = url.host_str() else {
         return false;
     };
-    // Discord's own CDN, plus the services behind the GIF picker.
-    let discord_host = ["discordapp.com", "discordapp.net", "tenor.com", "giphy.com", "klipy.com"]
+    // Discord's own CDN, the services behind the GIF picker, and Spotify's
+    // image host, which is where album art for "listening to" comes from and
+    // which Discord offers no proxy for.
+    let discord_host = ["discordapp.com", "discordapp.net", "tenor.com", "giphy.com", "klipy.com", "i.scdn.co"]
         .iter()
         .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")));
 
@@ -97,6 +99,8 @@ mod tests {
     #[test]
     fn allows_discords_own_hosts_over_https() {
         assert!(is_allowed("https://cdn.discordapp.com/avatars/1/a.png"));
+        assert!(is_allowed("https://i.scdn.co/image/ab67616d00001e02"));
+        assert!(!is_allowed("https://scdn.co.evil.example/image/x"));
         assert!(is_allowed("https://media.discordapp.net/attachments/1/2/a.png"));
         assert!(is_allowed("https://images-ext-1.discordapp.net/external/x/https/a.png"));
     }
