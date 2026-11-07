@@ -141,7 +141,7 @@ impl Inbox {
             .into_any_element()
     }
 
-    fn mention_card(&mut self, message: &Message, cx: &mut Context<Self>) -> AnyElement {
+    fn mention_card(&mut self, message: &Message, due: Option<chrono::DateTime<chrono::Utc>>, cx: &mut Context<Self>) -> AnyElement {
         let (channel, id) = (message.channel_id, message.id);
         let place = {
             let store = &self.session.read(cx).store;
@@ -179,6 +179,13 @@ impl Inbox {
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.go(channel, Some(id), cx)))
             .children(place.map(|p| {
                 div().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(theme::TEXT_MUTED)).child(p)
+            }))
+            .children(due.map(|due| {
+                div()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(due_label(due))
             }))
             .child(
                 div()
@@ -241,7 +248,7 @@ impl Render for Inbox {
                 }
                 Load::Ready(messages) => {
                     for message in &messages {
-                        list = list.child(self.mention_card(message, cx));
+                        list = list.child(self.mention_card(message, None, cx));
                     }
                 }
                 Load::Failed(error) => list = list.child(empty_note(&format!("Could not load mentions. {error}"))),
@@ -267,7 +274,7 @@ impl Render for Inbox {
                         list = list.child(empty_note("No bookmarked messages."));
                     }
                     for message in &messages {
-                        list = list.child(self.mention_card(message, cx));
+                        list = list.child(self.mention_card(message, None, cx));
                     }
                 }
                 Load::Failed(error) => {
@@ -277,16 +284,15 @@ impl Render for Inbox {
             },
             Tab::Reminders => match self.session.read(cx).saved_messages.clone() {
                 Load::Ready(saved) => {
-                    let messages: Vec<_> = saved
+                    let saved: Vec<_> = saved
                         .into_iter()
                         .filter(|saved| saved.save_data.due_at.is_some())
-                        .map(|saved| saved.message)
                         .collect();
-                    if messages.is_empty() {
+                    if saved.is_empty() {
                         list = list.child(empty_note("No reminders."));
                     }
-                    for message in &messages {
-                        list = list.child(self.mention_card(message, cx));
+                    for saved in &saved {
+                        list = list.child(self.mention_card(&saved.message, saved.save_data.due_at, cx));
                     }
                 }
                 Load::Failed(error) => {
@@ -365,6 +371,38 @@ impl Render for Inbox {
                     .child(list),
             )
     }
+}
+
+fn due_label(due: chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let seconds = (due - now).num_seconds();
+    let (amount, unit, suffix) = if seconds >= 0 {
+        let seconds = seconds as u64;
+        let (amount, unit) = if seconds < 60 {
+            (1, "minute")
+        } else if seconds < 3600 {
+            (seconds / 60, "minute")
+        } else if seconds < 86400 {
+            (seconds / 3600, "hour")
+        } else {
+            (seconds / 86400, "day")
+        };
+        (amount, unit, "from now")
+    } else {
+        let seconds = (-seconds) as u64;
+        let (amount, unit) = if seconds < 60 {
+            (1, "minute")
+        } else if seconds < 3600 {
+            (seconds / 60, "minute")
+        } else if seconds < 86400 {
+            (seconds / 3600, "hour")
+        } else {
+            (seconds / 86400, "day")
+        };
+        (amount, unit, "ago")
+    };
+    let plural = if amount == 1 { "" } else { "s" };
+    format!("Due {} {}{} {}", amount, unit, plural, suffix)
 }
 
 fn empty_note(text: &str) -> AnyElement {
