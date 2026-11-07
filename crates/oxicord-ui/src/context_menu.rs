@@ -235,6 +235,20 @@ impl Render for ContextMenu {
         menu = menu.child(self.item("mark-read", "Mark as read", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
             this.run(Action::MarkRead, cx);
         }, cx));
+        if matches!(target, Target::Channel(_))
+            && self
+                .channel(cx)
+                .map(|c| matches!(c.kind, oxicord_model::ChannelType::GuildVoice | oxicord_model::ChannelType::GuildStageVoice))
+                .unwrap_or(false)
+        {
+            menu = menu.child(self.item("open-chat", "Open Chat", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Channel(channel)) = this.target {
+                    this.session.update(cx, |s, cx| s.jump_to(channel, cx));
+                }
+                this.close(cx);
+            }, cx));
+        }
+
         if matches!(target, Target::Channel(_)) {
             menu = menu.child(self.item("copy-link", "Copy link", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                 this.run(Action::CopyLink, cx);
