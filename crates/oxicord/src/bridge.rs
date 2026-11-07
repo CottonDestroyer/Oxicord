@@ -548,7 +548,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::Profile { user, result }).await;
             });
         }
-        Command::BlockUser(user) => {
+        Command::BookmarkMessage { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.bookmark_message(channel, message).await {
+                    notify(&events, "bookmark that message", &err).await;
+                }
+            });
+        }
             tokio::spawn(async move {
                 if let Err(err) = api.block_user(user).await {
                     notify(&events, "block that person", &err).await;
