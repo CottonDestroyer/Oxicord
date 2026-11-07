@@ -536,10 +536,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         }
         Command::LoadProfile { user, guild } => {
             tokio::spawn(async move {
-                let result = api.profile(user, guild).await.map_err(|err| {
+                let mut result = api.profile(user, guild).await.map_err(|err| {
                     tracing::debug!(?err, "could not load a profile");
                     describe_request(&err)
                 });
+                if let Ok(profile) = &mut result {
+                    if let Ok(note) = api.user_note(user).await {
+                        profile.note = note;
+                    }
+                }
                 let _ = events.send(Event::Profile { user, result }).await;
             });
         }
