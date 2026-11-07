@@ -534,6 +534,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::LoadBookmarks => {
+            tokio::spawn(async move {
+                let result = api.bookmarks().await.map_err(|err| {
+                    tracing::debug!(?err, "could not load bookmarks");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::Bookmarks(result)).await;
+            });
+        }
         Command::LoadProfile { user, guild } => {
             tokio::spawn(async move {
                 let mut result = api.profile(user, guild).await.map_err(|err| {
