@@ -956,6 +956,14 @@ impl MainView {
             DevCommand::Leave => self.session.update(cx, |s, cx| s.leave_voice(&backend, cx)),
             DevCommand::Mute => self.session.update(cx, |s, cx| s.toggle_voice_mute(&backend, cx)),
             DevCommand::Deafen => self.session.update(cx, |s, cx| s.toggle_voice_deafen(&backend, cx)),
+            DevCommand::Profile(user, guild) | DevCommand::Full(user, guild) if user == Snowflake(0) => {
+                let me = self.session.read(cx).store.me().map(|u| u.id);
+                if let Some(me) = me {
+                    let full = matches!(command, DevCommand::Full(..));
+                    let at = gpui_kit::point(window.viewport_size().width - px(100.), px(146.));
+                    self.show_profile(me, guild, (!full).then_some(at), full, cx);
+                }
+            }
             DevCommand::Profile(user, guild) => {
                 // As if the person was clicked in the member list.
                 let at = gpui_kit::point(window.viewport_size().width - px(100.), px(146.));
@@ -1183,6 +1191,7 @@ impl MainView {
                     .unwrap_or_default(),
                 board,
                 activities,
+                custom_status: crate::friends::custom_status(store.activities(user)),
                 is_me: store.me().is_some_and(|me| me.id == user),
                 actions: Vec::new(),
                 note_input: self.note_input.clone(),
@@ -1400,6 +1409,12 @@ impl MainView {
                 this.profile = None;
                 this.settings_open = true;
                 this.settings_view.update(cx, |view, cx| view.open_profile(cx));
+                cx.notify();
+            }),
+            status: act(|this, _, _, window, cx| {
+                this.profile = None;
+                this.status_dialog_open = true;
+                this.status_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
                 cx.notify();
             }),
             more: {
