@@ -161,6 +161,10 @@ pub struct Profile {
     pub want_to_play_games: Vec<GameEntry>,
     /// Names and covers of those games, filled in after a lookup.
     pub games: std::collections::HashMap<Snowflake, Game>,
+    /// The shop listing of the effect they have on their profile.
+    pub effect: Option<Snowflake>,
+    /// What that effect looks like, filled in after a lookup.
+    pub effect_art: Option<crate::ProfileEffect>,
 }
 
 impl Profile {
@@ -270,6 +274,25 @@ struct ProfileFields {
     /// Newer responses carry the server tag on the user.
     #[serde(default)]
     primary_guild: Option<PrimaryGuildFields>,
+    /// The effect over the card, named by the shop listing it came from.
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    profile_effect: Option<EquippedEffect>,
+    /// Newer responses list the shop items worn, effects among them.
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    collectibles: Vec<WornItem>,
+}
+
+#[derive(Deserialize)]
+struct EquippedEffect {
+    id: Snowflake,
+}
+
+/// An entry of `collectibles`, whose type 1 is a profile effect.
+#[derive(Deserialize)]
+struct WornItem {
+    sku_id: Snowflake,
+    #[serde(rename = "type")]
+    kind: u8,
 }
 
 impl<'de> Deserialize<'de> for Profile {
@@ -299,6 +322,13 @@ impl From<RawProfile> for Profile {
         let primary_guild = raw
             .primary_guild
             .or_else(|| sources.iter_mut().flatten().find_map(|s| s.primary_guild.take()));
+        // The server's own effect wins, then the one everywhere.
+        let effect = sources.iter().flatten().find_map(|s| {
+            s.profile_effect
+                .as_ref()
+                .map(|e| e.id)
+                .or_else(|| s.collectibles.iter().find(|item| item.kind == 1).map(|item| item.sku_id))
+        });
         let first = |field: fn(&ProfileFields) -> Option<&String>| {
             sources
                 .iter()
@@ -353,6 +383,8 @@ impl From<RawProfile> for Profile {
             played_games,
             want_to_play_games,
             games: Default::default(),
+            effect,
+            effect_art: None,
             note: String::new(),
         }
     }
@@ -468,4 +500,26 @@ mod tests {
         assert_eq!(p.server_tag, None);
     }
 
+    #[test]
+    fn the_effect_is_read_from_either_place_it_is_sent() {
+        let named: Profile =
+            serde_json::from_str(r#"{"user_profile":{"profile_effect":{"id":"77","expires_at":null}}}"#).unwrap();
+        assert_eq!(named.effect, Some(Snowflake(77)));
+
+        let worn: Profile = serde_json::from_str(
+            r#"{"user_profile":{"profile_effect":null,"collectibles":[{"type":3,"sku_id":"5"},{"type":1,"sku_id":"88"}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(worn.effect, Some(Snowflake(88)));
+
+        // The one set for the server wins.
+        let both: Profile = serde_json::from_str(
+            r#"{"user_profile":{"profile_effect":{"id":"1"}},"guild_member_profile":{"profile_effect":{"id":"2"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(both.effect, Some(Snowflake(2)));
+
+        let none: Profile = serde_json::from_str(r#"{"user_profile":{"profile_effect":null,"collectibles":[]}}"#).unwrap();
+        assert_eq!(none.effect, None);
+    }
 }

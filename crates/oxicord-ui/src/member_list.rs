@@ -10,7 +10,7 @@ use oxicord_store::{Changes, Entry};
 
 use crate::{
     icons::icon,
-    media::{Media, avatar},
+    media::{Media, Playback, avatar},
     session::{OpenUserMenu, Session},
     theme,
 };
@@ -207,7 +207,10 @@ impl MemberList {
                     .children(nameplate.and_then(|sku| {
                         let playing = if self.hovered == Some(user) {
                             let url = cdn::collectible_animated(sku);
-                            self.media.update(cx, |m, cx| m.animation(&url, NAMEPLATE_FRAME_WIDTH, cx))
+                            match self.media.update(cx, |m, cx| m.animation(&url, NAMEPLATE_FRAME_WIDTH, false, cx)) {
+                                Playback::Ready(frames) => Some(frames),
+                                _ => None,
+                            }
                         } else {
                             None
                         };

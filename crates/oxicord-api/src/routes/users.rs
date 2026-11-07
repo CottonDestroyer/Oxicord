@@ -122,6 +122,24 @@ impl ApiClient {
         .await
     }
 
+    /// What a profile effect looks like, from the shop catalog. Nothing for
+    /// a listing that is not an effect.
+    pub async fn profile_effect(
+        &self,
+        sku: Snowflake,
+        pick: usize,
+    ) -> Result<Option<oxicord_model::ProfileEffect>, ApiError> {
+        let product: serde_json::Value = self
+            .json(
+                Method::GET,
+                &format!("/collectibles-products/{sku}"),
+                "GET /collectibles-products/:sku",
+                None,
+            )
+            .await?;
+        Ok(oxicord_model::ProfileEffect::from_product(product, sku, pick))
+    }
+
     /// Names and covers of games, for the profile's game widgets. Games
     /// Discord doesn't know are left out.
     pub async fn games(

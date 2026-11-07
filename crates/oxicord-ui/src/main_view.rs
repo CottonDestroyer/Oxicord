@@ -125,6 +125,9 @@ pub struct MainView {
     profile: Option<ShowProfile>,
     /// The tab of the full profile.
     profile_tab: profile::Tab,
+    /// The effect playing over that card, kept so it is not started over
+    /// every time the card is drawn: whose card, whether the full one, and the view.
+    profile_effect: Option<(Snowflake, bool, Entity<profile::EffectView>)>,
     /// The editable note box shown in a profile card.
     note_input: Entity<InputState>,
     /// Which profile the note box was last filled for, so we don't overwrite
@@ -576,6 +579,7 @@ impl MainView {
             roles_dialog,
             roles_dialog_open: false,
             note_input,
+            profile_effect: None,
             note_prefilled_for: None,
             card_message,
             card_message_for: None,
@@ -1008,6 +1012,8 @@ impl MainView {
             self.backend.send(Command::LoadProfile { user, guild });
         }
         self.profile = Some(ShowProfile { user, guild, at, full });
+        // A card opened again plays its effect from the start.
+        self.profile_effect = None;
         // Let the note box refill from the stored note when it next renders.
         self.note_prefilled_for = None;
         cx.notify();
@@ -1196,6 +1202,7 @@ impl MainView {
                 actions: Vec::new(),
                 note_input: self.note_input.clone(),
                 message_input: self.card_message.clone(),
+                effect: None,
             }
         };
         // With no accent or banner the card takes after the avatar, as the
@@ -1373,10 +1380,29 @@ impl MainView {
         cx.notify();
     }
 
+    /// The effect for a card, made once when the card opens and once more if
+    /// it grows into the full profile. Nothing until we know what it looks like.
+    fn profile_effect_view(&mut self, user: Snowflake, full: bool, cx: &mut Context<Self>) -> Option<Entity<profile::EffectView>> {
+        let art = self.session.read(cx).profiles.get(&user)?.effect_art.clone()?;
+        if let Some((who, was_full, view)) = &self.profile_effect
+            && *who == user
+            && *was_full == full
+        {
+            return Some(view.clone());
+        }
+        let media = self.media.clone();
+        // The small card is 300 wide, the left side of the full one 400.
+        let width = if full { 400. } else { 300. };
+        let view = cx.new(|cx| profile::EffectView::new(media, art, width, cx));
+        self.profile_effect = Some((user, full, view.clone()));
+        Some(view)
+    }
+
     /// The card for the person we are looking at, over everything else.
     fn render_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (user, guild, at, full) = self.profile.as_ref().map(|p| (p.user, p.guild, p.at, p.full))?;
-        let card = self.build_card(user, guild, cx)?;
+        let mut card = self.build_card(user, guild, cx)?;
+        card.effect = self.profile_effect_view(user, full, cx);
 
         // Fill the note box from the stored note the first time we show a user,
         // so we don't overwrite what the user is typing.

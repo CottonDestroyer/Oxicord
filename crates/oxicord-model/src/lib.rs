@@ -9,6 +9,7 @@ pub mod attachment;
 pub mod channel;
 pub mod command;
 pub mod component;
+pub mod effect;
 pub mod embed;
 pub mod emoji;
 pub mod gateway;
@@ -36,6 +37,7 @@ pub use component::{ButtonStyle, Component, FLAG_COMPONENTS_V2, MediaRef, Select
 pub use channel::{
     Channel, ChannelType, FLAG_PINNED, ForumTag, Overwrite, OverwriteKind, ThreadMember, ThreadMetadata,
 };
+pub use effect::{EffectLayer, ProfileEffect};
 pub use embed::Embed;
 pub use emoji::Emoji;
 pub use gif::Gif;

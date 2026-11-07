@@ -2,6 +2,7 @@
 //! the large one with the board and tabs, and `column` the strip docked
 //! beside a direct message. All three draw from the same [`Card`].
 
+mod effect;
 mod full;
 mod popout;
 
@@ -14,6 +15,7 @@ use gpui_kit::{
 };
 use oxicord_model::{Snowflake, Status};
 
+pub use effect::EffectView;
 pub use full::full;
 pub use popout::popout;
 
@@ -69,6 +71,8 @@ pub struct Card {
     pub note_input: Entity<InputState>,
     /// The box under the small card that sends a message.
     pub message_input: Entity<InputState>,
+    /// The effect that plays over the card, when they have one.
+    pub effect: Option<Entity<EffectView>>,
 }
 
 /// A server or a person in common, with a picture and a second line.
