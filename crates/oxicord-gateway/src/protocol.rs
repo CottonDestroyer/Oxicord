@@ -104,6 +104,27 @@ pub fn request_members(guild: Snowflake, user_ids: &[Snowflake]) -> Value {
     })
 }
 
+/// Joins a voice channel, moves, or leaves with `channel` as `None`. A
+/// private call has no guild. The server answers with VOICE_STATE_UPDATE and
+/// VOICE_SERVER_UPDATE.
+pub fn voice_state_update(
+    guild: Option<Snowflake>,
+    channel: Option<Snowflake>,
+    self_mute: bool,
+    self_deaf: bool,
+) -> Value {
+    json!({
+        "op": op::VOICE_STATE_UPDATE,
+        "d": {
+            "guild_id": guild.map(|g| g.to_string()),
+            "channel_id": channel.map(|c| c.to_string()),
+            "self_mute": self_mute,
+            "self_deaf": self_deaf,
+            "self_video": false,
+        }
+    })
+}
+
 pub fn presence_update(status: ClientStatus) -> Value {
     json!({ "op": op::PRESENCE_UPDATE, "d": presence_body(status) })
 }
@@ -248,6 +269,19 @@ mod tests {
 
         let ranged = member_subscription(Snowflake(5), Some(Snowflake(9)));
         assert_eq!(ranged["d"]["subscriptions"]["5"]["channels"]["9"], serde_json::json!([[0, 99]]));
+    }
+
+    #[test]
+    fn voice_state_update_joins_and_leaves() {
+        let join = voice_state_update(Some(Snowflake(1)), Some(Snowflake(2)), true, false);
+        assert_eq!(join["op"], 4);
+        assert_eq!(join["d"]["guild_id"], "1");
+        assert_eq!(join["d"]["channel_id"], "2");
+        assert_eq!(join["d"]["self_mute"], true);
+
+        let leave = voice_state_update(None, None, false, false);
+        assert!(leave["d"]["channel_id"].is_null());
+        assert!(leave["d"]["guild_id"].is_null());
     }
 
     #[test]

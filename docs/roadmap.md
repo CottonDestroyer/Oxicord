@@ -1,9 +1,8 @@
 # Roadmap
 
 What the official web client does that Oxicord still does not, found by
-comparing its endpoints and gateway events with ours (2026-11-06). Voice,
-video, calls, stage, Go Live, soundboard and voice messages are left out on
-purpose.
+comparing its endpoints and gateway events with ours (2026-11-06). Video, screen
+share, stage, Go Live, soundboard and voice messages are left out on purpose.
 
 Work through the phases in order. Tick items off as they land.
 
@@ -59,3 +58,12 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [ ] Disable or delete the account
 - [ ] Server admin: channel permission overwrites, AutoMod, webhooks, integrations,
       welcome screen and onboarding setup, templates, prune
+
+## Voice (added 2026-11-07)
+
+- [x] Join and leave voice channels and private calls, hear everyone (native voice protocol v8, Opus, AES-GCM or XChaCha20 transport, end-to-end encryption through DAVE)
+- [x] Speak: microphone capture with a simple voice gate, mute and deafen sent to Discord, speaking ring in the channel list
+- [ ] Verified live against a real call (written from the protocol docs, not yet tried against Discord)
+- [ ] Choose input and output devices, input volume, push to talk, per-user volume
+- [ ] Resume a call after a dropped voice websocket (today it ends and has to be joined again)
+- [ ] Video, screen share and Go Live

@@ -305,6 +305,32 @@ pub enum Command {
     /// Load our scheduled messages. The answer arrives as
     /// [`Event::ScheduledMessages`].
     LoadScheduledMessages,
+    /// Join a voice channel (a private call when `guild` is `None`), or move
+    /// to it from another. How it goes is reported as [`Event::Voice`].
+    JoinVoice {
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+    },
+    /// Leave the call we are in.
+    LeaveVoice,
+    /// Our mute and deafen switches, which also decide whether we hear anyone.
+    SetVoiceFlags { mute: bool, deafen: bool },
+}
+
+/// How the call we are in is doing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VoiceNotice {
+    /// Keys are agreed and the call is live.
+    Connected,
+    /// Part of the audio does not work, like no speakers or no microphone.
+    /// The text is a sentence for the user.
+    Warning(String),
+    Speaking { user: Snowflake, speaking: bool },
+    /// Whether the call is end-to-end encrypted, and the code two people can
+    /// compare to confirm nobody is in the middle.
+    Encryption { active: bool, code: Option<String> },
+    /// The call is over. A reason means it was not our own doing.
+    Left(Option<String>),
 }
 
 /// Things the backend reports.
@@ -379,6 +405,7 @@ pub enum Event {
     },
     SavedMessages(Result<Vec<oxicord_model::SavedMessage>, String>),
     ScheduledMessages(Result<Vec<Message>, String>),
+    Voice(VoiceNotice),
 }
 
 #[derive(Clone)]

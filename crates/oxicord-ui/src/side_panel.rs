@@ -31,11 +31,9 @@ pub struct SidePanel {
     media: Entity<Media>,
     backend: Backend,
     kind: PanelKind,
-    muted: bool,
     camera: bool,
     screen_share: bool,
     activity: bool,
-    deafened: bool,
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
     query: Entity<InputState>,
@@ -65,11 +63,9 @@ impl SidePanel {
             media,
             backend,
             kind: PanelKind::Pins,
-            muted: false,
             camera: false,
             screen_share: false,
             activity: false,
-            deafened: false,
             guild: None,
             channel: None,
             query,
@@ -426,44 +422,52 @@ impl SidePanel {
                 }
             }
             PanelKind::VoiceDetails => {
-                let channel_name = match self.channel {
-                    Some(id) => {
-                        let store = &self.session.read(cx).store;
-                        if let Some(c) = store.channel(id) {
-                            c.name.clone().unwrap_or_else(|| "Voice Channel".to_owned())
-                        } else {
-                            "Voice Channel".to_owned()
-                        }
-                    }
-                    None => "Voice Channel".to_owned(),
+                let call = self.session.read(cx).voice.clone();
+                let Some((_, call_channel)) = call.target else {
+                    return vec![Self::note("You are not in a call. Click a voice channel to join it.")];
                 };
-                let participants: Vec<AnyElement> = self
-                    .channel
-                    .map(|id| {
-                        let store = &self.session.read(cx).store;
-                        store
-                            .voice_in(id)
-                            .iter()
-                            .map(|voice| {
-                                let name = store
-                                    .user(voice.user_id)
-                                    .map(|u| u.display_name().to_owned())
-                                    .unwrap_or_else(|| voice.user_id.to_string());
-                                let suffix = if voice.self_mute || voice.mute {
-                                    " (muted)"
-                                } else if voice.self_deaf || voice.deaf {
-                                    " (deafened)"
-                                } else {
-                                    ""
-                                };
-                                Self::note(format!("{}{}", name, suffix))
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let mut rows = vec![
-                    Self::note(format!("Connected to {}", channel_name)),
-                ];
+                let channel_name = {
+                    let store = &self.session.read(cx).store;
+                    store.channel(call_channel).map_or_else(
+                        || "Voice Channel".to_owned(),
+                        |c| c.name.clone().unwrap_or_else(|| store.dm_name(c)),
+                    )
+                };
+                let participants: Vec<AnyElement> = {
+                    let store = &self.session.read(cx).store;
+                    store
+                        .voice_in(call_channel)
+                        .iter()
+                        .map(|voice| {
+                            let name = store
+                                .user(voice.user_id)
+                                .map(|u| u.display_name().to_owned())
+                                .unwrap_or_else(|| voice.user_id.to_string());
+                            let suffix = if voice.self_deaf || voice.deaf {
+                                " (deafened)"
+                            } else if voice.self_mute || voice.mute {
+                                " (muted)"
+                            } else if call.speaking.contains(&voice.user_id) {
+                                " (speaking)"
+                            } else {
+                                ""
+                            };
+                            Self::note(format!("{}{}", name, suffix))
+                        })
+                        .collect()
+                };
+                let mut rows = vec![Self::note(if call.connected {
+                    format!("Connected to {channel_name}")
+                } else {
+                    format!("Connecting to {channel_name}...")
+                })];
+                if call.encrypted {
+                    rows.push(Self::note(match &call.code {
+                        Some(code) => format!("End-to-end encrypted. Verification code: {code}"),
+                        None => "End-to-end encrypted.".to_owned(),
+                    }));
+                }
+                rows.extend(call.warnings.iter().map(|text| Self::note(text.clone())));
                 if participants.is_empty() {
                     rows.push(Self::note("No one else is here."));
                 } else {
@@ -518,38 +522,32 @@ impl SidePanel {
                             .child(if active { "Stop Activity" } else { "Start An Activity" })
                             .into_any_element()
                     },
-                    {
-                        let muted = self.muted;
-                        div()
-                            .id("toggle-mute")
-                            .px_4()
-                            .py_2()
-                            .rounded(px(4.))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
-                                this.muted = !this.muted;
-                                cx.notify();
-                            }))
-                            .child(if muted { "Unmute" } else { "Mute" })
-                            .into_any_element()
-                    },
-                    {
-                        let deafened = self.deafened;
-                        div()
-                            .id("toggle-deafen")
-                            .px_4()
-                            .py_2()
-                            .rounded(px(4.))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
-                                this.deafened = !this.deafened;
-                                cx.notify();
-                            }))
-                            .child(if deafened { "Undeafen" } else { "Deafen" })
-                            .into_any_element()
-                    },
+                    div()
+                        .id("toggle-mute")
+                        .px_4()
+                        .py_2()
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                            let backend = this.backend.clone();
+                            this.session.update(cx, |s, cx| s.toggle_voice_mute(&backend, cx));
+                        }))
+                        .child(if call.muted { "Unmute" } else { "Mute" })
+                        .into_any_element(),
+                    div()
+                        .id("toggle-deafen")
+                        .px_4()
+                        .py_2()
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                            let backend = this.backend.clone();
+                            this.session.update(cx, |s, cx| s.toggle_voice_deafen(&backend, cx));
+                        }))
+                        .child(if call.deafened { "Undeafen" } else { "Deafen" })
+                        .into_any_element(),
                     div()
                         .id("disconnect-voice")
                         .px_4()
@@ -557,7 +555,11 @@ impl SidePanel {
                         .rounded(px(4.))
                         .cursor_pointer()
                         .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                        .on_click(cx.listener(|_, _: &gpui_kit::ClickEvent, _, cx| cx.emit(ClosePanel)))
+                        .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                            let backend = this.backend.clone();
+                            this.session.update(cx, |s, cx| s.leave_voice(&backend, cx));
+                            cx.emit(ClosePanel);
+                        }))
                         .child("Disconnect")
                         .into_any_element(),
                 ]);

@@ -1685,7 +1685,12 @@ impl ChatView {
                     .child(
                         toolbar_button("start-voice-call", "phone", theme::TEXT_MUTED)
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.session.update(cx, |s, cx| s.open_panel(PanelKind::VoiceDetails, cx));
+                                let Some(channel) = this.channel else { return };
+                                let backend = this.backend.clone();
+                                this.session.update(cx, |s, cx| {
+                                    s.join_voice(&backend, None, channel, cx);
+                                    s.open_panel(PanelKind::VoiceDetails, cx);
+                                });
                             })),
                     )
                     .child(

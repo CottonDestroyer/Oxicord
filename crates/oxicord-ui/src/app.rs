@@ -193,6 +193,9 @@ impl AppView {
             Event::DmOpened(result) => {
                 self.session.update(cx, |session, cx| session.apply_dm(result, cx));
             }
+            Event::Voice(notice) => {
+                self.session.update(cx, |session, cx| session.apply_voice(notice, cx));
+            }
             Event::Notice(text) => {
                 self.session
                     .update(cx, |session, cx| session.set_notice(Some(text), cx));

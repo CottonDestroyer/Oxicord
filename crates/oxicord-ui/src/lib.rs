@@ -48,5 +48,5 @@ pub use app::AppView;
 pub use keys::bind as bind_keys;
 pub use account::{AccountEvent, AccountRequest};
 pub use admin::{AdminEvent, AdminRequest};
-pub use backend::{Backend, Command, Event};
+pub use backend::{Backend, Command, Event, VoiceNotice};
 pub use settings::Settings;
