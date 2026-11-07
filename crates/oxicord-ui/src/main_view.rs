@@ -21,6 +21,7 @@ use crate::{
     forum::ForumView,
     forward_dialog::{CloseForward, ForwardDialog},
     friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
+    ban_dialog::{CloseBan, BanDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
@@ -34,7 +35,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenChannelSettings, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -139,6 +140,8 @@ pub struct MainView {
     nickname_open: bool,
     friend_nick: Entity<FriendNickDialog>,
     friend_nick_open: bool,
+    ban_dialog: Entity<BanDialog>,
+    ban_dialog_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
@@ -153,6 +156,10 @@ pub struct MainView {
     invite_open: bool,
     edit_channel: Entity<EditChannelDialog>,
     edit_channel_open: bool,
+    /// Our own mute/deafen intent, shown on the user panel. The actual voice
+    /// state is sent to the voice gateway once we connect (deferred).
+    self_muted: bool,
+    self_deafened: bool,
     server_settings: Entity<ServerSettings>,
     server_settings_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
@@ -204,6 +211,10 @@ impl MainView {
         let friend_nick = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| FriendNickDialog::new(session, backend, window, cx))
+        };
+        let ban_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| BanDialog::new(session, backend, window, cx))
         };
         let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
         let switcher = {
@@ -334,6 +345,10 @@ impl MainView {
                 this.friend_nick_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&ban_dialog, |this, _, _: &CloseBan, cx| {
+                this.ban_dialog_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&note_input, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.save_note(cx);
@@ -342,6 +357,18 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, open: &OpenNickname, window, cx| {
                 this.nickname_open = true;
                 this.nickname.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenBanMember, window, cx| {
+                this.ban_dialog_open = true;
+                let name = this
+                    .session
+                    .read(cx)
+                    .store
+                    .user(open.1)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                this.ban_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
                 cx.notify();
             }),
             cx.subscribe(&forward, |this, _, _: &CloseForward, cx| {
@@ -432,6 +459,8 @@ impl MainView {
             nickname_open: false,
             friend_nick,
             friend_nick_open: false,
+            ban_dialog,
+            ban_dialog_open: false,
             note_input,
             note_prefilled_for: None,
             switcher,
@@ -447,6 +476,8 @@ impl MainView {
             invite_open: false,
             edit_channel,
             edit_channel_open: false,
+            self_muted: false,
+            self_deafened: false,
             server_settings,
             server_settings_open: false,
             focus,
@@ -866,6 +897,25 @@ impl MainView {
                             backend.send(Command::KickMember { guild, user });
                         }) as Box<profile::Handler>,
                     });
+                    // Banning needs its own permission and opens a confirm dialog.
+                    let can_ban = self
+                        .session
+                        .read(cx)
+                        .store
+                        .guild_permissions(guild)
+                        .contains(oxicord_model::Permissions::BAN_MEMBERS);
+                    if can_ban {
+                        let session = self.session.downgrade();
+                        card.actions.push(profile::CardAction {
+                            label: "Ban",
+                            danger: true,
+                            handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                                if let Some(session) = session.upgrade() {
+                                    session.update(cx, |_, cx| cx.emit(OpenBanMember(guild, user)));
+                                }
+                            }) as Box<profile::Handler>,
+                        });
+                    }
                 }
             }
         }
@@ -2229,6 +2279,46 @@ impl MainView {
             )
             .child(
                 div()
+                    .id("mute")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.self_muted = !this.self_muted;
+                        cx.notify();
+                    }))
+                    .child(icon(
+                        if self.self_muted { "mic-off" } else { "mic" },
+                        18.,
+                        if self.self_muted { theme::DANGER } else { theme::TEXT_MUTED },
+                    )),
+            )
+            .child(
+                div()
+                    .id("deafen")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.self_deafened = !this.self_deafened;
+                        cx.notify();
+                    }))
+                    .child(icon(
+                        if self.self_deafened { "headphone-off" } else { "headphones" },
+                        18.,
+                        if self.self_deafened { theme::DANGER } else { theme::TEXT_MUTED },
+                    )),
+            )
+            .child(
+                div()
                     .id("open-settings")
                     .size(px(32.))
                     .flex()
@@ -2318,6 +2408,7 @@ impl Render for MainView {
         let forward = self.forward_open.then(|| self.forward.clone());
         let nickname = self.nickname_open.then(|| self.nickname.clone());
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
+        let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
@@ -2393,6 +2484,7 @@ impl Render for MainView {
             .children(forward)
             .children(nickname)
             .children(friend_nick)
+            .children(ban_dialog)
             .children(join)
             .children(invite)
             .children(edit_channel)

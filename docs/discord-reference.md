@@ -240,3 +240,15 @@ Channel** pencil (shown for guild channels, hidden for DMs) that emits a new
 `OpenChannelSettings(channel)` session event, opening `EditChannelDialog`. The
 dialog prefills name + topic from the store and saves via the existing
 `AdminRequest::EditChannel` -> `api.edit_channel` admin path.
+
+## User panel mute / deafen (captured 2026-11-07)
+
+The user panel (bottom-left) shows, between the account card and the settings
+gear: a **mute** button (mic → mic-off when active) and a **deafen** button
+(headphones → headphone-off when active). Active toggles are drawn in red
+(`DANGER`), matching Discord. The toggles are independent. In Discord they drive
+the voice gateway's `self_mute`/`self_deafen`; Oxicord shows the local intent for
+now and will send it once a voice connection exists.
+
+Implemented: the two toggle buttons on the user panel with local state and the
+icon/colour swap. No voice plumbing yet.
