@@ -167,7 +167,7 @@ impl MainView {
         // The chat reads several preferences, so fetch them up front.
         session.update(cx, |s, cx| {
             s.request_account(&backend, crate::AccountRequest::LoadSettings, cx);
-            s.request_bookmarks(&backend, cx);
+            s.request_saved_messages(&backend, cx);
         });
         let panel = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());

@@ -60,7 +60,7 @@ impl Inbox {
     pub fn opened(&mut self, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
         self.session.update(cx, |s, cx| s.request_mentions(&backend, cx));
-        self.session.update(cx, |s, cx| s.request_bookmarks(&backend, cx));
+        self.session.update(cx, |s, cx| s.request_saved_messages(&backend, cx));
         cx.notify();
     }
 
@@ -256,19 +256,45 @@ impl Render for Inbox {
                     list = list.child(self.pending_row(item, cx));
                 }
             }
-            Tab::Bookmarks => match self.session.read(cx).bookmarks.clone() {
-                Load::Ready(messages) if messages.is_empty() => {
-                    list = list.child(empty_note("No bookmarked messages."));
-                }
-                Load::Ready(messages) => {
+            Tab::Bookmarks => match self.session.read(cx).saved_messages.clone() {
+                Load::Ready(saved) => {
+                    let messages: Vec<_> = saved
+                        .into_iter()
+                        .filter(|saved| saved.save_data.due_at.is_none())
+                        .map(|saved| saved.message)
+                        .collect();
+                    if messages.is_empty() {
+                        list = list.child(empty_note("No bookmarked messages."));
+                    }
                     for message in &messages {
                         list = list.child(self.mention_card(message, cx));
                     }
                 }
-                Load::Failed(error) => list = list.child(empty_note(&format!("Could not load bookmarks. {error}"))),
+                Load::Failed(error) => {
+                    list = list.child(empty_note(&format!("Could not load bookmarks. {error}")));
+                }
                 _ => list = list.child(empty_note("Loading...")),
             },
-            Tab::Reminders | Tab::Scheduled => {
+            Tab::Reminders => match self.session.read(cx).saved_messages.clone() {
+                Load::Ready(saved) => {
+                    let messages: Vec<_> = saved
+                        .into_iter()
+                        .filter(|saved| saved.save_data.due_at.is_some())
+                        .map(|saved| saved.message)
+                        .collect();
+                    if messages.is_empty() {
+                        list = list.child(empty_note("No reminders."));
+                    }
+                    for message in &messages {
+                        list = list.child(self.mention_card(message, cx));
+                    }
+                }
+                Load::Failed(error) => {
+                    list = list.child(empty_note(&format!("Could not load reminders. {error}")));
+                }
+                _ => list = list.child(empty_note("Loading...")),
+            },
+            Tab::Scheduled => {
                 list = list.child(empty_note("Nothing here yet."));
             }
         }

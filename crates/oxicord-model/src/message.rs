@@ -180,6 +180,23 @@ pub struct SnapshotMessage {
     pub sticker_items: Vec<StickerItem>,
 }
 
+/// A message we saved for later, possibly with a reminder attached.
+#[derive(Clone, Debug, Deserialize)]
+pub struct SavedMessage {
+    pub message: Message,
+    #[serde(default)]
+    pub save_data: SavedMessageData,
+}
+
+/// The bookkeeping Discord keeps alongside a saved message.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct SavedMessageData {
+    #[serde(default)]
+    pub due_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub notes: String,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct MessageSnapshot {
     pub message: SnapshotMessage,
