@@ -43,6 +43,7 @@ enum Page {
     Widget,
     SafetySetup,
     ServerInsights,
+    PartnerProgram,
     Roles,
     Channels,
     Emoji,
@@ -52,8 +53,8 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 22] =
-        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Engagement, Page::ServerTemplate, Page::Widget, Page::SafetySetup, Page::ServerInsights, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 23] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Engagement, Page::ServerTemplate, Page::Widget, Page::SafetySetup, Page::ServerInsights, Page::PartnerProgram, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
@@ -73,6 +74,7 @@ impl Page {
             Page::Widget => "Widget",
             Page::SafetySetup => "Safety Setup",
             Page::ServerInsights => "Server Insights",
+            Page::PartnerProgram => "Partner Program",
             Page::Roles => "Roles",
             Page::Channels => "Channels",
             Page::Emoji => "Emoji",
@@ -85,7 +87,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights | Page::PartnerProgram => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -739,6 +741,26 @@ impl ServerSettings {
     }
 
 
+    fn partner_program(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Partner Program"))
+            .child(group("Partner Program", vec![widgets::info_row("Server", name)]))
+            .into_any_element()
+    }
+
+
     fn roles(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(guild) = self.guild else { return div().into_any_element() };
         let mut roles: Vec<_> = self
@@ -1355,6 +1377,7 @@ impl Render for ServerSettings {
             Page::Widget => self.widget(cx),
             Page::SafetySetup => self.safety_setup(cx),
             Page::ServerInsights => self.server_insights(cx),
+            Page::PartnerProgram => self.partner_program(cx),
             Page::Roles => self.roles(cx),
             Page::Channels => self.channels(cx),
             Page::Emoji => self.emoji(cx),
