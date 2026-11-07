@@ -1,6 +1,7 @@
 use gpui_kit::{
     AnyElement, App, ClickEvent, FontWeight, InteractiveElement as _, IntoElement, Entity, StyledImage as _, img,
     ParentElement as _, StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb, rgba,
+    component::input::{Input, InputState},
 };
 use oxicord_model::Status;
 
@@ -40,6 +41,8 @@ pub struct Card {
     pub is_me: bool,
     /// Buttons for the person's relationship to us: add, remove, block.
     pub actions: Vec<CardAction>,
+    /// The private note we keep about them, editable in the card.
+    pub note_input: Entity<InputState>,
 }
 
 /// A small button under the person's name.
@@ -158,6 +161,7 @@ fn body(
         }
         sections = sections.child(section("Connections", list));
     }
+    sections = sections.child(section("NOTE", Input::new(&card.note_input)));
 
     div()
         .id("profile-card")
@@ -441,6 +445,16 @@ pub fn column(card: Card, media: &Entity<Media>, _on_message: Box<Handler>, wind
         }
         body = body.child(row);
     }
+
+    body = body.child(
+        div()
+            .mt(px(16.))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(heading("Note"))
+            .child(Input::new(&card.note_input)),
+    );
 
     let header = div()
         .relative()

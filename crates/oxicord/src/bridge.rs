@@ -364,6 +364,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::SetUserNote { user, note } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_user_note(user, &note).await {
+                    notify(&events, "save that note", &err).await;
+                }
+            });
+        }
         Command::LeaveGuild(guild) => {
             tokio::spawn(async move {
                 if let Err(err) = api.leave_guild(guild).await {
