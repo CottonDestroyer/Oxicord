@@ -104,6 +104,13 @@ pub fn render_attachments(
     Some(column.into_any_element())
 }
 
+
+fn is_gif(url: &str, content_type: Option<&str>, filename: &str) -> bool {
+    content_type == Some("image/gif")
+        || filename.to_ascii_lowercase().ends_with(".gif")
+        || url.to_ascii_lowercase().ends_with(".gif")
+}
+
 fn image_attachment(
     attachment: &Attachment,
     message: &Message,
@@ -117,8 +124,13 @@ fn image_attachment(
         MAX_HEIGHT,
     );
     let source = attachment.proxy_url.as_deref().unwrap_or(&attachment.url);
+    let picture_url = if is_gif(source, attachment.content_type.as_deref(), &attachment.filename) {
+        source.to_owned()
+    } else {
+        resized(source, w, h)
+    };
     let id = SharedString::from(format!("attachment-{}-{}", message.id, attachment.id));
-    picture(media, &resized(source, w, h), &attachment.url, (w, h), id, cx)
+    picture(media, &picture_url, &attachment.url, (w, h), id, cx)
 }
 
 fn file_card(attachment: &Attachment, message: &Message) -> AnyElement {
@@ -297,7 +309,12 @@ fn embed_card(
         let source = image.proxy_url.as_deref().or(image.url.as_deref()).unwrap_or_default();
         let link = embed.url.as_deref().or(image.url.as_deref()).unwrap_or_default();
         let id = SharedString::from(format!("embed-img-{}-{ix}", message.id));
-        body = body.child(div().mt_1().child(picture(media, &resized(source, w, h), link, (w, h), id, cx)));
+        let picture_url = if is_gif(source, None, "") {
+            source.to_owned()
+        } else {
+            resized(source, w, h)
+        };
+        body = body.child(div().mt_1().child(picture(media, &picture_url, link, (w, h), id, cx)));
     }
     if let Some(footer) = &embed.footer {
         body = body.child(small(humanize(&footer.text, names)));
@@ -323,9 +340,14 @@ fn embed_card(
         let source = thumbnail.proxy_url.as_deref().or(thumbnail.url.as_deref()).unwrap_or_default();
         let id = SharedString::from(format!("embed-thumb-{}-{ix}", message.id));
         let link = embed.url.as_deref().unwrap_or_default();
+        let picture_url = if is_gif(source, None, "") {
+            source.to_owned()
+        } else {
+            resized(source, THUMBNAIL, THUMBNAIL)
+        };
         card = card.child(div().p_3().child(picture(
             media,
-            &resized(source, THUMBNAIL, THUMBNAIL),
+            &picture_url,
             link,
             (THUMBNAIL, THUMBNAIL),
             id,

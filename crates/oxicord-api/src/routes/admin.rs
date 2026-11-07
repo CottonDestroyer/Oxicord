@@ -38,6 +38,71 @@ impl ApiClient {
         .await
     }
 
+    /// Removes a member from the server. Requires the `Kick Members` permission
+    /// and a role high enough to target the member.
+    pub async fn kick_member(&self, guild: Snowflake, user: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/guilds/{guild}/members/{user}"),
+            "DELETE /guilds/:id/members/:id",
+            None,
+        )
+        .await
+    }
+
+    /// Bans a member, optionally wiping their recent messages. Requires the
+    /// `Ban Members` permission and a role high enough to target them.
+    pub async fn ban_member(
+        &self,
+        guild: Snowflake,
+        user: Snowflake,
+        delete_message_days: u32,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::PUT,
+            &format!("/guilds/{guild}/bans/{user}"),
+            "PUT /guilds/:id/bans/:id",
+            Some(&json!({ "delete_message_days": delete_message_days })),
+        )
+        .await
+    }
+
+    /// Times a member out until `until` (an RFC3339 string), or lifts an
+    /// existing timeout with `None`. Requires the `Timeout Members` permission
+    /// and a role high enough to target them.
+    pub async fn set_timeout(
+        &self,
+        guild: Snowflake,
+        user: Snowflake,
+        until: Option<String>,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/members/{user}"),
+            "PATCH /guilds/:id/members/:id",
+            Some(&json!({ "communication_disabled_until": until })),
+        )
+        .await
+    }
+
+    /// Replaces a member's roles. Requires the `Manage Roles` permission and a
+    /// role hierarchy high enough to target them. `@everyone` (the role whose
+    /// id equals the guild) is always included and cannot be removed.
+    pub async fn set_member_roles(
+        &self,
+        guild: Snowflake,
+        user: Snowflake,
+        roles: Vec<Snowflake>,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/members/{user}"),
+            "PATCH /guilds/:id/members/:id",
+            Some(&json!({ "roles": roles })),
+        )
+        .await
+    }
+
     pub async fn audit_log(&self, guild: Snowflake) -> Result<AuditLog, ApiError> {
         let body: Value = self
             .json(

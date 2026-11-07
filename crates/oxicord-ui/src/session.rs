@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{Context, EventEmitter};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Channel, Message, Profile, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
+use oxicord_model::{Channel, Message, Profile, SavedMessage, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 use crate::{
@@ -32,6 +32,9 @@ pub struct Session {
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
     pub mentions: Load<Vec<Message>>,
+    pub saved_messages: Load<Vec<SavedMessage>>,
+    pub scheduled_messages: Load<Vec<Message>>,
+    pub bookmarked: HashSet<Snowflake>,
     /// The latest search: what was asked and how it went.
     pub search: Option<(String, Load<SearchPage>)>,
     /// The thread list last asked for per channel: open threads and, once
@@ -75,6 +78,7 @@ pub enum PanelKind {
     Pins,
     Search,
     Threads,
+    VoiceDetails,
 }
 
 /// Someone asked to open the side panel.
@@ -127,10 +131,59 @@ pub struct OpenNickname(pub Snowflake);
 
 impl EventEmitter<OpenNickname> for Session {}
 
+/// Someone wants to ban this member from this server.
+pub struct OpenBanMember(pub Snowflake, pub Snowflake);
+
+impl EventEmitter<OpenBanMember> for Session {}
+
+/// Someone wants to time this member out in this server.
+pub struct OpenTimeoutMember(pub Snowflake, pub Snowflake);
+
+impl EventEmitter<OpenTimeoutMember> for Session {}
+
+/// Someone wants to edit this member's roles in this server.
+pub struct OpenRolesMember(pub Snowflake, pub Snowflake);
+
+impl EventEmitter<OpenRolesMember> for Session {}
+
 /// Someone wants the settings of this server.
 pub struct OpenServerSettings(pub Snowflake);
 
 impl EventEmitter<OpenServerSettings> for Session {}
+
+/// Someone wants to edit this channel (name and topic), from its sidebar row.
+pub struct OpenChannelSettings(pub Snowflake);
+
+impl EventEmitter<OpenChannelSettings> for Session {}
+
+/// Someone wants to create a channel in `guild`, optionally under the named
+/// category (`parent`). Emitted from a category header's "Create Channel" button.
+pub struct OpenCreateChannel(pub Snowflake, pub Option<Snowflake>);
+
+impl EventEmitter<OpenCreateChannel> for Session {}
+
+/// Someone wants to open the nitro gift dialog from the composer's "Send a gift"
+/// button. Oxicord does not process payments, so this is a read-only upsell view.
+pub struct OpenGift;
+
+impl EventEmitter<OpenGift> for Session {}
+
+/// Someone wants to open the "Application Launcher" from the composer's "Apps"
+/// button. Discord fills this with its global app directory and server activities;
+/// Oxicord has no such backend yet, so the launcher shows an honest empty state.
+pub struct OpenApps;
+
+impl EventEmitter<OpenApps> for Session {}
+
+/// Someone wants the privacy settings.
+pub struct OpenPrivacySettings;
+
+impl EventEmitter<OpenPrivacySettings> for Session {}
+
+/// Someone wants to edit their per-server profile.
+pub struct OpenServerProfile(pub Snowflake);
+
+impl EventEmitter<OpenServerProfile> for Session {}
 
 /// Someone wants to forward a message: its channel, server and id.
 pub struct OpenForward {
@@ -196,6 +249,9 @@ impl Session {
             invite: Load::Idle,
             commands: HashMap::new(),
             mentions: Load::Idle,
+            saved_messages: Load::Idle,
+            scheduled_messages: Load::Idle,
+            bookmarked: HashSet::new(),
             invite_joined: None,
             created_invite: Load::Idle,
             previews: HashMap::new(),
@@ -253,6 +309,50 @@ impl Session {
             Ok(list) => Load::Ready(list),
             Err(error) => Load::Failed(error),
         };
+        cx.notify();
+    }
+
+    pub fn request_saved_messages(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.saved_messages = Load::Loading;
+        backend.send(Command::LoadSavedMessages);
+        cx.notify();
+    }
+
+    pub fn apply_saved_messages(&mut self, result: Result<Vec<SavedMessage>, String>, cx: &mut Context<Self>) {
+        self.saved_messages = match result {
+            Ok(list) => {
+                self.bookmarked = list.iter().map(|saved| saved.message.id).collect();
+                Load::Ready(list)
+            }
+            Err(error) => Load::Failed(error),
+        };
+        cx.notify();
+    }
+
+    pub fn request_scheduled_messages(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.scheduled_messages = Load::Loading;
+        backend.send(Command::LoadScheduledMessages);
+        cx.notify();
+    }
+
+    pub fn apply_scheduled_messages(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
+        self.scheduled_messages = match result {
+            Ok(list) => Load::Ready(list),
+            Err(error) => Load::Failed(error),
+        };
+        cx.notify();
+    }
+
+    pub fn is_bookmarked(&self, message: Snowflake) -> bool {
+        self.bookmarked.contains(&message)
+    }
+
+    pub fn set_bookmarked(&mut self, message: Snowflake, bookmarked: bool, cx: &mut Context<Self>) {
+        if bookmarked {
+            self.bookmarked.insert(message);
+        } else {
+            self.bookmarked.remove(&message);
+        }
         cx.notify();
     }
 
