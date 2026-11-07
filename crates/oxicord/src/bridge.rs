@@ -564,6 +564,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::UnbookmarkMessage { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.unbookmark_message(channel, message).await {
+                    notify(&events, "remove that bookmark", &err).await;
+                }
+            });
+        }
             tokio::spawn(async move {
                 if let Err(err) = api.block_user(user).await {
                     notify(&events, "block that person", &err).await;

@@ -33,6 +33,7 @@ pub struct Session {
     /// Recent mentions for the inbox.
     pub mentions: Load<Vec<Message>>,
     pub bookmarks: Load<Vec<Message>>,
+    pub bookmarked: HashSet<Snowflake>,
     /// The latest search: what was asked and how it went.
     pub search: Option<(String, Load<SearchPage>)>,
     /// The thread list last asked for per channel: open threads and, once
@@ -209,6 +210,7 @@ impl Session {
             commands: HashMap::new(),
             mentions: Load::Idle,
             bookmarks: Load::Idle,
+            bookmarked: HashSet::new(),
             invite_joined: None,
             created_invite: Load::Idle,
             previews: HashMap::new(),
@@ -277,9 +279,25 @@ impl Session {
 
     pub fn apply_bookmarks(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
         self.bookmarks = match result {
-            Ok(list) => Load::Ready(list),
+            Ok(list) => {
+                self.bookmarked = list.iter().map(|m| m.id).collect();
+                Load::Ready(list)
+            }
             Err(error) => Load::Failed(error),
         };
+        cx.notify();
+    }
+
+    pub fn is_bookmarked(&self, message: Snowflake) -> bool {
+        self.bookmarked.contains(&message)
+    }
+
+    pub fn set_bookmarked(&mut self, message: Snowflake, bookmarked: bool, cx: &mut Context<Self>) {
+        if bookmarked {
+            self.bookmarked.insert(message);
+        } else {
+            self.bookmarked.remove(&message);
+        }
         cx.notify();
     }
 

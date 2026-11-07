@@ -254,6 +254,11 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// Remove a bookmarked message.
+    UnbookmarkMessage {
+        channel: Snowflake,
+        message: Snowflake,
+    },
     /// Load our saved/bookmarked messages. The answer arrives as
     /// [`Event::Bookmarks`].
     LoadBookmarks,
