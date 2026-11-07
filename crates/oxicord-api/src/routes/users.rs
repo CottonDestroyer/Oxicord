@@ -96,4 +96,21 @@ impl ApiClient {
             .await?;
         Ok(response.results)
     }
+
+    /// The display name of a game, for a profile's favorite game.
+    pub async fn game_name(&self, game: Snowflake) -> Result<String, ApiError> {
+        #[derive(Deserialize)]
+        struct Game {
+            name: String,
+        }
+        let games: Vec<Game> = self
+            .json(
+                Method::GET,
+                &format!("/games?game_ids={game}"),
+                "GET /games",
+                None,
+            )
+            .await?;
+        Ok(games.into_iter().next().map(|game| game.name).unwrap_or_default())
+    }
 }

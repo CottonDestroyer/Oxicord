@@ -78,6 +78,10 @@ pub struct Profile {
     pub joined_server: Option<String>,
     /// The note we wrote about them, visible only to us.
     pub note: String,
+    /// The id of a game they pinned to their profile, if any.
+    pub favorite_game_id: Option<Snowflake>,
+    /// The name of that game, filled in after a lookup.
+    pub favorite_game: Option<String>,
 }
 #[derive(Default, Deserialize)]
 struct RawProfile {
@@ -99,6 +103,8 @@ struct RawProfile {
     guild_member: Option<GuildMemberFields>,
     #[serde(default)]
     primary_guild: Option<PrimaryGuildFields>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    widgets: Vec<WidgetFields>,
 }
 
 #[derive(Default, Deserialize)]
@@ -113,6 +119,26 @@ struct PrimaryGuildFields {
     tag: Option<String>,
     #[serde(default)]
     identity_enabled: Option<bool>,
+}
+
+#[derive(Default, Deserialize)]
+struct WidgetFields {
+    #[serde(default)]
+    data: WidgetData,
+}
+
+#[derive(Default, Deserialize)]
+struct WidgetData {
+    #[serde(rename = "type", default)]
+    kind: String,
+    #[serde(default)]
+    games: Vec<WidgetGame>,
+}
+
+#[derive(Default, Deserialize)]
+struct WidgetGame {
+    #[serde(rename = "game_id", default)]
+    game_id: Option<Snowflake>,
 }
 
 #[derive(Default, Deserialize)]
@@ -163,6 +189,14 @@ impl From<RawProfile> for Profile {
                     g.tag.filter(|t| !t.is_empty())
                 }
             }),
+            favorite_game_id: raw.widgets.into_iter().find_map(|widget| {
+                if widget.data.kind == "favorite_games" {
+                    widget.data.games.into_iter().find_map(|game| game.game_id)
+                } else {
+                    None
+                }
+            }),
+            favorite_game: None,
             note: String::new(),
         }
     }
