@@ -2256,12 +2256,12 @@ impl Render for ChatView {
                                 .rounded(px(theme::RADIUS))
                                 .bg(rgb(color))
                         }))
-                        .children(banner.map(|url| {
+                        .children(banner.clone().map(|url| {
                             div()
                                 .h(px(72.))
                                 .w_full()
                                 .rounded(px(theme::RADIUS))
-                                .child(div().child(url))
+                                .child(div().child(url.clone()))
                         }))
                         .child(avatar(&self.media, &avatar_url, 64., &name, cx))
                         .child(div().font_weight(FontWeight::BOLD).child(name.clone()))
@@ -2348,6 +2348,21 @@ impl Render for ChatView {
                                 }))
                                 .child(div().text_size(px(12.)).child("Copy Avatar URL")),
                         )
+                        .children(banner.clone().map(|url| {
+                            div()
+                                .id("copy-banner-url")
+                                .mt(px(4.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::BG_HOVER))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(url.clone()));
+                                }))
+                                .child(div().text_size(px(12.)).child("Copy Banner URL"))
+                        }))
                         .into_any_element(),
                     Box::new(on_close),
                 )
