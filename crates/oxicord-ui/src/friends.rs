@@ -128,7 +128,9 @@ impl FriendsView {
         let store = &self.session.read(cx).store;
         Person {
             id: user.id,
-            name: user.display_name().to_owned(),
+            name: store
+                .relationship_nick(user.id)
+                .unwrap_or_else(|| user.display_name().to_owned()),
             username: user.username.clone(),
             avatar: cdn::user_avatar(user.id, user.avatar.as_deref(), 64),
             status: store.presence(user.id),

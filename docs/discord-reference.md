@@ -1,5 +1,27 @@
 # Discord reference (live capture 2026-11-07T10:48:31.917Z)
 
+## Friend nickname (captured 2026-11-07)
+
+Entry point: right-click a DM/friend in the DM list (or Friends list) → context
+menu item **"Change Friend Nickname"**. (The DM context menu also has
+"Add Note\nOnly visible to you", confirming the Note entry point.)
+
+Dialog:
+- Title: `Change Friend Nickname`
+- Body: `Find a friend faster with a personal nickname. It will only be visible to you in your direct messages.`
+- Field label: `Friend Nickname`
+- Input: placeholder = current display name, value = existing nickname (empty if none)
+- Buttons: `Reset Friend Nickname`, `Cancel`, `Save`
+
+API: `PUT /users/@me/relationships/:id` with body `{ "nick": "..." }`.
+Reset sends an empty/none nick. Update broadcast via gateway `RELATIONSHIP_UPDATE`.
+
+## Profile Note field (captured 2026-11-07)
+
+The profile popout/panel has a Note textbox with placeholder **"Click to add a note"**
+and helper text "Only visible to you" (in the context menu it is "Add Note\nOnly visible to you").
+
+
 
 ## Home / DM view
 

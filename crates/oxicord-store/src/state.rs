@@ -253,10 +253,21 @@ impl Store {
         self.relationships.get(&user).and_then(|r| r.since.clone())
     }
 
+    /// The personal nickname we gave a friend, if we set one.
+    pub fn relationship_nick(&self, user: Snowflake) -> Option<String> {
+        self.relationships.get(&user).and_then(|r| r.nickname.clone())
+    }
+
     /// What to show in the DM list for a channel.
     pub fn dm_name(&self, channel: &Channel) -> String {
         if let Some(name) = channel.name.as_deref().filter(|n| !n.is_empty()) {
             return name.to_owned();
+        }
+        // A personal friend nickname shows in the DM list in place of their name.
+        if let [one] = channel.recipients.as_slice() {
+            if let Some(nick) = self.relationship_nick(one.id) {
+                return nick;
+            }
         }
         let names: Vec<_> = channel.recipients.iter().map(User::display_name).collect();
         if names.is_empty() {

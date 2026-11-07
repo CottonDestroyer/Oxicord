@@ -8,6 +8,7 @@ mod forum;
 mod context_menu;
 mod dm_picker;
 mod forward_dialog;
+mod friend_nick_dialog;
 mod friends;
 mod icons;
 mod invite_dialog;
