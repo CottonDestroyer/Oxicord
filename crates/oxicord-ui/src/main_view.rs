@@ -20,6 +20,7 @@ use crate::{
     dm_picker::{ClosePicker, DmPicker, Purpose},
     forum::ForumView,
     forward_dialog::{CloseForward, ForwardDialog},
+    friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
@@ -135,6 +136,8 @@ pub struct MainView {
     forward_open: bool,
     nickname: Entity<NicknameDialog>,
     nickname_open: bool,
+    friend_nick: Entity<FriendNickDialog>,
+    friend_nick_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
@@ -194,6 +197,10 @@ impl MainView {
         let nickname = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| NicknameDialog::new(session, backend, window, cx))
+        };
+        let friend_nick = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| FriendNickDialog::new(session, backend, window, cx))
         };
         let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
         let switcher = {
@@ -307,6 +314,10 @@ impl MainView {
                 this.nickname_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&friend_nick, |this, _, _: &CloseFriendNick, cx| {
+                this.friend_nick_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&note_input, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.save_note(cx);
@@ -403,6 +414,8 @@ impl MainView {
             forward_open: false,
             nickname,
             nickname_open: false,
+            friend_nick,
+            friend_nick_open: false,
             note_input,
             note_prefilled_for: None,
             switcher,
@@ -954,6 +967,11 @@ impl MainView {
                 if let Some(dm) = dm {
                     self.close_dm(dm, window, cx);
                 }
+            }
+            Choice::ChangeFriendNickname => {
+                self.friend_nick_open = true;
+                self.friend_nick.update(cx, |dialog, cx| dialog.opened(user, window, cx));
+                cx.notify();
             }
             Choice::CopyId => cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string())),
             Choice::Separator => {}
@@ -2248,6 +2266,7 @@ impl Render for MainView {
         let status_dialog = self.status_dialog_open.then(|| self.status_dialog.clone());
         let forward = self.forward_open.then(|| self.forward.clone());
         let nickname = self.nickname_open.then(|| self.nickname.clone());
+        let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
@@ -2321,6 +2340,7 @@ impl Render for MainView {
             .children(viewer)
             .children(forward)
             .children(nickname)
+            .children(friend_nick)
             .children(join)
             .children(invite)
             .children(server_settings)

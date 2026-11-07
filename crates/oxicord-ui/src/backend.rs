@@ -258,6 +258,12 @@ pub enum Command {
         user: Snowflake,
         note: String,
     },
+    /// Set the personal nickname for a friend, or clear it with `None`. A
+    /// failure arrives as an [`Event::Notice`].
+    SetFriendNick {
+        user: Snowflake,
+        nick: Option<String>,
+    },
     /// Bookmark a message. The server records it under saved messages.
     BookmarkMessage {
         channel: Snowflake,
