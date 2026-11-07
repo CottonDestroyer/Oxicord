@@ -568,6 +568,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     {
                         profile.favorite_game = Some(name);
                     }
+                    let mut played = Vec::new();
+                    for game in profile.played_game_ids.clone() {
+                        if let Ok(name) = api.game_name(game).await
+                            && !name.is_empty()
+                        {
+                            played.push(name);
+                        }
+                    }
+                    profile.played_games = played;
                 }
                 let _ = events.send(Event::Profile { user, result }).await;
             });

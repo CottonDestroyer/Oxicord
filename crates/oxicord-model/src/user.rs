@@ -82,6 +82,10 @@ pub struct Profile {
     pub favorite_game_id: Option<Snowflake>,
     /// The name of that game, filled in after a lookup.
     pub favorite_game: Option<String>,
+    /// Games they have played, as ids from the profile widgets.
+    pub played_game_ids: Vec<Snowflake>,
+    /// Their display names, filled in after lookup.
+    pub played_games: Vec<String>,
 }
 #[derive(Default, Deserialize)]
 struct RawProfile {
@@ -189,14 +193,29 @@ impl From<RawProfile> for Profile {
                     g.tag.filter(|t| !t.is_empty())
                 }
             }),
-            favorite_game_id: raw.widgets.into_iter().find_map(|widget| {
-                if widget.data.kind == "favorite_games" {
-                    widget.data.games.into_iter().find_map(|game| game.game_id)
-                } else {
-                    None
-                }
-            }),
+            favorite_game_id: raw
+                .widgets
+                .iter()
+                .find_map(|widget| {
+                    if widget.data.kind == "favorite_games" {
+                        widget.data.games.iter().find_map(|game| game.game_id)
+                    } else {
+                        None
+                    }
+                }),
+            played_game_ids: raw
+                .widgets
+                .into_iter()
+                .find_map(|widget| {
+                    if widget.data.kind == "played_games" {
+                        Some(widget.data.games.into_iter().filter_map(|game| game.game_id).collect())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_default(),
             favorite_game: None,
+            played_games: Vec::new(),
             note: String::new(),
         }
     }
