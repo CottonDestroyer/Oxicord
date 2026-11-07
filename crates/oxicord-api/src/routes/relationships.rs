@@ -62,10 +62,10 @@ impl ApiClient {
     /// `None`. Discord stores it on the relationship and shows it in DMs.
     pub async fn set_relationship_nick(&self, user: Snowflake, nick: Option<&str>) -> Result<(), ApiError> {
         self.empty(
-            Method::PUT,
+            Method::PATCH,
             &format!("/users/@me/relationships/{user}"),
-            "PUT /users/@me/relationships/:id",
-            Some(&json!({ "nick": nick })),
+            "PATCH /users/@me/relationships/:id",
+            Some(&json!({ "nickname": nick })),
         )
         .await
     }
