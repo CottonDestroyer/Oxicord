@@ -67,6 +67,7 @@ pub struct Profile {
     pub pronouns: String,
     pub banner: Option<String>,
     pub accent_color: Option<u32>,
+    pub server_tag: Option<String>,
     pub badges: Vec<Badge>,
     pub mutual_guilds: Vec<MutualGuild>,
     pub mutual_friends: u32,
@@ -95,12 +96,22 @@ struct RawProfile {
     premium_since: Option<String>,
     #[serde(default)]
     guild_member: Option<GuildMemberFields>,
+    #[serde(default)]
+    primary_guild: Option<PrimaryGuildFields>,
 }
 
 #[derive(Default, Deserialize)]
 struct GuildMemberFields {
     #[serde(default)]
     joined_at: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct PrimaryGuildFields {
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default)]
+    identity_enabled: Option<bool>,
 }
 
 #[derive(Default, Deserialize)]
@@ -144,6 +155,13 @@ impl From<RawProfile> for Profile {
             accounts: raw.connected_accounts,
             premium_since: raw.premium_since,
             joined_server: raw.guild_member.and_then(|m| m.joined_at),
+            server_tag: raw.primary_guild.and_then(|g| {
+                if g.identity_enabled == Some(false) {
+                    None
+                } else {
+                    g.tag.filter(|t| !t.is_empty())
+                }
+            }),
         }
     }
 }
