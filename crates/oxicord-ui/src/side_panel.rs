@@ -32,6 +32,7 @@ pub struct SidePanel {
     backend: Backend,
     kind: PanelKind,
     muted: bool,
+    camera: bool,
     deafened: bool,
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
@@ -63,6 +64,7 @@ impl SidePanel {
             backend,
             kind: PanelKind::Pins,
             muted: false,
+            camera: false,
             deafened: false,
             guild: None,
             channel: None,
@@ -433,7 +435,22 @@ impl SidePanel {
                 };
                 vec![
                     Self::note(format!("Connected to {}", channel_name)),
-                    Self::note("Camera Unavailable"),
+                    {
+                        let camera = self.camera;
+                        div()
+                            .id("toggle-camera")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.camera = !this.camera;
+                                cx.notify();
+                            }))
+                            .child(if camera { "Turn Off Camera" } else { "Turn On Camera" })
+                            .into_any_element()
+                    },
                     Self::note("Share Your Screen"),
                     Self::note("Start An Activity"),
                     {
