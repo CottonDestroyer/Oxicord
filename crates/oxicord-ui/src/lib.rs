@@ -1,6 +1,7 @@
 mod account;
 mod admin;
 mod app;
+mod ban_dialog;
 pub mod backend;
 mod chat;
 mod emoji_panel;
