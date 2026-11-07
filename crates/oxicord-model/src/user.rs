@@ -76,8 +76,9 @@ pub struct Profile {
     pub premium_since: Option<String>,
     /// When they joined the server the card was opened from.
     pub joined_server: Option<String>,
+    /// The note we wrote about them, visible only to us.
+    pub note: String,
 }
-
 #[derive(Default, Deserialize)]
 struct RawProfile {
     #[serde(default)]
@@ -162,6 +163,7 @@ impl From<RawProfile> for Profile {
                     g.tag.filter(|t| !t.is_empty())
                 }
             }),
+            note: String::new(),
         }
     }
 }

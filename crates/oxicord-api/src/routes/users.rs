@@ -1,5 +1,6 @@
-use oxicord_model::{Profile, Snowflake, User};
+use oxicord_model::{Snowflake, User};
 use reqwest::Method;
+use serde::Deserialize;
 
 use crate::{ApiClient, ApiError};
 
@@ -15,18 +16,21 @@ impl ApiClient {
         self.json(Method::GET, &format!("/users/{id}"), "GET /users/:id", None).await
     }
 
-    /// The details a profile card shows. `guild` picks up the per-server
-    /// bio when the person has set one.
-    pub async fn profile(
-        &self,
-        user: Snowflake,
-        guild: Option<Snowflake>,
-    ) -> Result<Profile, ApiError> {
-        let mut path = format!("/users/{user}/profile?with_mutual_guilds=true&with_mutual_friends_count=true");
-        if let Some(guild) = guild {
-            path.push_str(&format!("&guild_id={guild}"));
+    /// The note we wrote about a user, visible only to us.
+    pub async fn user_note(&self, user: Snowflake) -> Result<String, ApiError> {
+        #[derive(Deserialize)]
+        struct NoteResponse {
+            #[serde(default)]
+            note: String,
         }
-        self.json(Method::GET, &path, "GET /users/:id/profile", None)
-            .await
+        let response: NoteResponse = self
+            .json(
+                Method::GET,
+                &format!("/users/@me/notes/{user}"),
+                "GET /users/@me/notes/:id",
+                None,
+            )
+            .await?;
+        Ok(response.note)
     }
 }

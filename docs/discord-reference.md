@@ -201,3 +201,14 @@ Full profile editor ("Your full profile") sections:
 - "Animated Avatar"
 
 Oxicord profile modal already covers: avatar, display name, username, pronouns, activity status, bio, presence, badges, mutual friends count, mutual servers list, joined date, boost date, linked accounts, banner, accent color, copy user ID/avatar/banner URLs.
+
+## User Profile Note
+
+Observed in Cotton's full profile.
+
+- Section label: "Note (only visible to you)".
+- Input placeholder: "Note".
+- Stored value is per-viewer and fetched separately from `/users/@me/notes/{user_id}`.
+- Response shape: `{"user_id":..., "note_user_id":..., "note":"..."}`.
+
+Oxicord now fetches this note while loading a profile and shows it as "Note: ..." in the profile modal.
