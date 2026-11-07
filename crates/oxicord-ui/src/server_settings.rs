@@ -406,7 +406,13 @@ impl ServerSettings {
             .child(group(
                 "About",
                 vec![
-                    widgets::info_row("Server ID", id),
+                    widgets::info_row("Server ID", id.clone()),
+                    button("copy-server-id", "Copy Server ID", Tone::Plain, {
+                        let id = id.clone();
+                        move |_, _, cx| {
+                            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(id.clone()));
+                        }
+                    }),
                     widgets::info_row("Owner", owner),
                     widgets::info_row("Members", members),
                     widgets::info_row("Created", created),
