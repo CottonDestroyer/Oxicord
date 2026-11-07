@@ -134,6 +134,11 @@ pub struct OpenServerSettings(pub Snowflake);
 
 impl EventEmitter<OpenServerSettings> for Session {}
 
+/// Someone wants the privacy settings.
+pub struct OpenPrivacySettings;
+
+impl EventEmitter<OpenPrivacySettings> for Session {}
+
 /// Someone wants to edit their per-server profile.
 pub struct OpenServerProfile(pub Snowflake);
 
