@@ -142,23 +142,64 @@ fn section(title: &str) -> Div {
     div().flex().flex_col().gap(px(8.)).child(heading(title))
 }
 
+/// The file under `connections/` that holds a service's logo.
+fn logo_file(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "steam" => "steam.svg",
+        "riotgames" => "riotgames.png",
+        "battlenet" => "battlenet.png",
+        "bluesky" => "bluesky.svg",
+        "letterboxd" => "letterboxd.svg",
+        "paypal" => "paypal.svg",
+        "reddit" => "reddit.svg",
+        "twitter" | "twitter_legacy" => "twitter.svg",
+        "ebay" => "ebay.svg",
+        "crunchyroll" => "crunchyroll.svg",
+        "playstation" => "playstation.svg",
+        "spotify" => "spotify.svg",
+        "xbox" => "xbox.svg",
+        "amazon-music" => "amazon-music.svg",
+        "bungie" => "bungie.svg",
+        "domain" => "domain.svg",
+        "epicgames" => "epicgames.svg",
+        "facebook" => "facebook.svg",
+        "github" => "github.svg",
+        "roblox" => "roblox.svg",
+        "twitch" => "twitch.svg",
+        "youtube" => "youtube.svg",
+        _ => return None,
+    })
+}
+
+/// The little tile in front of a connection. Steam's is white with a dark
+/// logo as the profile draws it; the others show the logo Discord uses on
+/// dark surfaces. A service we have no logo for gets a link glyph.
+fn logo_tile(kind: &str) -> Div {
+    let tile = div()
+        .size(px(24.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(8.))
+        .border_1()
+        .border_color(rgba(OUTLINE_SOFT));
+    match (kind, logo_file(kind)) {
+        ("steam", _) => tile
+            .bg(rgb(0xffffff))
+            .child(gpui_kit::img(gpui_kit::SharedString::from("connections/steam-profile.png")).size(px(18.))),
+        (_, Some(file)) => tile
+            .bg(rgb(0x1e1f22))
+            .child(gpui_kit::img(gpui_kit::SharedString::from(format!("connections/{file}"))).size(px(16.))),
+        _ => tile.bg(rgb(0xffffff)).child(icon("link", 14., 0x1e1f22)),
+    }
+}
+
 fn connection(account: &Connection) -> Div {
     div()
         .flex()
         .gap(px(8.))
-        .child(
-            div()
-                .size(px(24.))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(8.))
-                .bg(rgb(0xffffff))
-                .border_1()
-                .border_color(rgba(OUTLINE_SOFT))
-                .child(icon("link", 14., 0x1e1f22)),
-        )
+        .child(logo_tile(&account.kind))
         .child(
             div()
                 .flex_1()
@@ -566,6 +607,13 @@ fn empty(title: &str, text: &str) -> Div {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn known_services_have_a_logo_and_unknown_ones_do_not() {
+        assert_eq!(logo_file("steam"), Some("steam.svg"));
+        assert_eq!(logo_file("twitter_legacy"), Some("twitter.svg"));
+        assert_eq!(logo_file("somewhere-new"), None);
+    }
 
     #[test]
     fn tag_keys_read_as_words() {
