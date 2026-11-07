@@ -19,6 +19,7 @@ pub(super) enum Choice {
     MarkUnread,
     Thread,
     CopyLink,
+    Bookmark(bool),
     Delete,
     CopyId,
     Separator,
@@ -37,6 +38,8 @@ impl Choice {
             Choice::MarkUnread => Entry::item("Mark Unread", "mail"),
             Choice::Thread => Entry::item("Create Thread", "messages-square"),
             Choice::CopyLink => Entry::item("Copy Message Link", "link"),
+            Choice::Bookmark(true) => Entry::item("Remove Bookmark", "bookmark"),
+            Choice::Bookmark(false) => Entry::item("Bookmark Message", "bookmark"),
             Choice::Delete => Entry::danger("Delete Message", "trash"),
             Choice::CopyId => Entry::item("Copy Message ID", "hash"),
             Choice::Separator => Entry::Separator,
@@ -45,7 +48,7 @@ impl Choice {
 }
 
 /// What the menu offers for a message, in the order shown.
-pub(super) fn choices(allowed: &Allowed) -> Vec<Choice> {
+pub(super) fn choices(allowed: &Allowed, bookmarked: bool) -> Vec<Choice> {
     let mut out = Vec::new();
     if allowed.react {
         out.push(Choice::React);
@@ -65,6 +68,7 @@ pub(super) fn choices(allowed: &Allowed) -> Vec<Choice> {
     if allowed.thread {
         out.push(Choice::Thread);
     }
+    out.push(Choice::Bookmark(bookmarked));
     out.push(Choice::CopyLink);
     if allowed.delete {
         out.push(Choice::Separator);
@@ -83,7 +87,7 @@ impl ChatView {
         allowed: Allowed,
         cx: &mut Context<Self>,
     ) {
-        let list = choices(&allowed);
+        let list = choices(&allowed, self.session.read(cx).is_bookmarked(message));
         let entries = list.iter().map(|c| c.entry()).collect();
         let chat = cx.entity().downgrade();
         let pick = Rc::new(move |index: usize, window: &mut Window, cx: &mut gpui_kit::App| {
@@ -117,6 +121,7 @@ impl ChatView {
             Choice::MarkUnread => self.mark_unread(message, cx),
             Choice::Thread => self.start_thread(message, cx),
             Choice::CopyLink => self.copy_link(message, cx),
+            Choice::Bookmark(_) => self.toggle_bookmark(message, cx),
             Choice::Delete => {
                 self.confirm_delete = Some(message);
                 cx.notify();
@@ -132,8 +137,17 @@ impl ChatView {
         self.session.update(cx, |_, cx| cx.emit(OpenForward { channel, guild, message }));
     }
 
-    /// Moves the read marker to just before `message`,, so it and everything
-    /// after it counts as new again.
+    fn toggle_bookmark(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let bookmarked = self.session.read(cx).is_bookmarked(message);
+        if bookmarked {
+            self.backend.send(Command::UnbookmarkMessage { channel, message });
+            self.session.update(cx, |s, cx| s.set_bookmarked(message, false, cx));
+        } else {
+            self.backend.send(Command::BookmarkMessage { channel, message });
+            self.session.update(cx, |s, cx| s.set_bookmarked(message, true, cx));
+        }
+    }
     fn mark_unread(&mut self, message: Snowflake, cx: &mut Context<Self>) {
         let Some(channel) = self.channel else { return };
         let (before, newest) = {
@@ -172,13 +186,13 @@ mod tests {
 
     #[test]
     fn your_own_message_can_be_edited_and_deleted() {
-        let list = choices(&allowed(true, true));
+        let list = choices(&allowed(true, true), false);
         assert!(list.contains(&Choice::Edit) && list.contains(&Choice::Delete));
     }
 
     #[test]
     fn someone_elses_message_offers_neither() {
-        let list = choices(&allowed(false, false));
+        let list = choices(&allowed(false, false), false);
         assert!(!list.contains(&Choice::Edit) && !list.contains(&Choice::Delete));
         assert!(list.contains(&Choice::MarkUnread) && list.contains(&Choice::CopyId));
     }
@@ -187,6 +201,6 @@ mod tests {
     fn the_pin_entry_reflects_the_current_state() {
         let mut a = allowed(false, false);
         a.pin = Some(true);
-        assert!(choices(&a).contains(&Choice::Pin(true)));
+        assert!(choices(&a, false).contains(&Choice::Pin(true)));
     }
 }

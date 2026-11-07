@@ -67,6 +67,7 @@ pub struct Profile {
     pub pronouns: String,
     pub banner: Option<String>,
     pub accent_color: Option<u32>,
+    pub server_tag: Option<String>,
     pub badges: Vec<Badge>,
     pub mutual_guilds: Vec<MutualGuild>,
     pub mutual_friends: u32,
@@ -75,8 +76,17 @@ pub struct Profile {
     pub premium_since: Option<String>,
     /// When they joined the server the card was opened from.
     pub joined_server: Option<String>,
+    /// The note we wrote about them, visible only to us.
+    pub note: String,
+    /// The id of a game they pinned to their profile, if any.
+    pub favorite_game_id: Option<Snowflake>,
+    /// The name of that game, filled in after a lookup.
+    pub favorite_game: Option<String>,
+    /// Games they have played, as ids from the profile widgets.
+    pub played_game_ids: Vec<Snowflake>,
+    /// Their display names, filled in after lookup.
+    pub played_games: Vec<String>,
 }
-
 #[derive(Default, Deserialize)]
 struct RawProfile {
     #[serde(default)]
@@ -95,12 +105,44 @@ struct RawProfile {
     premium_since: Option<String>,
     #[serde(default)]
     guild_member: Option<GuildMemberFields>,
+    #[serde(default)]
+    primary_guild: Option<PrimaryGuildFields>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    widgets: Vec<WidgetFields>,
 }
 
 #[derive(Default, Deserialize)]
 struct GuildMemberFields {
     #[serde(default)]
     joined_at: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct PrimaryGuildFields {
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default)]
+    identity_enabled: Option<bool>,
+}
+
+#[derive(Default, Deserialize)]
+struct WidgetFields {
+    #[serde(default)]
+    data: WidgetData,
+}
+
+#[derive(Default, Deserialize)]
+struct WidgetData {
+    #[serde(rename = "type", default)]
+    kind: String,
+    #[serde(default)]
+    games: Vec<WidgetGame>,
+}
+
+#[derive(Default, Deserialize)]
+struct WidgetGame {
+    #[serde(rename = "game_id", default)]
+    game_id: Option<Snowflake>,
 }
 
 #[derive(Default, Deserialize)]
@@ -144,6 +186,37 @@ impl From<RawProfile> for Profile {
             accounts: raw.connected_accounts,
             premium_since: raw.premium_since,
             joined_server: raw.guild_member.and_then(|m| m.joined_at),
+            server_tag: raw.primary_guild.and_then(|g| {
+                if g.identity_enabled == Some(false) {
+                    None
+                } else {
+                    g.tag.filter(|t| !t.is_empty())
+                }
+            }),
+            favorite_game_id: raw
+                .widgets
+                .iter()
+                .find_map(|widget| {
+                    if widget.data.kind == "favorite_games" {
+                        widget.data.games.iter().find_map(|game| game.game_id)
+                    } else {
+                        None
+                    }
+                }),
+            played_game_ids: raw
+                .widgets
+                .into_iter()
+                .find_map(|widget| {
+                    if widget.data.kind == "played_games" {
+                        Some(widget.data.games.into_iter().filter_map(|game| game.game_id).collect())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_default(),
+            favorite_game: None,
+            played_games: Vec::new(),
+            note: String::new(),
         }
     }
 }

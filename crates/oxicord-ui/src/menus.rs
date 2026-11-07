@@ -43,7 +43,10 @@ pub enum Action {
     /// `None` means "use the default", which for a channel is to inherit.
     SetLevel(Option<NotifyLevel>),
     SuppressEveryone(bool),
+    HideMutedChannels(bool),
     CopyLink,
+    CopyId,
+    CopyGuildId,
     Leave,
 }
 
@@ -72,7 +75,8 @@ pub fn settings_body(place: Place, action: Action, now: DateTime<Utc>) -> Option
         Action::Unmute => json!({ "muted": false, "mute_config": null }),
         Action::SetLevel(level) => json!({ "message_notifications": level_number(level) }),
         Action::SuppressEveryone(on) => json!({ "suppress_everyone": on }),
-        Action::MarkRead | Action::CopyLink | Action::Leave => return None,
+        Action::HideMutedChannels(on) => json!({ "hide_muted_channels": on }),
+        Action::MarkRead | Action::CopyLink | Action::CopyId | Action::CopyGuildId | Action::Leave => return None,
     };
     Some(match place {
         Place::Guild(_) => fields,

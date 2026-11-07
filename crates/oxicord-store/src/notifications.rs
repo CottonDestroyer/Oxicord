@@ -15,6 +15,12 @@ impl Store {
         self.notifications.insert(settings.guild_id, settings);
     }
 
+    pub fn hide_muted_channels(&self, guild: Snowflake) -> bool {
+        self.settings_for(Some(guild))
+            .map(|s| s.hide_muted_channels)
+            .unwrap_or(false)
+    }
+
     fn settings_for(&self, guild: Option<Snowflake>) -> Option<&GuildNotificationSettings> {
         self.notifications.get(&guild)
     }

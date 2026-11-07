@@ -18,6 +18,8 @@ pub enum Choice {
     Unblock,
     /// Hide the conversation, for the DM list.
     CloseDm,
+    /// Give a friend a personal nickname, shown only in our DMs.
+    ChangeFriendNickname,
     CopyId,
     Separator,
 }
@@ -35,6 +37,7 @@ impl Choice {
             Choice::Block => Entry::danger("Block", "ban"),
             Choice::Unblock => Entry::item("Unblock", "ban"),
             Choice::CloseDm => Entry::item("Close DM", "x"),
+            Choice::ChangeFriendNickname => Entry::item("Change Friend Nickname", "user-edit"),
             Choice::CopyId => Entry::item("Copy User ID", "hash"),
             Choice::Separator => Entry::Separator,
         }
@@ -62,6 +65,10 @@ pub fn choices(tie: Option<RelationshipKind>, is_me: bool, can_mention: bool, in
         if tie != Some(RelationshipKind::Blocked) {
             out.push(Choice::Block);
         }
+        // Only friends can carry a personal nickname.
+        if tie == Some(RelationshipKind::Friend) {
+            out.push(Choice::ChangeFriendNickname);
+        }
     }
     if in_dm_list {
         out.push(Choice::Separator);
@@ -86,6 +93,13 @@ mod tests {
     fn a_friend_can_be_removed_instead() {
         let list = choices(Some(RelationshipKind::Friend), false, true, false);
         assert!(list.contains(&Choice::RemoveFriend) && !list.contains(&Choice::AddFriend));
+    }
+
+    #[test]
+    fn a_friend_can_have_their_nickname_changed() {
+        let list = choices(Some(RelationshipKind::Friend), false, true, false);
+        assert!(list.contains(&Choice::ChangeFriendNickname));
+        assert!(!choices(None, false, true, false).contains(&Choice::ChangeFriendNickname));
     }
 
     #[test]
