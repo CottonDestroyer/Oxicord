@@ -44,6 +44,7 @@ pub enum Action {
     SetLevel(Option<NotifyLevel>),
     SuppressEveryone(bool),
     CopyLink,
+    CopyId,
     Leave,
 }
 
@@ -72,7 +73,7 @@ pub fn settings_body(place: Place, action: Action, now: DateTime<Utc>) -> Option
         Action::Unmute => json!({ "muted": false, "mute_config": null }),
         Action::SetLevel(level) => json!({ "message_notifications": level_number(level) }),
         Action::SuppressEveryone(on) => json!({ "suppress_everyone": on }),
-        Action::MarkRead | Action::CopyLink | Action::Leave => return None,
+        Action::MarkRead | Action::CopyLink | Action::CopyId | Action::Leave => return None,
     };
     Some(match place {
         Place::Guild(_) => fields,

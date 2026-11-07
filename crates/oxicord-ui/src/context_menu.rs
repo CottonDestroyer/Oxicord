@@ -100,6 +100,9 @@ impl ContextMenu {
                     let guild = self.channel(cx).and_then(|c| c.guild_id);
                     cx.write_to_clipboard(ClipboardItem::new_string(channel_link(guild, channel)));
                 }
+                (Action::CopyId, Some(Target::Channel(channel))) => {
+                    cx.write_to_clipboard(ClipboardItem::new_string(channel.to_string()));
+                }
                 (Action::Leave, Some(Target::Guild(guild))) => self.backend.send(Command::LeaveGuild(guild)),
                 _ => {}
             }
@@ -232,6 +235,12 @@ impl Render for ContextMenu {
         if matches!(target, Target::Channel(_)) {
             menu = menu.child(self.item("copy-link", "Copy link", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                 this.run(Action::CopyLink, cx);
+            }, cx));
+        }
+
+        if matches!(target, Target::Channel(_)) {
+            menu = menu.child(self.item("copy-id", "Copy channel ID", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                this.run(Action::CopyId, cx);
             }, cx));
         }
 
