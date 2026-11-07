@@ -250,6 +250,13 @@ pub enum Command {
         user: Snowflake,
         delete_message_days: u32,
     },
+    /// Time a member out until an RFC3339 instant, or lift it with `None`.
+    /// Requires the `Timeout Members` permission.
+    TimeoutMember {
+        guild: Snowflake,
+        user: Snowflake,
+        until: Option<String>,
+    },
     /// Send a friend request to this username. The outcome arrives as
     /// [`Event::FriendRequest`].
     AddFriendByName(String),

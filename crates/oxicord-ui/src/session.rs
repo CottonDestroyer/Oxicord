@@ -157,6 +157,12 @@ pub struct OpenCreateChannel(pub Snowflake, pub Option<Snowflake>);
 
 impl EventEmitter<OpenCreateChannel> for Session {}
 
+/// Someone wants to open the nitro gift dialog from the composer's "Send a gift"
+/// button. Oxicord does not process payments, so this is a read-only upsell view.
+pub struct OpenGift;
+
+impl EventEmitter<OpenGift> for Session {}
+
 /// Someone wants the privacy settings.
 pub struct OpenPrivacySettings;
 

@@ -67,6 +67,24 @@ impl ApiClient {
         .await
     }
 
+    /// Times a member out until `until` (an RFC3339 string), or lifts an
+    /// existing timeout with `None`. Requires the `Timeout Members` permission
+    /// and a role high enough to target them.
+    pub async fn set_timeout(
+        &self,
+        guild: Snowflake,
+        user: Snowflake,
+        until: Option<String>,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/members/{user}"),
+            "PATCH /guilds/:id/members/:id",
+            Some(&json!({ "communication_disabled_until": until })),
+        )
+        .await
+    }
+
     pub async fn audit_log(&self, guild: Snowflake) -> Result<AuditLog, ApiError> {
         let body: Value = self
             .json(
