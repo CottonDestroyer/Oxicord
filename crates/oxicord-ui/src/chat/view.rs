@@ -2330,13 +2330,13 @@ impl Render for ChatView {
                             div()
                                 .text_size(px(12.))
                                 .text_color(rgb(theme::TEXT_MUTED))
-                                .child(format!("Joined: {}", joined))
+                                .child(format!("Member Since: {}", joined))
                         }))
                         .children(premium_since.map(|since| {
                             div()
                                 .text_size(px(12.))
                                 .text_color(rgb(theme::TEXT_MUTED))
-                                .child(format!("Boosting since: {}", since))
+                                .child(format!("Boosting Since: {}", since))
                         }))
                         .children((!accounts.is_empty()).then(|| {
                             div()
