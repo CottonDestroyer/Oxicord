@@ -82,4 +82,19 @@ impl ApiClient {
         )
         .await
     }
+
+    /// Creates a new server with the given name. The new guild arrives through
+    /// the gateway as `GUILD_CREATE`, which the store already ingests, so the
+    /// server shows up at once.
+    pub async fn create_guild(&self, name: &str) -> Result<oxicord_model::Guild, ApiError> {
+        let guild: oxicord_model::Guild = self
+            .json(
+                Method::POST,
+                "/guilds",
+                "POST /guilds",
+                Some(&json!({ "name": name })),
+            )
+            .await?;
+        Ok(guild)
+    }
 }

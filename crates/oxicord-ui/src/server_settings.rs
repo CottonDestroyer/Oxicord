@@ -28,6 +28,24 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Overview,
+    ServerProfile,
+    ServerTag,
+    Members,
+    Access,
+    Integrations,
+    AutoMod,
+    EnableCommunity,
+    BoostPerks,
+    Stickers,
+    Soundboard,
+    Engagement,
+    ServerTemplate,
+    Widget,
+    SafetySetup,
+    ServerInsights,
+    PartnerProgram,
+    Monetization,
+    Discovery,
     Roles,
     Channels,
     Emoji,
@@ -37,12 +55,30 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 7] =
-        [Page::Overview, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 25] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Engagement, Page::ServerTemplate, Page::Widget, Page::SafetySetup, Page::ServerInsights, Page::PartnerProgram, Page::Monetization, Page::Discovery, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
             Page::Overview => "Overview",
+            Page::ServerProfile => "Server Profile",
+            Page::ServerTag => "Server Tag",
+            Page::Members => "Members",
+            Page::Access => "Access",
+            Page::Integrations => "Integrations",
+            Page::AutoMod => "AutoMod",
+            Page::EnableCommunity => "Enable Community",
+            Page::BoostPerks => "Boost Perks",
+            Page::Stickers => "Stickers",
+            Page::Soundboard => "Soundboard",
+            Page::Engagement => "Engagement",
+            Page::ServerTemplate => "Server Template",
+            Page::Widget => "Widget",
+            Page::SafetySetup => "Safety Setup",
+            Page::ServerInsights => "Server Insights",
+            Page::PartnerProgram => "Partner Program",
+            Page::Monetization => "Monetization",
+            Page::Discovery => "Discovery",
             Page::Roles => "Roles",
             Page::Channels => "Channels",
             Page::Emoji => "Emoji",
@@ -55,7 +91,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights | Page::PartnerProgram | Page::Monetization | Page::Discovery => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -206,6 +242,12 @@ impl ServerSettings {
             color_error: false,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Opens the server settings straight on the per-server profile page.
+    pub fn opened_profile(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        self.page = Page::ServerProfile;
+        self.opened(guild, window, cx);
     }
 
     pub fn opened(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
@@ -370,7 +412,13 @@ impl ServerSettings {
             .child(group(
                 "About",
                 vec![
-                    widgets::info_row("Server ID", id),
+                    widgets::info_row("Server ID", id.clone()),
+                    button("copy-server-id", "Copy Server ID", Tone::Plain, {
+                        let id = id.clone();
+                        move |_, _, cx| {
+                            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(id.clone()));
+                        }
+                    }),
                     widgets::info_row("Owner", owner),
                     widgets::info_row("Members", members),
                     widgets::info_row("Created", created),
@@ -378,6 +426,396 @@ impl ServerSettings {
             ))
             .into_any_element()
     }
+
+    fn server_profile(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Server Profile"))
+            .child(group(
+                "Profile",
+                vec![
+                    widgets::info_row("Server Name", name),
+                    widgets::info_row("Server ID", guild.to_string()),
+                ],
+            ))
+            .into_any_element()
+    }
+
+    fn server_tag(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Server Tag"))
+            .child(group(
+                "Tag",
+                vec![
+                    widgets::info_row("Server Name", name),
+                    widgets::info_row("Server ID", guild.to_string()),
+                ],
+            ))
+            .into_any_element()
+    }
+
+    fn members(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let members = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.member_count.map_or_else(|| "Unknown".to_owned(), |n| n.to_string()))
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Members"))
+            .child(group(
+                "Members",
+                vec![widgets::info_row("Member Count", members)],
+            ))
+            .into_any_element()
+    }
+
+    fn access(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Access"))
+            .child(group(
+                "Access",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn integrations(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Integrations"))
+            .child(group(
+                "Integrations",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn enable_community(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Enable Community"))
+            .child(group(
+                "Community",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn boost_perks(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Boost Perks"))
+            .child(group(
+                "Boost Perks",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn automod(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("AutoMod"))
+            .child(group(
+                "AutoMod",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn stickers(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Stickers"))
+            .child(group(
+                "Stickers",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn soundboard(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Soundboard"))
+            .child(group(
+                "Soundboard",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn engagement(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Engagement"))
+            .child(group(
+                "Engagement",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn server_template(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Server Template"))
+            .child(group(
+                "Server Template",
+                vec![widgets::info_row("Server Name", name)],
+            ))
+            .into_any_element()
+    }
+
+    fn widget(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Widget"))
+            .child(group("Widget", vec![widgets::info_row("Server", name)]))
+            .into_any_element()
+    }
+
+
+    fn safety_setup(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Safety Setup"))
+            .child(group("Safety Setup", vec![widgets::info_row("Server", name)]))
+            .into_any_element()
+    }
+
+
+    fn server_insights(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Server Insights"))
+            .child(group("Server Insights", vec![widgets::info_row("Server", name)]))
+            .into_any_element()
+    }
+
+
+    fn partner_program(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Partner Program"))
+            .child(group("Partner Program", vec![widgets::info_row("Server", name)]))
+            .into_any_element()
+    }
+
+
+    fn monetization(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Monetization"))
+            .child(group("Monetization", vec![widgets::info_row("Server", name)]))
+            .into_any_element()
+    }
+
+
+    fn discovery(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|g| g.name.clone())
+            .unwrap_or_default();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(title("Discovery"))
+            .child(group("Discovery", vec![widgets::info_row("Server", name)]))
+            .into_any_element()
+    }
+
 
     fn roles(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(guild) = self.guild else { return div().into_any_element() };
@@ -835,6 +1273,12 @@ impl ServerSettings {
                                         )),
                                     ),
                             )
+                            .child(button(SharedString::from(format!("copy-{code}")), "Copy", Tone::Plain, {
+                                let code = code.clone();
+                                move |_, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(code.clone()));
+                                }
+                            }))
                             .child(button(SharedString::from(format!("revoke-{code}")), "Revoke", Tone::Danger, {
                                 let view = cx.weak_entity();
                                 move |_, _, cx| {
@@ -980,6 +1424,24 @@ impl Render for ServerSettings {
 
         let body = match self.page {
             Page::Overview => self.overview(cx),
+            Page::ServerProfile => self.server_profile(cx),
+            Page::ServerTag => self.server_tag(cx),
+            Page::Members => self.members(cx),
+            Page::Access => self.access(cx),
+            Page::Integrations => self.integrations(cx),
+            Page::AutoMod => self.automod(cx),
+            Page::EnableCommunity => self.enable_community(cx),
+            Page::BoostPerks => self.boost_perks(cx),
+            Page::Stickers => self.stickers(cx),
+            Page::Soundboard => self.soundboard(cx),
+            Page::Engagement => self.engagement(cx),
+            Page::ServerTemplate => self.server_template(cx),
+            Page::Widget => self.widget(cx),
+            Page::SafetySetup => self.safety_setup(cx),
+            Page::ServerInsights => self.server_insights(cx),
+            Page::PartnerProgram => self.partner_program(cx),
+            Page::Monetization => self.monetization(cx),
+            Page::Discovery => self.discovery(cx),
             Page::Roles => self.roles(cx),
             Page::Channels => self.channels(cx),
             Page::Emoji => self.emoji(cx),

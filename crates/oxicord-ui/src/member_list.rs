@@ -9,6 +9,7 @@ use oxicord_model::{Snowflake, Status};
 use oxicord_store::{Changes, Entry};
 
 use crate::{
+    icons::icon,
     media::{Media, avatar},
     session::{OpenUserMenu, Session},
     theme,
@@ -149,7 +150,7 @@ impl MemberList {
         roles: &[Snowflake],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (name, avatar_url, status, color, bot, line) = {
+        let (name, avatar_url, status, color, bot, line, in_voice) = {
             let store = &self.session.read(cx).store;
             let Some(account) = store.user(user) else {
                 return div().h(px(MEMBER_HEIGHT)).into_any_element();
@@ -162,6 +163,7 @@ impl MemberList {
                 store.member_color(guild, roles),
                 account.bot,
                 crate::friends::status_line(store.activities(user)),
+                store.voice_of(user).is_some_and(|v| v.channel_id.is_some()),
             )
         };
 
@@ -216,7 +218,8 @@ impl MemberList {
                                     .items_center()
                                     .gap(px(4.))
                                     .child(div().min_w_0().truncate().text_color(rgb(name_color)).child(name))
-                                    .children(bot.then(app_badge)),
+                                    .children(bot.then(app_badge))
+                                    .children(in_voice.then(|| icon("volume-2", 12., theme::TEXT_MUTED))),
                             )
                             .children(line.map(|line| {
                                 div()
@@ -299,7 +302,18 @@ pub fn status_shape(status: Status, size: f32, backdrop: u32) -> Div {
     match status {
         Status::Online => disc,
         Status::Idle => disc.child(cut(-0.15, -0.15, 0.65, 0.65)),
-        Status::Dnd => disc.child(cut(0.2, 0.4, 0.6, 0.2)),
+        // Do Not Disturb: a solid red disc with a white bar in the middle,
+        // matching Discord (the bar is white, not a hole in the background).
+        Status::Dnd => disc.child(
+            div()
+                .absolute()
+                .left(px(size * 0.2))
+                .top(px(size * 0.42))
+                .w(px(size * 0.6))
+                .h(px(size * 0.16))
+                .rounded_full()
+                .bg(rgb(0xffffff)),
+        ),
         Status::Offline => disc.child(cut(0.25, 0.25, 0.5, 0.5)),
     }
 }

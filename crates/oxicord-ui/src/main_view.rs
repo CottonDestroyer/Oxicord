@@ -4,7 +4,7 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    FocusHandle, MouseButton, component::input::Escape, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
+    FocusHandle, MouseButton, component::input::{Escape, InputEvent, InputState}, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
@@ -20,19 +20,26 @@ use crate::{
     dm_picker::{ClosePicker, DmPicker, Purpose},
     forum::ForumView,
     forward_dialog::{CloseForward, ForwardDialog},
+    friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
+    ban_dialog::{CloseBan, BanDialog},
+    timeout_dialog::{CloseTimeout, TimeoutDialog},
+    roles_dialog::{CloseRoles, RolesDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
     rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
+    create_channel_dialog::{CloseCreateChannel, CreateChannelDialog},
+    edit_channel_dialog::{CloseEditChannel, EditChannelDialog},
+    gift_dialog::{CloseGift, GiftDialog},
     invite_dialog::{CloseInvite, InviteDialog},
     keys::{self, QuickSwitch},
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -70,6 +77,8 @@ struct ChannelItem {
     voice: Vec<VoiceItem>,
     /// What the people in a voice channel say they are doing.
     status: Option<String>,
+    /// User limit for voice channels (None = unlimited).
+    user_limit: Option<u32>,
     muted: bool,
     /// Threads shown beneath this channel.
     threads: Vec<ChannelItem>,
@@ -111,8 +120,14 @@ pub struct MainView {
     status_submenu_open: bool,
     status_dialog: Entity<StatusDialog>,
     status_dialog_open: bool,
+    channel_status_modal: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
+    /// The editable note box shown in a profile card.
+    note_input: Entity<InputState>,
+    /// Which profile the note box was last filled for, so we don't overwrite
+    /// what the user is typing when the profile reloads.
+    note_prefilled_for: Option<Snowflake>,
     settings_open: bool,
     settings_view: Entity<SettingsView>,
     panel: Entity<SidePanel>,
@@ -127,6 +142,14 @@ pub struct MainView {
     forward_open: bool,
     nickname: Entity<NicknameDialog>,
     nickname_open: bool,
+    friend_nick: Entity<FriendNickDialog>,
+    friend_nick_open: bool,
+    ban_dialog: Entity<BanDialog>,
+    ban_dialog_open: bool,
+    timeout_dialog: Entity<TimeoutDialog>,
+    timeout_dialog_open: bool,
+    roles_dialog: Entity<RolesDialog>,
+    roles_dialog_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
@@ -139,6 +162,16 @@ pub struct MainView {
     inbox_open: bool,
     invite: Entity<InviteDialog>,
     invite_open: bool,
+    edit_channel: Entity<EditChannelDialog>,
+    edit_channel_open: bool,
+    create_channel: Entity<CreateChannelDialog>,
+    create_channel_open: bool,
+    gift_dialog: Entity<GiftDialog>,
+    gift_open: bool,
+    /// Our own mute/deafen intent, shown on the user panel. The actual voice
+    /// state is sent to the voice gateway once we connect (deferred).
+    self_muted: bool,
+    self_deafened: bool,
     server_settings: Entity<ServerSettings>,
     server_settings_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
@@ -164,6 +197,7 @@ impl MainView {
         // The chat reads several preferences, so fetch them up front.
         session.update(cx, |s, cx| {
             s.request_account(&backend, crate::AccountRequest::LoadSettings, cx);
+            s.request_saved_messages(&backend, cx);
         });
         let panel = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -186,6 +220,23 @@ impl MainView {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| NicknameDialog::new(session, backend, window, cx))
         };
+        let friend_nick = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| FriendNickDialog::new(session, backend, window, cx))
+        };
+        let ban_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| BanDialog::new(session, backend, window, cx))
+        };
+        let timeout_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| TimeoutDialog::new(session, backend, window, cx))
+        };
+        let roles_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| RolesDialog::new(session, backend, window, cx))
+        };
+        let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
             cx.new(|cx| QuickSwitcher::new(session, media, window, cx))
@@ -207,6 +258,18 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| InviteDialog::new(session, media, backend, cx))
         };
+        let edit_channel = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| EditChannelDialog::new(session, backend, window, cx))
+        };
+        let create_channel = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| CreateChannelDialog::new(session, backend, window, cx))
+        };
+        let gift_dialog = {
+            let session = session.clone();
+            cx.new(|cx| GiftDialog::new(session, window, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -220,6 +283,16 @@ impl MainView {
                 this.server_settings.update(cx, |view, cx| view.opened(open.0, window, cx));
                 cx.notify();
             }),
+            cx.subscribe(&session, |this, _, _: &OpenPrivacySettings, cx| {
+                this.settings_open = true;
+                this.settings_view.update(cx, |view, cx| view.open_data_privacy(cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenServerProfile, window, cx| {
+                this.server_settings_open = true;
+                this.server_settings.update(cx, |view, cx| view.opened_profile(open.0, window, cx));
+                cx.notify();
+            }),
             cx.subscribe(&session, |this, _, open: &OpenUserMenu, cx| this.open_user_menu(open, cx)),
             cx.subscribe(&invite, |this, _, _: &CloseInvite, cx| {
                 this.invite_open = false;
@@ -228,6 +301,32 @@ impl MainView {
             cx.subscribe(&session, |this, _, open: &OpenInviteDialog, cx| {
                 this.invite_open = true;
                 this.invite.update(cx, |dialog, cx| dialog.opened(open.0, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&edit_channel, |this, _, _: &CloseEditChannel, cx| {
+                this.edit_channel_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenChannelSettings, window, cx| {
+                this.edit_channel_open = true;
+                this.edit_channel.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&create_channel, |this, _, _: &CloseCreateChannel, cx| {
+                this.create_channel_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenCreateChannel, window, cx| {
+                this.create_channel_open = true;
+                this.create_channel.update(cx, |dialog, cx| dialog.opened(open.0, open.1, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&gift_dialog, |this, _, _: &CloseGift, cx| {
+                this.gift_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, _: &OpenGift, cx| {
+                this.gift_open = true;
                 cx.notify();
             }),
             cx.subscribe(&popup, |this, _, _: &ClosePopup, cx| {
@@ -287,9 +386,66 @@ impl MainView {
                 this.nickname_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&friend_nick, |this, _, _: &CloseFriendNick, cx| {
+                this.friend_nick_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&ban_dialog, |this, _, _: &CloseBan, cx| {
+                this.ban_dialog_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&timeout_dialog, |this, _, _: &CloseTimeout, cx| {
+                this.timeout_dialog_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&roles_dialog, |this, _, _: &CloseRoles, cx| {
+                this.roles_dialog_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&note_input, |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.save_note(cx);
+                }
+            }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenNickname, window, cx| {
                 this.nickname_open = true;
                 this.nickname.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenBanMember, window, cx| {
+                this.ban_dialog_open = true;
+                let name = this
+                    .session
+                    .read(cx)
+                    .store
+                    .user(open.1)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                this.ban_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenTimeoutMember, window, cx| {
+                this.timeout_dialog_open = true;
+                let name = this
+                    .session
+                    .read(cx)
+                    .store
+                    .user(open.1)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                this.timeout_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenRolesMember, window, cx| {
+                this.roles_dialog_open = true;
+                let name = this
+                    .session
+                    .read(cx)
+                    .store
+                    .user(open.1)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                this.roles_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
                 cx.notify();
             }),
             cx.subscribe(&forward, |this, _, _: &CloseForward, cx| {
@@ -362,6 +518,7 @@ impl MainView {
             status_submenu_open: false,
             status_dialog,
             status_dialog_open: false,
+            channel_status_modal: false,
             profile: None,
             settings_open: false,
             settings_view,
@@ -377,6 +534,16 @@ impl MainView {
             forward_open: false,
             nickname,
             nickname_open: false,
+            friend_nick,
+            friend_nick_open: false,
+            ban_dialog,
+            ban_dialog_open: false,
+            timeout_dialog,
+            timeout_dialog_open: false,
+            roles_dialog,
+            roles_dialog_open: false,
+            note_input,
+            note_prefilled_for: None,
             switcher,
             switcher_open: false,
             picker,
@@ -388,6 +555,14 @@ impl MainView {
             inbox_open: false,
             invite,
             invite_open: false,
+            edit_channel,
+            edit_channel_open: false,
+            create_channel,
+            create_channel_open: false,
+            gift_dialog,
+            gift_open: false,
+            self_muted: false,
+            self_deafened: false,
             server_settings,
             server_settings_open: false,
             focus,
@@ -719,6 +894,8 @@ impl MainView {
             self.backend.send(Command::LoadProfile { user, guild });
         }
         self.profile = Some(ShowProfile { user, guild });
+        // Let the note box refill from the stored note when it next renders.
+        self.note_prefilled_for = None;
         cx.notify();
     }
 
@@ -778,20 +955,116 @@ impl MainView {
                     .unwrap_or_default(),
                 is_me: store.me().is_some_and(|me| me.id == user),
                 actions: Vec::new(),
+                note_input: self.note_input.clone(),
             }
         };
         let mut card = card;
         if !card.is_me {
             let kind = self.session.read(cx).store.relationship(user);
             card.actions = self.relationship_actions(user, kind);
+            // Server moderation: a "Kick" button for members we are allowed to remove.
+            if let Some(guild) = guild {
+                let (can_kick, is_owner) = {
+                    let session = self.session.read(cx);
+                    let store = &session.store;
+                    let can_kick = store
+                        .guild_permissions(guild)
+                        .contains(oxicord_model::Permissions::KICK_MEMBERS);
+                    let is_owner = store.guild(guild).and_then(|g| g.owner_id) == Some(user);
+                    (can_kick, is_owner)
+                };
+                if can_kick && !is_owner {
+                    let backend = self.backend.clone();
+                    card.actions.push(profile::CardAction {
+                        label: "Kick",
+                        danger: true,
+                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, _: &mut App| {
+                            backend.send(Command::KickMember { guild, user });
+                        }) as Box<profile::Handler>,
+                    });
+                    // Banning needs its own permission and opens a confirm dialog.
+                    let can_ban = self
+                        .session
+                        .read(cx)
+                        .store
+                        .guild_permissions(guild)
+                        .contains(oxicord_model::Permissions::BAN_MEMBERS);
+                    if can_ban {
+                        let session = self.session.downgrade();
+                        card.actions.push(profile::CardAction {
+                            label: "Ban",
+                            danger: true,
+                            handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                                if let Some(session) = session.upgrade() {
+                                    session.update(cx, |_, cx| cx.emit(OpenBanMember(guild, user)));
+                                }
+                            }) as Box<profile::Handler>,
+                        });
+                        // Timing out needs its own permission and opens a dialog.
+                        let can_timeout = self
+                            .session
+                            .read(cx)
+                            .store
+                            .guild_permissions(guild)
+                            .contains(oxicord_model::Permissions::MODERATE_MEMBERS);
+                        if can_timeout {
+                            let session = self.session.downgrade();
+                            card.actions.push(profile::CardAction {
+                                label: "Timeout",
+                                danger: true,
+                                handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                                    if let Some(session) = session.upgrade() {
+                                        session.update(cx, |_, cx| cx.emit(OpenTimeoutMember(guild, user)));
+                                    }
+                                }) as Box<profile::Handler>,
+                            });
+                        }
+                    }
+                }
+                // Editing roles needs its own permission and opens a dialog.
+                let can_manage_roles = self
+                    .session
+                    .read(cx)
+                    .store
+                    .guild_permissions(guild)
+                    .contains(oxicord_model::Permissions::MANAGE_ROLES);
+                if can_manage_roles && !is_owner {
+                    let session = self.session.downgrade();
+                    card.actions.push(profile::CardAction {
+                        label: "Roles",
+                        danger: false,
+                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                            if let Some(session) = session.upgrade() {
+                                session.update(cx, |_, cx| cx.emit(OpenRolesMember(guild, user)));
+                            }
+                        }) as Box<profile::Handler>,
+                    });
+                }
+            }
         }
         Some(card)
+    }
+
+    /// Sends the note typed in the open profile's box to Discord.
+    fn save_note(&mut self, cx: &mut Context<Self>) {
+        let Some(profile) = &self.profile else { return };
+        let note: String = self.note_input.read(cx).value().trim().to_string();
+        self.backend.send(Command::SetUserNote { user: profile.user, note });
     }
 
     /// The card for the person we are looking at, over everything else.
     fn render_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (user, guild) = self.profile.as_ref().map(|p| (p.user, p.guild))?;
         let card = self.build_card(user, guild, cx)?;
+
+        // Fill the note box from the stored note the first time we show a user,
+        // so we don't overwrite what the user is typing.
+        if self.note_prefilled_for != Some(user) {
+            if let Some(note) = self.session.read(cx).profiles.get(&user).map(|p| p.note.clone()) {
+                self.note_input.update(cx, |input, cx| input.set_value(note, window, cx));
+            }
+            self.note_prefilled_for = Some(user);
+        }
 
         let on_message =
             cx.listener(move |this, _: &ClickEvent, _, cx| this.message_from_card(user, cx));
@@ -885,6 +1158,11 @@ impl MainView {
                 if let Some(dm) = dm {
                     self.close_dm(dm, window, cx);
                 }
+            }
+            Choice::ChangeFriendNickname => {
+                self.friend_nick_open = true;
+                self.friend_nick.update(cx, |dialog, cx| dialog.opened(user, window, cx));
+                cx.notify();
             }
             Choice::CopyId => cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string())),
             Choice::Separator => {}
@@ -1335,6 +1613,22 @@ impl MainView {
                     .when(self.guild.is_some(), |header| header.px_4().child(
                         div().flex_1().min_w_0().truncate().child(title),
                     ))
+                    .children(self.channel.filter(|_| self.guild.is_some()).map(|channel| {
+                        div()
+                            .id("invite-server")
+                            .size(px(32.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(theme::RADIUS))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
+                            }))
+                            .child(icon("user-plus", 16., theme::TEXT_MUTED))
+                    }))
                     .children(self.guild.map(|_| icon("chevron-down", 16., theme::TEXT_MUTED).mr_4()))
             )
             .child(
@@ -1358,6 +1652,7 @@ impl MainView {
         if let Some((id, name)) = group.category {
             // Sentence case with the chevron after the name, 16px of air above.
             let chevron = if hidden { "chevron-right" } else { "chevron-down" };
+            let guild = self.guild;
             column = column.child(
                 div()
                     .id(("category", id.0))
@@ -1367,14 +1662,43 @@ impl MainView {
                     .flex()
                     .items_center()
                     .gap(px(4.))
-                    .cursor_pointer()
-                    .text_size(px(14.))
-                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                    .text_color(rgb(theme::CHANNELS_DEFAULT))
-                    .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle_category(id, cx)))
-                    .child(div().truncate().child(name))
-                    .child(icon(chevron, 12., theme::CHANNELS_DEFAULT)),
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
+                            .cursor_pointer()
+                            .text_size(px(14.))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_color(rgb(theme::CHANNELS_DEFAULT))
+                            .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
+                            .child(div().truncate().child(name))
+                            .child(icon(chevron, 12., theme::CHANNELS_DEFAULT)),
+                    )
+                    // Discord shows a "Create Channel" button on the right of the
+                    // category header. It opens a dialog scoped to this category.
+                    .when_some(guild, |header, guild| {
+                        header.child(
+                            div()
+                                .id(("category-create", id.0))
+                                .size(px(18.))
+                                .flex_none()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(4.))
+                                .cursor_pointer()
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.session.update(cx, |_, cx| cx.emit(OpenCreateChannel(guild, Some(id))));
+                                }))
+                                .child(icon("plus", 16., theme::TEXT_MUTED)),
+                        )
+                    }),
             );
         }
 
@@ -1504,6 +1828,17 @@ impl MainView {
                     })
                     .child(channel.name),
             )
+            .children(channel.user_limit.map(|max| {
+                let n = channel.voice.len();
+                div()
+                    .px(px(4.))
+                    .rounded(px(3.))
+                    .bg(rgb(theme::BADGE))
+                    .text_size(px(10.))
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(format!("{n}/{max}"))
+            }))
             .children(channel.can_invite.then(|| {
                 div()
                     .id(("invite-channel", id.0))
@@ -1521,6 +1856,23 @@ impl MainView {
                     }))
                     .child(icon("user-plus", 15., theme::TEXT_MUTED))
             }))
+            .children((!channel.kind.is_dm()).then(|| {
+                div()
+                    .id(("edit-channel", id.0))
+                    .size(px(18.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .invisible()
+                    .group_hover("channel-row", |s| s.visible())
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.session.update(cx, |_, cx| cx.emit(OpenChannelSettings(id)));
+                    }))
+                    .child(icon("pencil", 15., theme::TEXT_MUTED))
+            }))
             .children(mention_badge(channel.unread.mentions));
 
         let status = channel.status.map(|text| {
@@ -1534,7 +1886,24 @@ impl MainView {
                 .child(text)
         });
 
-        div().flex().flex_col().child(row).children(status).children(participants)
+        let set_status = (channel.kind == ChannelType::GuildVoice || channel.kind == ChannelType::GuildStageVoice).then(|| {
+            div()
+                .id(("set-status", channel.id.0))
+                .ml(px(30.))
+                .px_2()
+                .pb_1()
+                .text_size(px(12.))
+                .text_color(rgb(theme::TEXT_MUTED))
+                .cursor_pointer()
+                .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.channel_status_modal = true;
+                    cx.notify();
+                }))
+                .child("Set a channel status")
+        });
+
+        div().flex().flex_col().child(row).children(status).children(set_status).children(participants)
     }
 
     /// The row above the DM list that opens the friends page.
@@ -2064,6 +2433,46 @@ impl MainView {
             )
             .child(
                 div()
+                    .id("mute")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.self_muted = !this.self_muted;
+                        cx.notify();
+                    }))
+                    .child(icon(
+                        if self.self_muted { "mic-off" } else { "mic" },
+                        18.,
+                        if self.self_muted { theme::DANGER } else { theme::TEXT_MUTED },
+                    )),
+            )
+            .child(
+                div()
+                    .id("deafen")
+                    .size(px(32.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.self_deafened = !this.self_deafened;
+                        cx.notify();
+                    }))
+                    .child(icon(
+                        if self.self_deafened { "headphone-off" } else { "headphones" },
+                        18.,
+                        if self.self_deafened { theme::DANGER } else { theme::TEXT_MUTED },
+                    )),
+            )
+            .child(
+                div()
                     .id("open-settings")
                     .size(px(32.))
                     .flex()
@@ -2152,13 +2561,37 @@ impl Render for MainView {
         let status_dialog = self.status_dialog_open.then(|| self.status_dialog.clone());
         let forward = self.forward_open.then(|| self.forward.clone());
         let nickname = self.nickname_open.then(|| self.nickname.clone());
+        let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
+        let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
+        let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
+        let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
         let invite = self.invite_open.then(|| self.invite.clone());
+        let edit_channel = self.edit_channel_open.then(|| self.edit_channel.clone());
+        let create_channel = self.create_channel_open.then(|| self.create_channel.clone());
+        let gift_dialog = self.gift_open.then(|| self.gift_dialog.clone());
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
+        let channel_status_modal = self.channel_status_modal.then(|| {
+            let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.channel_status_modal = false;
+                cx.notify();
+            });
+            profile::modal(
+                div()
+                    .w(px(400.))
+                    .h(px(200.))
+                    .bg(rgb(theme::BG_PANEL))
+                    .rounded(px(theme::RADIUS))
+                    .p_4()
+                    .child("Set a channel status")
+                    .into_any_element(),
+                Box::new(on_close),
+            )
+        });
 
         let title = self.window_title(cx);
         let root = div().size_full().relative().track_focus(&self.focus);
@@ -2208,13 +2641,21 @@ impl Render for MainView {
             .children(viewer)
             .children(forward)
             .children(nickname)
+            .children(friend_nick)
+            .children(ban_dialog)
+            .children(timeout_dialog)
+            .children(roles_dialog)
             .children(join)
             .children(invite)
+            .children(edit_channel)
+            .children(create_channel)
+            .children(gift_dialog)
             .children(server_settings)
             .children(switcher)
             .children(picker)
             .children(popup)
             .children(inbox)
+            .children(channel_status_modal)
             .children(settings)
             // Last, so it stays usable above any dialog.
             .child(title_bar::title_bar(title, window))
@@ -2367,6 +2808,7 @@ fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> Cha
         unread: store.unread(c.id),
         muted: store.is_muted(c),
         status: c.status.clone(),
+        user_limit: c.user_limit,
         can_invite: !c.kind.is_thread()
             && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE),
         voice: store

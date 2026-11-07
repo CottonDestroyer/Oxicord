@@ -31,6 +31,11 @@ pub struct SidePanel {
     media: Entity<Media>,
     backend: Backend,
     kind: PanelKind,
+    muted: bool,
+    camera: bool,
+    screen_share: bool,
+    activity: bool,
+    deafened: bool,
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
     query: Entity<InputState>,
@@ -60,6 +65,11 @@ impl SidePanel {
             media,
             backend,
             kind: PanelKind::Pins,
+            muted: false,
+            camera: false,
+            screen_share: false,
+            activity: false,
+            deafened: false,
             guild: None,
             channel: None,
             query,
@@ -86,6 +96,7 @@ impl SidePanel {
             PanelKind::Pins => self.load_pins(cx),
             PanelKind::Threads => self.load_threads(cx),
             PanelKind::Search => self.query.update(cx, |input, cx| input.focus(window, cx)),
+            PanelKind::VoiceDetails => {}
         }
         cx.notify();
     }
@@ -414,6 +425,144 @@ impl SidePanel {
                     }
                 }
             }
+            PanelKind::VoiceDetails => {
+                let channel_name = match self.channel {
+                    Some(id) => {
+                        let store = &self.session.read(cx).store;
+                        if let Some(c) = store.channel(id) {
+                            c.name.clone().unwrap_or_else(|| "Voice Channel".to_owned())
+                        } else {
+                            "Voice Channel".to_owned()
+                        }
+                    }
+                    None => "Voice Channel".to_owned(),
+                };
+                let participants: Vec<AnyElement> = self
+                    .channel
+                    .map(|id| {
+                        let store = &self.session.read(cx).store;
+                        store
+                            .voice_in(id)
+                            .iter()
+                            .map(|voice| {
+                                let name = store
+                                    .user(voice.user_id)
+                                    .map(|u| u.display_name().to_owned())
+                                    .unwrap_or_else(|| voice.user_id.to_string());
+                                let suffix = if voice.self_mute || voice.mute {
+                                    " (muted)"
+                                } else if voice.self_deaf || voice.deaf {
+                                    " (deafened)"
+                                } else {
+                                    ""
+                                };
+                                Self::note(format!("{}{}", name, suffix))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut rows = vec![
+                    Self::note(format!("Connected to {}", channel_name)),
+                ];
+                if participants.is_empty() {
+                    rows.push(Self::note("No one else is here."));
+                } else {
+                    rows.extend(participants);
+                }
+                rows.extend([
+                    {
+                        let camera = self.camera;
+                        div()
+                            .id("toggle-camera")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.camera = !this.camera;
+                                cx.notify();
+                            }))
+                            .child(if camera { "Turn Off Camera" } else { "Turn On Camera" })
+                            .into_any_element()
+                    },
+                    {
+                        let sharing = self.screen_share;
+                        div()
+                            .id("toggle-screen-share")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.screen_share = !this.screen_share;
+                                cx.notify();
+                            }))
+                            .child(if sharing { "Stop Sharing" } else { "Share Your Screen" })
+                            .into_any_element()
+                    },
+                    {
+                        let active = self.activity;
+                        div()
+                            .id("toggle-activity")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.activity = !this.activity;
+                                cx.notify();
+                            }))
+                            .child(if active { "Stop Activity" } else { "Start An Activity" })
+                            .into_any_element()
+                    },
+                    {
+                        let muted = self.muted;
+                        div()
+                            .id("toggle-mute")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.muted = !this.muted;
+                                cx.notify();
+                            }))
+                            .child(if muted { "Unmute" } else { "Mute" })
+                            .into_any_element()
+                    },
+                    {
+                        let deafened = self.deafened;
+                        div()
+                            .id("toggle-deafen")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.deafened = !this.deafened;
+                                cx.notify();
+                            }))
+                            .child(if deafened { "Undeafen" } else { "Deafen" })
+                            .into_any_element()
+                    },
+                    div()
+                        .id("disconnect-voice")
+                        .px_4()
+                        .py_2()
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(|_, _: &gpui_kit::ClickEvent, _, cx| cx.emit(ClosePanel)))
+                        .child("Disconnect")
+                        .into_any_element(),
+                ]);
+                rows
+            }
         }
     }
 }
@@ -424,6 +573,7 @@ impl Render for SidePanel {
             PanelKind::Pins => "Pinned Messages",
             PanelKind::Search => "Search",
             PanelKind::Threads => "Threads",
+            PanelKind::VoiceDetails => "Voice Details",
         };
         let rows = self.body(cx);
 

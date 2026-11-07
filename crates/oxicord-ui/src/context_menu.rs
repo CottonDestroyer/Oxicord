@@ -14,7 +14,7 @@ use crate::{
     icons::icon,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
     server_settings,
-    session::{OpenInviteDialog, OpenServerSettings, Session},
+    session::{OpenInviteDialog, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, Session},
     theme,
 };
 
@@ -100,6 +100,12 @@ impl ContextMenu {
                     let guild = self.channel(cx).and_then(|c| c.guild_id);
                     cx.write_to_clipboard(ClipboardItem::new_string(channel_link(guild, channel)));
                 }
+                (Action::CopyId, Some(Target::Channel(channel))) => {
+                    cx.write_to_clipboard(ClipboardItem::new_string(channel.to_string()));
+                }
+                (Action::CopyGuildId, Some(Target::Guild(guild))) => {
+                    cx.write_to_clipboard(ClipboardItem::new_string(guild.to_string()));
+                }
                 (Action::Leave, Some(Target::Guild(guild))) => self.backend.send(Command::LeaveGuild(guild)),
                 _ => {}
             }
@@ -148,7 +154,7 @@ impl ContextMenu {
 impl Render for ContextMenu {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(target) = self.target else { return div().into_any_element() };
-        let (muted, level, suppress, own_level, in_guild) = {
+        let (muted, level, suppress, own_level, in_guild, hide_muted) = {
             let store = &self.session.read(cx).store;
             match target {
                 Target::Guild(g) => (
@@ -157,6 +163,7 @@ impl Render for ContextMenu {
                     store.suppresses_everyone(g),
                     None,
                     true,
+                    store.hide_muted_channels(g),
                 ),
                 Target::Channel(id) => store
                     .channel(id)
@@ -167,9 +174,10 @@ impl Render for ContextMenu {
                             false,
                             store.channel_level_override(c),
                             c.guild_id.is_some(),
+                            false,
                         )
                     })
-                    .unwrap_or((false, None, false, None, false)),
+                    .unwrap_or((false, None, false, None, false, false)),
             }
         };
         let is_guild = matches!(target, Target::Guild(_));
@@ -229,9 +237,41 @@ impl Render for ContextMenu {
         menu = menu.child(self.item("mark-read", "Mark as read", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
             this.run(Action::MarkRead, cx);
         }, cx));
+        if matches!(target, Target::Channel(_))
+            && self
+                .channel(cx)
+                .map(|c| matches!(c.kind, oxicord_model::ChannelType::GuildVoice | oxicord_model::ChannelType::GuildStageVoice))
+                .unwrap_or(false)
+        {
+            menu = menu.child(self.item("open-chat", "Open Chat", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Channel(channel)) = this.target {
+                    this.session.update(cx, |s, cx| s.jump_to(channel, cx));
+                }
+                this.close(cx);
+            }, cx));
+            menu = menu.child(self.item("invite-to-voice", "Invite to Voice", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Channel(channel)) = this.target {
+                    this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
+                }
+                this.close(cx);
+            }, cx));
+        }
+
         if matches!(target, Target::Channel(_)) {
             menu = menu.child(self.item("copy-link", "Copy link", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                 this.run(Action::CopyLink, cx);
+            }, cx));
+        }
+
+        if matches!(target, Target::Guild(_)) {
+            menu = menu.child(self.item("copy-guild-id", "Copy server ID", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                this.run(Action::CopyGuildId, cx);
+            }, cx));
+        }
+
+        if matches!(target, Target::Channel(_)) {
+            menu = menu.child(self.item("copy-id", "Copy channel ID", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                this.run(Action::CopyId, cx);
             }, cx));
         }
 
@@ -295,10 +335,34 @@ impl Render for ContextMenu {
                     move |this, _, _, cx| this.run(Action::SuppressEveryone(!suppress), cx),
                     cx,
                 ));
+                menu = menu.child(self.item(
+                    "hide-muted",
+                    "Hide Muted Channels",
+                    theme::TEXT_BRIGHT,
+                    hide_muted,
+                    move |this, _, _, cx| this.run(Action::HideMutedChannels(!hide_muted), cx),
+                    cx,
+                ));
             }
         }
 
         if is_guild {
+            menu = menu.child(self.item("edit-server-profile", "Edit Per-server Profile", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Guild(guild)) = this.target {
+                    this.session.update(cx, |_, cx| cx.emit(OpenServerProfile(guild)));
+                }
+                this.close(cx);
+            }, cx));
+            menu = menu.child(self.item("privacy-settings", "Privacy Settings", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                this.session.update(cx, |_, cx| cx.emit(OpenPrivacySettings));
+                this.close(cx);
+            }, cx));
+            menu = menu.child(self.item("server-settings", "Server Settings", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Guild(guild)) = this.target {
+                    this.session.update(cx, |_, cx| cx.emit(OpenServerSettings(guild)));
+                }
+                this.close(cx);
+            }, cx));
             menu = menu.child(div().my(px(2.)).h(px(1.)).bg(rgb(theme::BORDER)));
             let armed = self.confirm_leave;
             menu = menu.child(self.item(

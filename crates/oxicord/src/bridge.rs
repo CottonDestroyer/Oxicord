@@ -364,10 +364,31 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::SetUserNote { user, note } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_user_note(user, &note).await {
+                    notify(&events, "save that note", &err).await;
+                }
+            });
+        }
+        Command::SetFriendNick { user, nick } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_relationship_nick(user, nick.as_deref()).await {
+                    notify(&events, "set that nickname", &err).await;
+                }
+            });
+        }
         Command::LeaveGuild(guild) => {
             tokio::spawn(async move {
                 if let Err(err) = api.leave_guild(guild).await {
                     notify(&events, "leave that server", &err).await;
+                }
+            });
+        }
+        Command::CreateGuild { name } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.create_guild(&name).await {
+                    notify(&events, "create that server", &err).await;
                 }
             });
         }
@@ -534,19 +555,99 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::LoadSavedMessages => {
+            tokio::spawn(async move {
+                let result = api.saved_messages().await.map_err(|err| {
+                    tracing::debug!(?err, "could not load saved messages");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::SavedMessages(result)).await;
+            });
+        }
+        Command::LoadScheduledMessages => {
+            tokio::spawn(async move {
+                let result = api.scheduled_messages().await.map_err(|err| {
+                    tracing::debug!(?err, "could not load scheduled messages");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::ScheduledMessages(result)).await;
+            });
+        }
         Command::LoadProfile { user, guild } => {
             tokio::spawn(async move {
-                let result = api.profile(user, guild).await.map_err(|err| {
+                let mut result = api.profile(user, guild).await.map_err(|err| {
                     tracing::debug!(?err, "could not load a profile");
                     describe_request(&err)
                 });
+                if let Ok(profile) = &mut result {
+                    if let Ok(note) = api.user_note(user).await {
+                        profile.note = note;
+                    }
+                    if let Some(game) = profile.favorite_game_id
+                        && let Ok(name) = api.game_name(game).await
+                        && !name.is_empty()
+                    {
+                        profile.favorite_game = Some(name);
+                    }
+                    let mut played = Vec::new();
+                    for game in profile.played_game_ids.clone() {
+                        if let Ok(name) = api.game_name(game).await
+                            && !name.is_empty()
+                        {
+                            played.push(name);
+                        }
+                    }
+                    profile.played_games = played;
+                }
                 let _ = events.send(Event::Profile { user, result }).await;
+            });
+        }
+        Command::BookmarkMessage { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.bookmark_message(channel, message).await {
+                    notify(&events, "bookmark that message", &err).await;
+                }
+            });
+        }
+        Command::UnbookmarkMessage { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.unbookmark_message(channel, message).await {
+                    notify(&events, "remove that bookmark", &err).await;
+                }
             });
         }
         Command::BlockUser(user) => {
             tokio::spawn(async move {
                 if let Err(err) = api.block_user(user).await {
                     notify(&events, "block that person", &err).await;
+                }
+            });
+        }
+        Command::KickMember { guild, user } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.kick_member(guild, user).await {
+                    notify(&events, "kick that member", &err).await;
+                }
+            });
+        }
+        Command::BanMember { guild, user, delete_message_days } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.ban_member(guild, user, delete_message_days).await {
+                    notify(&events, "ban that member", &err).await;
+                }
+            });
+        }
+        Command::TimeoutMember { guild, user, until } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_timeout(guild, user, until.clone()).await {
+                    notify(&events, "time out that member", &err).await;
+                }
+            });
+        }
+        Command::SetMemberRoles { guild, user, roles } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_member_roles(guild, user, roles.clone()).await {
+                    notify(&events, "change that member's roles", &err).await;
                 }
             });
         }
@@ -726,12 +827,18 @@ fn show_notification(title: String, body: String) {
 /// most accounts and it reports that itself, this only protects our memory.
 const MAX_UPLOAD_BYTES: u64 = 100 * 1024 * 1024;
 
-async fn read_files(paths: &[PathBuf]) -> Result<Vec<Upload>, String> {
+async fn read_files(files: &[(PathBuf, bool)]) -> Result<Vec<Upload>, String> {
     let mut uploads = Vec::new();
-    for path in paths {
-        let name = path
+    for (path, spoiler) in files {
+        let base = path
             .file_name()
             .map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned());
+        // Discord marks a spoiler attachment by prefixing its filename.
+        let name = if *spoiler && !base.starts_with("SPOILER_") {
+            format!("SPOILER_{base}")
+        } else {
+            base
+        };
         let size = tokio::fs::metadata(path)
             .await
             .map_err(|err| format!("Couldn't read {name}: {err}"))?
@@ -1105,12 +1212,25 @@ mod tests {
         let path = std::env::temp_dir().join(format!("oxicord-upload-{}.txt", std::process::id()));
         tokio::fs::write(&path, b"hello").await.unwrap();
 
-        let uploads = read_files(std::slice::from_ref(&path)).await.unwrap();
+        let uploads = read_files(&[(path.clone(), false)]).await.unwrap();
         tokio::fs::remove_file(&path).await.unwrap();
 
         assert_eq!(uploads.len(), 1);
         assert!(uploads[0].filename.starts_with("oxicord-upload-"));
         assert_eq!(uploads[0].data.as_slice(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn spoiler_files_get_the_spoiler_prefix() {
+        let path = std::env::temp_dir().join(format!("oxicord-spoil-{}.txt", std::process::id()));
+        tokio::fs::write(&path, b"secret").await.unwrap();
+
+        let uploads = read_files(&[(path.clone(), true)]).await.unwrap();
+        tokio::fs::remove_file(&path).await.unwrap();
+
+        assert_eq!(uploads.len(), 1);
+        assert!(uploads[0].filename.starts_with("SPOILER_"), "{}", uploads[0].filename);
+        assert_eq!(uploads[0].data.as_slice(), b"secret");
     }
 
     #[tokio::test]
