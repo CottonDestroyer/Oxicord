@@ -244,6 +244,12 @@ impl ServerSettings {
         }
     }
 
+    /// Opens the server settings straight on the per-server profile page.
+    pub fn opened_profile(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        self.page = Page::ServerProfile;
+        self.opened(guild, window, cx);
+    }
+
     pub fn opened(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.guild = Some(guild);
         self.role = None;
