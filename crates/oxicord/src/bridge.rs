@@ -609,6 +609,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::KickMember { guild, user } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.kick_member(guild, user).await {
+                    notify(&events, "kick that member", &err).await;
+                }
+            });
+        }
         Command::AddFriendByName(username) => {
             tokio::spawn(async move {
                 let result = api.add_friend_by_name(&username).await.map_err(|err| {

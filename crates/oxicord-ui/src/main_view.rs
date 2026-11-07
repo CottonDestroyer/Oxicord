@@ -815,6 +815,28 @@ impl MainView {
         if !card.is_me {
             let kind = self.session.read(cx).store.relationship(user);
             card.actions = self.relationship_actions(user, kind);
+            // Server moderation: a "Kick" button for members we are allowed to remove.
+            if let Some(guild) = guild {
+                let (can_kick, is_owner) = {
+                    let session = self.session.read(cx);
+                    let store = &session.store;
+                    let can_kick = store
+                        .guild_permissions(guild)
+                        .contains(oxicord_model::Permissions::KICK_MEMBERS);
+                    let is_owner = store.guild(guild).and_then(|g| g.owner_id) == Some(user);
+                    (can_kick, is_owner)
+                };
+                if can_kick && !is_owner {
+                    let backend = self.backend.clone();
+                    card.actions.push(profile::CardAction {
+                        label: "Kick",
+                        danger: true,
+                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, _: &mut App| {
+                            backend.send(Command::KickMember { guild, user });
+                        }) as Box<profile::Handler>,
+                    });
+                }
+            }
         }
         Some(card)
     }

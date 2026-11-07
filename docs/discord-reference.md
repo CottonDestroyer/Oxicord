@@ -166,3 +166,21 @@
   "found": false
 }
 ```
+
+## Server member list and moderation (2026-11-07, read-only)
+
+Observed in `notantque's server` > `#general` (read-only; no state changed).
+
+- A `complementary` region labelled `Members list for <channel>` holds a `list "Members"`.
+- Members are grouped under role/status headings, e.g. `heading "Online, N member"`.
+  Each entry shows the avatar, display name, server-tag pill and (for the owner)
+  a `Server Owner` badge.
+- Opening a member's profile popout (clicking their name/avatar) is where Discord
+  surfaces moderation actions for people you can manage: a red **Kick <name>** and
+  **Ban <name>** item, plus **Timeout** and role actions, gated by your
+  `KICK_MEMBERS` / `BAN_MEMBERS` permission and role hierarchy. The server owner
+  is never kickable/bannable.
+- API used to remove a member: `DELETE /guilds/{guild.id}/members/{user.id}`
+  (mirrors the existing `unban` call shape in this repo).
+- Implemented: profile popout now shows a red **Kick** button for guild members
+  the viewer may remove (has `KICK_MEMBERS`, target is not the guild owner).
