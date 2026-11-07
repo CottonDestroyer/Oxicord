@@ -594,10 +594,21 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                         let api = api.clone();
                         tokio::spawn(async move { api.games(&ids).await.unwrap_or_default() })
                     };
+                    let effect = profile.effect.map(|sku| {
+                        let api = api.clone();
+                        // Layers that pick a picture at random all take the same turn.
+                        let pick = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_or(0, |t| t.subsec_nanos() as usize);
+                        tokio::spawn(async move { api.profile_effect(sku, pick).await.ok().flatten() })
+                    });
                     if let Ok(note) = api.user_note(user).await {
                         profile.note = note;
                     }
                     profile.games = games.await.unwrap_or_default();
+                    if let Some(effect) = effect {
+                        profile.effect_art = effect.await.ok().flatten();
+                    }
                 }
                 let _ = events.send(Event::Profile { user, result }).await;
             });

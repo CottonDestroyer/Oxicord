@@ -27,6 +27,21 @@ enum Slot {
 /// tens of megabytes, so only the ones looked at lately stay.
 const ANIMATION_BUDGET: usize = 160 * 1024 * 1024;
 
+/// Address, width and whether the last frame is held instead of looping.
+type AnimationKey = (String, u32, bool);
+
+/// How long a held last frame stays up, longer than anyone looks.
+const HOLD_MS: u32 = 60 * 60 * 1000;
+
+/// Where an animated picture stands.
+pub enum Playback {
+    /// Still downloading or being decoded.
+    Loading,
+    /// It will never come, the download or the decoding failed.
+    Failed,
+    Ready(Arc<RenderImage>),
+}
+
 enum Animation {
     Decoding,
     Ready { image: Arc<RenderImage>, bytes: usize, used: u64 },
@@ -41,7 +56,7 @@ pub struct Media {
     /// The main color of each picture we have looked at, found once.
     dominant: HashMap<String, Option<u32>>,
     /// Animated pictures decoded at the width they are shown at.
-    animations: HashMap<(String, u32), Animation>,
+    animations: HashMap<AnimationKey, Animation>,
     /// Counts lookups, so the least recently used animation can be told.
     tick: u64,
 }
@@ -58,20 +73,28 @@ impl Media {
     }
 
     /// An animated PNG as frames scaled to `width` pixels across, playing
-    /// by itself when drawn with an element id. Nothing until the download
-    /// and the decoding, which runs off the interface thread, are done.
-    pub fn animation(&mut self, url: &str, width: u32, cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+    /// by itself when drawn with an element id. `hold` keeps the last frame
+    /// up when the animation ends, where otherwise it starts over. Nothing
+    /// until the download and the decoding, which runs off the interface
+    /// thread, are done.
+    pub fn animation(&mut self, url: &str, width: u32, hold: bool, cx: &mut Context<Self>) -> Playback {
         self.tick += 1;
-        let key = (url.to_owned(), width);
+        let key = (url.to_owned(), width, hold);
         match self.animations.get_mut(&key) {
             Some(Animation::Ready { image, used, .. }) => {
                 *used = self.tick;
-                return Some(image.clone());
+                return Playback::Ready(image.clone());
             }
-            Some(Animation::Decoding | Animation::Failed) => return None,
+            Some(Animation::Decoding) => return Playback::Loading,
+            Some(Animation::Failed) => return Playback::Failed,
             None => {}
         }
-        let source = self.get(url)?;
+        if matches!(self.images.get(url), Some(Slot::Failed)) {
+            return Playback::Failed;
+        }
+        let Some(source) = self.get(url) else {
+            return Playback::Loading;
+        };
         self.animations.insert(key.clone(), Animation::Decoding);
         cx.spawn(async move |this, cx| {
             let frames = cx
@@ -84,12 +107,16 @@ impl Media {
             .ok();
         })
         .detach();
-        None
+        Playback::Loading
     }
 
-    fn finish_animation(&mut self, key: (String, u32), frames: Option<Vec<apng::Frame>>, cx: &mut Context<Self>) {
+    fn finish_animation(&mut self, key: AnimationKey, frames: Option<Vec<apng::Frame>>, cx: &mut Context<Self>) {
+        let hold = key.2;
         let slot = match frames {
-            Some(frames) if !frames.is_empty() => {
+            Some(mut frames) if !frames.is_empty() => {
+                if hold && let Some(last) = frames.last_mut() {
+                    last.delay_ms = HOLD_MS;
+                }
                 let bytes = frames.iter().map(|f| f.rgba.as_raw().len()).sum();
                 let frames: Vec<_> = frames
                     .into_iter()

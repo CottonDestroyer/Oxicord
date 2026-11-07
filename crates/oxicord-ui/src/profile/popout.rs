@@ -430,7 +430,8 @@ pub fn popout(
                 .overflow_hidden()
                 .child(header)
                 .child(body)
-                .child(div().flex_none().px(px(16.)).pb(px(12.)).child(footer)),
+                .child(div().flex_none().px(px(16.)).pb(px(12.)).child(footer))
+                .children(card.effect.clone()),
             ),
         )
         .into_any_element()

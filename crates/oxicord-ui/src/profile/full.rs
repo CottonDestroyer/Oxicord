@@ -358,6 +358,7 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
                 ),
         )
         .child(body)
+        .children(card.effect.clone())
 }
 
 // ---- right: tabs --------------------------------------------------------
