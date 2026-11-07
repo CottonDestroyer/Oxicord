@@ -7,6 +7,7 @@ mod emoji_panel;
 mod forum;
 mod context_menu;
 mod dm_picker;
+mod edit_channel_dialog;
 mod forward_dialog;
 mod friend_nick_dialog;
 mod friends;

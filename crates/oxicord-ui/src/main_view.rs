@@ -27,13 +27,14 @@ use crate::{
     icons::icon,
     rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
+    edit_channel_dialog::{CloseEditChannel, EditChannelDialog},
     invite_dialog::{CloseInvite, InviteDialog},
     keys::{self, QuickSwitch},
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenChannelSettings, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -150,6 +151,8 @@ pub struct MainView {
     inbox_open: bool,
     invite: Entity<InviteDialog>,
     invite_open: bool,
+    edit_channel: Entity<EditChannelDialog>,
+    edit_channel_open: bool,
     server_settings: Entity<ServerSettings>,
     server_settings_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
@@ -224,6 +227,10 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| InviteDialog::new(session, media, backend, cx))
         };
+        let edit_channel = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| EditChannelDialog::new(session, backend, window, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -255,6 +262,15 @@ impl MainView {
             cx.subscribe(&session, |this, _, open: &OpenInviteDialog, cx| {
                 this.invite_open = true;
                 this.invite.update(cx, |dialog, cx| dialog.opened(open.0, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&edit_channel, |this, _, _: &CloseEditChannel, cx| {
+                this.edit_channel_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenChannelSettings, window, cx| {
+                this.edit_channel_open = true;
+                this.edit_channel.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
                 cx.notify();
             }),
             cx.subscribe(&popup, |this, _, _: &ClosePopup, cx| {
@@ -429,6 +445,8 @@ impl MainView {
             inbox_open: false,
             invite,
             invite_open: false,
+            edit_channel,
+            edit_channel_open: false,
             server_settings,
             server_settings_open: false,
             focus,
@@ -1634,6 +1652,23 @@ impl MainView {
                     }))
                     .child(icon("user-plus", 15., theme::TEXT_MUTED))
             }))
+            .children((!channel.kind.is_dm()).then(|| {
+                div()
+                    .id(("edit-channel", id.0))
+                    .size(px(18.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .invisible()
+                    .group_hover("channel-row", |s| s.visible())
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.session.update(cx, |_, cx| cx.emit(OpenChannelSettings(id)));
+                    }))
+                    .child(icon("pencil", 15., theme::TEXT_MUTED))
+            }))
             .children(mention_badge(channel.unread.mentions));
 
         let status = channel.status.map(|text| {
@@ -2288,6 +2323,7 @@ impl Render for MainView {
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
         let invite = self.invite_open.then(|| self.invite.clone());
+        let edit_channel = self.edit_channel_open.then(|| self.edit_channel.clone());
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
         let channel_status_modal = self.channel_status_modal.then(|| {
@@ -2359,6 +2395,7 @@ impl Render for MainView {
             .children(friend_nick)
             .children(join)
             .children(invite)
+            .children(edit_channel)
             .children(server_settings)
             .children(switcher)
             .children(picker)
