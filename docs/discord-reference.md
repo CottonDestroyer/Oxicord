@@ -212,3 +212,23 @@ Observed in Cotton's full profile.
 - Response shape: `{"user_id":..., "note_user_id":..., "note":"..."}`.
 
 Oxicord now fetches this note while loading a profile and shows it as "Note: ..." in the profile modal.
+
+## Message context menu
+
+Observed on a normal text message in a DM.
+
+Menu items:
+- Add Reaction
+- Edit Message / Reply / Forward
+- Copy Text
+- Pin Message
+- Bookmark Message
+- Create Reminder
+- Apps
+- Mark Unread
+- Copy Message Link
+- Speak Message
+- Delete Message
+- Copy Message ID
+
+Bookmarking calls `PUT /users/@me/saved-messages/{channel}/{message}` with body `{"source":"context_menu"}`.

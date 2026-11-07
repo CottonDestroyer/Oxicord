@@ -19,6 +19,7 @@ pub(super) enum Choice {
     MarkUnread,
     Thread,
     CopyLink,
+    Bookmark,
     Delete,
     CopyId,
     Separator,
@@ -37,6 +38,7 @@ impl Choice {
             Choice::MarkUnread => Entry::item("Mark Unread", "mail"),
             Choice::Thread => Entry::item("Create Thread", "messages-square"),
             Choice::CopyLink => Entry::item("Copy Message Link", "link"),
+            Choice::Bookmark => Entry::item("Bookmark Message", "bookmark"),
             Choice::Delete => Entry::danger("Delete Message", "trash"),
             Choice::CopyId => Entry::item("Copy Message ID", "hash"),
             Choice::Separator => Entry::Separator,
@@ -65,6 +67,7 @@ pub(super) fn choices(allowed: &Allowed) -> Vec<Choice> {
     if allowed.thread {
         out.push(Choice::Thread);
     }
+    out.push(Choice::Bookmark);
     out.push(Choice::CopyLink);
     if allowed.delete {
         out.push(Choice::Separator);
@@ -117,6 +120,7 @@ impl ChatView {
             Choice::MarkUnread => self.mark_unread(message, cx),
             Choice::Thread => self.start_thread(message, cx),
             Choice::CopyLink => self.copy_link(message, cx),
+            Choice::Bookmark => self.bookmark_message(message, cx),
             Choice::Delete => {
                 self.confirm_delete = Some(message);
                 cx.notify();
@@ -132,8 +136,12 @@ impl ChatView {
         self.session.update(cx, |_, cx| cx.emit(OpenForward { channel, guild, message }));
     }
 
-    /// Moves the read marker to just before `message`,, so it and everything
-    /// after it counts as new again.
+    fn bookmark_message(&mut self, message: Snowflake, cx: &mut Context<Self>) {
+        if let Some(channel) = self.channel {
+            self.backend.send(Command::BookmarkMessage { channel, message });
+        }
+        let _ = cx;
+    }
     fn mark_unread(&mut self, message: Snowflake, cx: &mut Context<Self>) {
         let Some(channel) = self.channel else { return };
         let (before, newest) = {

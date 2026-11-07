@@ -249,6 +249,11 @@ pub enum Command {
         user: Snowflake,
         guild: Option<Snowflake>,
     },
+    /// Bookmark a message. The server records it under saved messages.
+    BookmarkMessage {
+        channel: Snowflake,
+        message: Snowflake,
+    },
 }
 
 /// Things the backend reports.
