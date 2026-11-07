@@ -14,7 +14,7 @@ use crate::{
     icons::icon,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
     server_settings,
-    session::{OpenInviteDialog, OpenServerProfile, OpenServerSettings, Session},
+    session::{OpenInviteDialog, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, Session},
     theme,
 };
 
@@ -321,6 +321,10 @@ impl Render for ContextMenu {
                 if let Some(Target::Guild(guild)) = this.target {
                     this.session.update(cx, |_, cx| cx.emit(OpenServerProfile(guild)));
                 }
+                this.close(cx);
+            }, cx));
+            menu = menu.child(self.item("privacy-settings", "Privacy Settings", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                this.session.update(cx, |_, cx| cx.emit(OpenPrivacySettings));
                 this.close(cx);
             }, cx));
             menu = menu.child(self.item("server-settings", "Server Settings", theme::TEXT_BRIGHT, false, |this, _, _, cx| {

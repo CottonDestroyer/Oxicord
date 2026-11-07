@@ -32,7 +32,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenServerProfile, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -221,6 +221,11 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, open: &OpenServerSettings, window, cx| {
                 this.server_settings_open = true;
                 this.server_settings.update(cx, |view, cx| view.opened(open.0, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, _: &OpenPrivacySettings, cx| {
+                this.settings_open = true;
+                this.settings_view.update(cx, |view, cx| view.open_data_privacy(cx));
                 cx.notify();
             }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenServerProfile, window, cx| {
