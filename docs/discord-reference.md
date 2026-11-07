@@ -232,3 +232,15 @@ Menu items:
 - Copy Message ID
 
 Bookmarking calls `PUT /users/@me/saved-messages/{channel}/{message}` with body `{"source":"context_menu"}`.
+
+## User Profile More menu
+
+Observed in Cotton's full profile.
+
+- "More" button opens a menu with:
+  - Share Profile
+  - Invite to Server
+  - Ignore
+  - Block
+  - Report User Profile
+  - Copy User ID
