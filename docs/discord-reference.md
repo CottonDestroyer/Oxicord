@@ -270,3 +270,25 @@ now and will send it once a voice connection exists.
 
 Implemented: the two toggle buttons on the user panel with local state and the
 icon/colour swap. No voice plumbing yet.
+
+## Category "Create Channel" button + modal (captured 2026-11-07)
+
+Each category header in the server sidebar shows a **Create Channel** button on
+its right edge (always visible, not hover-revealed — it sits as a sibling of the
+category name/chevron). Clicking it opens a **"Create Channel"** dialog scoped to
+that category (banner reads "in <Category>"):
+
+- **Channel Type** radio group: Text (default, "Send messages, images, GIFs,
+  emoji, opinions, and puns"), Voice ("Hang out together with voice, video, and
+  screen share"), Forum ("Create a space for organized discussions").
+- **Channel Name** textbox, placeholder `new-channel` (Discord uses kebab-case).
+- Footer: **Cancel** + **Create Channel** (disabled until a name is typed).
+
+The create is a `POST /guilds/:id/channels` with `name`, `type`, and `parent_id`.
+Oxicord reuses `AdminRequest::CreateChannel { guild, name, kind, parent }` ->
+`api.create_channel`.
+
+Implemented: a "Create Channel" button on every guild category header (emits
+`OpenCreateChannel(guild, Some(category_id))`) opening `CreateChannelDialog` with
+the Text/Voice/Forum type cards, a name input, and Cancel/Create buttons (Create
+disabled while the name is empty). The gateway reports the new channel back.
