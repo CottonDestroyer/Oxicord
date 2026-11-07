@@ -2405,7 +2405,7 @@ impl Render for ChatView {
                                 .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
                                     cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(format!("https://discord.com/users/{}", user)));
                                 }))
-                                .child(div().text_size(px(12.)).child("Copy Profile Link")),
+                                .child(div().text_size(px(12.)).child("Share Profile")),
                         )
                         .child(
                             div()
