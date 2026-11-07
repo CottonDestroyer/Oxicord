@@ -76,7 +76,7 @@ pub(crate) fn status_line(activities: &[Activity]) -> Option<String> {
 }
 
 /// The words a custom status shows, its emoji first when it has a plain one.
-fn custom_status(activities: &[Activity]) -> Option<String> {
+pub(crate) fn custom_status(activities: &[Activity]) -> Option<String> {
     let custom = activities.iter().find(|a| a.is_custom_status())?;
     let glyph = custom.emoji.as_ref().filter(|e| e.id.is_none()).and_then(|e| e.name.clone());
     let text = [glyph, custom.state.clone()].into_iter().flatten().collect::<Vec<_>>().join(" ");

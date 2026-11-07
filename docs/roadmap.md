@@ -29,7 +29,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Syntax highlighting in code blocks
 - [x] Reply ping toggle (`allowed_mentions.replied_user`)
 - [ ] Avatar and banner upload, (server nickname done) (`PATCH /guilds/:id/members/@me`), server profile
-- [x] Profile cards matched to the web client: the popout beside a name (banner, avatar ring, server tag, badges, mutuals, clamped bio, game collection, current activity, roles) and the full profile (board with favorite, liked and wanted games, activity, mutual friends and servers, connections, note). Not done: nameplates, profile effects and avatar decorations, a per service connection icon, Spotify's listen along buttons, a popout message box that sends (it opens the conversation), the cards for yourself beyond Edit Profile
+- [x] Profile cards matched to the web client: the popout beside a name and the full profile (board, activity, mutual friends and servers, connections with each service's logo, note), the server's own bio, banner, avatar and roles, avatar decorations, nameplates in the member list, a popout message box that sends, and our own card with the status bubble. Not done: profile effects (animated, layered), Spotify's listen along and connect buttons, right to left text in bios (gpui has no bidi), logos for services beyond the 22 Discord lists
 - [x] Private user notes (`/users/@me/notes/:id`) and friend nicknames (`PATCH /users/@me/relationships/:id`), both done; `USER_NOTE_UPDATE` and `RELATIONSHIP_UPDATE` from other devices are not handled yet
 
 ## Phase 3: servers you can't fully use yet

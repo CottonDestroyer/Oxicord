@@ -58,6 +58,8 @@ pub struct Card {
     /// The game widgets, in the order the board shows them.
     pub board: Vec<Widget>,
     pub activities: Vec<ActivityCard>,
+    /// The words of their custom status, drawn as a thought bubble.
+    pub custom_status: Option<String>,
     /// Hide the message button on our own card.
     pub is_me: bool,
     /// Buttons for the person's relationship to us and, in a server, for
@@ -148,6 +150,8 @@ pub struct Handlers {
     pub full: Action,
     pub close: Action,
     pub edit: Action,
+    /// Opens the dialog that sets our own status.
+    pub status: Action,
     pub tab: TabAction,
 }
 

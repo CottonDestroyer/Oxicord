@@ -35,6 +35,45 @@ fn place(anchor: Option<(f32, f32)>, width: f32) -> (f32, f32) {
     (x, (ay - 20.).max(MARGIN))
 }
 
+/// The thought bubble of a custom status, with its two trailing dots.
+fn status_bubble(card: &Card, handlers: &Handlers) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let fill = 0x1a1a1c;
+    let dot = |left: f32, top: f32, size: f32| {
+        div().absolute().left(px(left)).top(px(top)).size(px(size)).rounded_full().bg(rgb(fill))
+    };
+    let (text, set) = match &card.custom_status {
+        Some(text) => (text.clone(), false),
+        None => ("Most satisfying game mechanic?".to_owned(), true),
+    };
+    let mut bubble = div()
+        .id("popout-status")
+        .absolute()
+        .left(px(109.))
+        .top(px(98.))
+        .w(px(179.))
+        .min_h(px(36.))
+        .px(px(12.))
+        .py(px(8.))
+        .flex()
+        .items_start()
+        .gap(px(6.))
+        .rounded(px(16.))
+        .bg(rgb(fill))
+        .text_size(px(14.))
+        .line_height(px(18.))
+        .italic()
+        .text_color(rgb(if set { theme::TEXT_FAINT } else { theme::TEXT }))
+        .child(dot(-14., -8., 6.))
+        .child(dot(-6., -14., 10.));
+    if set {
+        bubble = bubble
+            .cursor_pointer()
+            .on_click(on_click(&handlers.status))
+            .child(div().mt(px(1.)).child(icon("circle-plus", 16., theme::TEXT_FAINT)));
+    }
+    bubble.child(div().flex_1().min_w_0().child(text))
+}
+
 fn long_bio(bio: &str) -> bool {
     bio.lines().count() > BIO_LINES || bio.chars().count() > BIO_LINES * 40
 }
@@ -67,9 +106,12 @@ pub fn popout(
             .child(icon(glyph, 16., theme::TEXT_BRIGHT))
     };
     let more = handlers.more.clone();
+    // A custom status hangs beside the avatar as a thought bubble, which is
+    // also where we are asked to set one.
+    let bubble = (card.custom_status.is_some() || card.is_me).then(|| status_bubble(&card, handlers));
     let header = div()
         .relative()
-        .h(px(140.))
+        .h(px(if bubble.is_some() { 152. } else { 140. }))
         .flex_none()
         .child(banner(&card, media, 105., 8., cx))
         .child(
@@ -82,6 +124,7 @@ pub fn popout(
                 .on_click(on_click(&handlers.full))
                 .child(avatar_with_status(&card, media, 80., 6., theme::BG_PANEL, cx)),
         )
+        .children(bubble)
         .child(
             div()
                 .absolute()

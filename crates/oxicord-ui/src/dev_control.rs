@@ -10,7 +10,7 @@
 //! leave               leave the call
 //! mute                toggle mute
 //! deafen              toggle deafen
-//! profile <user> [server id]   the small card, as if clicked in the member list
+//! profile <user|me> [server id]   the small card, as if clicked in the member list
 //! full <user> [server id]      the full profile
 //! tab <board|activity|friends|servers>   switch the full profile's tab
 //! close               close the card
@@ -45,7 +45,11 @@ pub fn command_path() -> PathBuf {
 pub fn parse(line: &str) -> Option<DevCommand> {
     let mut words = line.split_whitespace();
     let command = words.next()?;
-    let id = || words.clone().next()?.parse().ok().map(Snowflake);
+    // `me` is id 0, which the app swaps for our own account.
+    let id = || {
+        let word = words.clone().next()?;
+        if word == "me" { Some(Snowflake(0)) } else { word.parse().ok().map(Snowflake) }
+    };
     let second = || words.clone().nth(1)?.parse().ok().map(Snowflake);
     match command {
         "profile" => id().map(|user| DevCommand::Profile(user, second())),
@@ -92,6 +96,7 @@ mod tests {
     fn profile_commands_take_a_person_and_an_optional_server() {
         assert_eq!(parse("profile 5"), Some(DevCommand::Profile(Snowflake(5), None)));
         assert_eq!(parse("full 5 9"), Some(DevCommand::Full(Snowflake(5), Some(Snowflake(9)))));
+        assert_eq!(parse("profile me"), Some(DevCommand::Profile(Snowflake(0), None)));
         assert_eq!(parse("tab servers"), Some(DevCommand::Tab(3)));
         assert_eq!(parse("tab nowhere"), None);
         assert_eq!(parse("close"), Some(DevCommand::Close));
