@@ -247,6 +247,12 @@ impl Render for ContextMenu {
                 }
                 this.close(cx);
             }, cx));
+            menu = menu.child(self.item("invite-to-voice", "Invite to Voice", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Channel(channel)) = this.target {
+                    this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
+                }
+                this.close(cx);
+            }, cx));
         }
 
         if matches!(target, Target::Channel(_)) {
