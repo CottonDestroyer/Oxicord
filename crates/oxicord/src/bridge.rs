@@ -586,6 +586,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     describe_request(&err)
                 });
                 if let Ok(profile) = &mut result {
+                    profile.member_guild = guild;
                     // The note and the game covers are independent lookups, so
                     // run them side by side instead of one after another.
                     let ids = profile.game_ids();

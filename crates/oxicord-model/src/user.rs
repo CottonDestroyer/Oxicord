@@ -115,8 +115,14 @@ pub struct Profile {
     pub premium_since: Option<String>,
     /// When they joined the server the card was opened from.
     pub joined_server: Option<String>,
+    /// The server the member details below belong to, set by whoever asked.
+    pub member_guild: Option<Snowflake>,
     /// Their roles in that server, as the profile lists them.
     pub member_roles: Vec<Snowflake>,
+    /// A picture they set for that server only.
+    pub server_avatar: Option<String>,
+    /// A banner they set for that server only.
+    pub server_banner: Option<String>,
     /// Their nickname there.
     pub member_nick: Option<String>,
     /// The note we wrote about them, visible only to us.
@@ -162,6 +168,9 @@ struct RawProfile {
     premium_since: Option<String>,
     #[serde(default)]
     guild_member: Option<GuildMemberFields>,
+    /// The bio, pronouns and banner set for the server asked about.
+    #[serde(default)]
+    guild_member_profile: Option<ProfileFields>,
     #[serde(default)]
     primary_guild: Option<PrimaryGuildFields>,
     #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
@@ -176,6 +185,12 @@ struct GuildMemberFields {
     roles: Vec<Snowflake>,
     #[serde(default)]
     nick: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
+    banner: Option<String>,
+    #[serde(default)]
+    bio: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -239,7 +254,20 @@ impl<'de> Deserialize<'de> for Profile {
 
 impl From<RawProfile> for Profile {
     fn from(raw: RawProfile) -> Self {
-        let mut sources = [raw.user_profile, raw.user];
+        // What was set for the server wins over what was set everywhere.
+        let mut server = raw.guild_member_profile.unwrap_or_default();
+        if let Some(member) = &raw.guild_member {
+            server.bio = server.bio.filter(|b| !b.is_empty()).or_else(|| member.bio.clone());
+            server.banner = server.banner.filter(|b| !b.is_empty()).or_else(|| member.banner.clone());
+        }
+        let server_banner = server.banner.clone().filter(|b| !b.is_empty());
+        // The banner of the server is a different picture from the account's.
+        let account_banner = [&raw.user_profile, &raw.user]
+            .into_iter()
+            .flatten()
+            .find_map(|s| s.banner.clone().filter(|b| !b.is_empty()));
+        server.banner = None;
+        let mut sources = [Some(server), raw.user_profile, raw.user];
         let primary_guild = raw
             .primary_guild
             .or_else(|| sources.iter_mut().flatten().find_map(|s| s.primary_guild.take()));
@@ -269,7 +297,7 @@ impl From<RawProfile> for Profile {
         Self {
             bio: first(|s| s.bio.as_ref()).unwrap_or_default(),
             pronouns: first(|s| s.pronouns.as_ref()).unwrap_or_default(),
-            banner: first(|s| s.banner.as_ref()),
+            banner: account_banner,
             accent_color: sources.iter().flatten().find_map(|s| s.accent_color),
             badges: raw.badges,
             mutual_guilds: raw.mutual_guilds,
@@ -277,6 +305,9 @@ impl From<RawProfile> for Profile {
             mutual_friend_users: raw.mutual_friends,
             accounts: raw.connected_accounts,
             premium_since: raw.premium_since,
+            member_guild: None,
+            server_avatar: raw.guild_member.as_ref().and_then(|m| m.avatar.clone()).filter(|a| !a.is_empty()),
+            server_banner,
             joined_server: raw.guild_member.as_ref().and_then(|m| m.joined_at.clone()),
             member_nick: raw.guild_member.as_ref().and_then(|m| m.nick.clone()).filter(|n| !n.is_empty()),
             member_roles: raw.guild_member.map(|m| m.roles).unwrap_or_default(),
@@ -364,6 +395,26 @@ mod tests {
         assert_eq!(p.want_to_play_games[0].id, Snowflake(8));
         // Five is in two widgets but is looked up once.
         assert_eq!(p.game_ids(), [Snowflake(5), Snowflake(6), Snowflake(8)]);
+    }
+
+    #[test]
+    fn what_was_set_for_the_server_wins_and_keeps_its_own_banner() {
+        let p: Profile = serde_json::from_str(
+            r#"{"user":{"id":"1","banner":"acct"},
+                "user_profile":{"bio":"everywhere","pronouns":"he/him"},
+                "guild_member":{"avatar":"av","banner":"srv","bio":"","nick":"N"},
+                "guild_member_profile":{"bio":"here","pronouns":""}}"#,
+        )
+        .unwrap();
+        assert_eq!(p.bio, "here");
+        // An empty server pronoun falls back to the account's.
+        assert_eq!(p.pronouns, "he/him");
+        assert_eq!(p.banner.as_deref(), Some("acct"));
+        assert_eq!(p.server_banner.as_deref(), Some("srv"));
+        assert_eq!(p.server_avatar.as_deref(), Some("av"));
+
+        let plain: Profile = serde_json::from_str(r#"{"user_profile":{"bio":"everywhere"}}"#).unwrap();
+        assert_eq!((plain.bio.as_str(), plain.server_banner, plain.server_avatar), ("everywhere", None, None));
     }
 
     #[test]

@@ -33,6 +33,16 @@ pub fn clan_badge(guild: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/clan-badges/{guild}/{hash}.png?size={size}")
 }
 
+/// A picture someone set for one server only.
+pub fn member_avatar(guild: Snowflake, user: Snowflake, hash: &str, size: u32) -> String {
+    format!("{CDN}/guilds/{guild}/users/{user}/avatars/{hash}.png?size={size}")
+}
+
+/// A banner someone set for one server only.
+pub fn member_banner(guild: Snowflake, user: Snowflake, hash: &str, width: u32) -> String {
+    format!("{CDN}/guilds/{guild}/users/{user}/banners/{hash}.png?size={width}")
+}
+
 pub fn guild_icon(guild: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/icons/{guild}/{hash}.png?size={size}")
 }
