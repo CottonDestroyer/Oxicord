@@ -31,13 +31,14 @@ use crate::{
     inbox::{CloseInbox, Inbox},
     create_channel_dialog::{CloseCreateChannel, CreateChannelDialog},
     edit_channel_dialog::{CloseEditChannel, EditChannelDialog},
+    gift_dialog::{CloseGift, GiftDialog},
     invite_dialog::{CloseInvite, InviteDialog},
     keys::{self, QuickSwitch},
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateChannel, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -162,6 +163,8 @@ pub struct MainView {
     edit_channel_open: bool,
     create_channel: Entity<CreateChannelDialog>,
     create_channel_open: bool,
+    gift_dialog: Entity<GiftDialog>,
+    gift_open: bool,
     /// Our own mute/deafen intent, shown on the user panel. The actual voice
     /// state is sent to the voice gateway once we connect (deferred).
     self_muted: bool,
@@ -256,6 +259,10 @@ impl MainView {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| CreateChannelDialog::new(session, backend, window, cx))
         };
+        let gift_dialog = {
+            let session = session.clone();
+            cx.new(|cx| GiftDialog::new(session, window, cx))
+        };
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -305,6 +312,14 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, open: &OpenCreateChannel, window, cx| {
                 this.create_channel_open = true;
                 this.create_channel.update(cx, |dialog, cx| dialog.opened(open.0, open.1, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&gift_dialog, |this, _, _: &CloseGift, cx| {
+                this.gift_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, _: &OpenGift, cx| {
+                this.gift_open = true;
                 cx.notify();
             }),
             cx.subscribe(&popup, |this, _, _: &ClosePopup, cx| {
@@ -519,6 +534,8 @@ impl MainView {
             edit_channel_open: false,
             create_channel,
             create_channel_open: false,
+            gift_dialog,
+            gift_open: false,
             self_muted: false,
             self_deafened: false,
             server_settings,
@@ -2509,6 +2526,7 @@ impl Render for MainView {
         let invite = self.invite_open.then(|| self.invite.clone());
         let edit_channel = self.edit_channel_open.then(|| self.edit_channel.clone());
         let create_channel = self.create_channel_open.then(|| self.create_channel.clone());
+        let gift_dialog = self.gift_open.then(|| self.gift_dialog.clone());
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
         let channel_status_modal = self.channel_status_modal.then(|| {
@@ -2584,6 +2602,7 @@ impl Render for MainView {
             .children(invite)
             .children(edit_channel)
             .children(create_channel)
+            .children(gift_dialog)
             .children(server_settings)
             .children(switcher)
             .children(picker)

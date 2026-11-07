@@ -309,3 +309,27 @@ Implemented: a "Create Channel" button on every guild category header (emits
 `OpenCreateChannel(guild, Some(category_id))`) opening `CreateChannelDialog` with
 the Text/Voice/Forum type cards, a name input, and Cancel/Create buttons (Create
 disabled while the name is empty). The gateway reports the new channel back.
+
+## Composer "Send a gift" button + gift modal (captured 2026-11-07)
+
+The message composer toolbar (left to right in Discord): **gift**, GIF, sticker,
+emoji, Apps. The **gift** button (tooltip "Upgrade your friends! Gift them awesome
+chat perks with Nitro.") opens a **"Send a Gift"** dialog:
+
+- Heading "Send a Gift" with a Close (✕) button.
+- Two tier cards:
+  - **Nitro** — "2-WEEK TRIAL" badge; perks: 1GB uploads, Custom emoji anywhere,
+    Unlimited Super Reactions, HD video streaming, 2 Server Boosts, Custom profiles
+    and more!
+  - **Nitro Basic** — `€3.03` /month, `€30.41` /year; perks: 50MB uploads, Custom
+    emoji anywhere, Unlimited Super Reactions, Special Nitro badge on your profile.
+  - Each card has a "Gift <Tier>" button.
+- Footer: "1 gift away from the Patron Badge!".
+
+Discord processes payment on the web; the client only shows the upsell. Oxicord has
+no payment backend, so this is a **read-only** view — selecting a tier closes the
+dialog without charging anything (documented in `gift_dialog.rs`).
+
+Implemented: a **gift** button on the composer (emits `OpenGift`) opening
+`GiftDialog`, a centered modal with the Nitro / Nitro Basic tier cards, perks, and
+the Patron Badge footer. Closing via ✕, Esc, or backdrop emits `CloseGift`.

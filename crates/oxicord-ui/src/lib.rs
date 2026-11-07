@@ -11,6 +11,7 @@ mod dm_picker;
 mod create_channel_dialog;
 mod edit_channel_dialog;
 mod forward_dialog;
+mod gift_dialog;
 mod friend_nick_dialog;
 mod friends;
 mod icons;
