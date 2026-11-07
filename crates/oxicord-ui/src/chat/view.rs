@@ -1520,6 +1520,14 @@ impl ChatView {
             action_button(("forward", id.0), "forward", theme::TEXT_MUTED)
                 .on_click(cx.listener(move |this, _, _, cx| this.forward(id, cx))),
         )
+        .children(allowed.delete.then(|| {
+            action_button(("delete", id.0), "trash", theme::TEXT_MUTED).on_click(cx.listener(
+                move |this, _, _, cx| {
+                    this.confirm_delete = Some(id);
+                    cx.notify();
+                },
+            ))
+        }))
         .child(
             action_button(("more", id.0), "ellipsis", theme::TEXT_MUTED).on_click(cx.listener(
                 move |this, event: &ClickEvent, _, cx| {
