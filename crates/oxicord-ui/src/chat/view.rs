@@ -2337,12 +2337,13 @@ impl Render for ChatView {
                                         })
                                 }))
                         }))
-                        .children(joined_server.map(|joined| {
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(theme::TEXT_MUTED))
-                                .child(format!("Member Since: {}", joined))
-                        }))
+                        .child(div()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(format!(
+                                "Member Since: {}",
+                                joined_server.clone().unwrap_or_else(|| user.datetime().format("%b %d, %Y").to_string())
+                            )))
                         .children(premium_since.map(|since| {
                             div()
                                 .text_size(px(12.))
