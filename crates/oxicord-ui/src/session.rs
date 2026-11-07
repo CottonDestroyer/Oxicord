@@ -136,6 +136,11 @@ pub struct OpenBanMember(pub Snowflake, pub Snowflake);
 
 impl EventEmitter<OpenBanMember> for Session {}
 
+/// Someone wants to time this member out in this server.
+pub struct OpenTimeoutMember(pub Snowflake, pub Snowflake);
+
+impl EventEmitter<OpenTimeoutMember> for Session {}
+
 /// Someone wants the settings of this server.
 pub struct OpenServerSettings(pub Snowflake);
 
@@ -145,6 +150,12 @@ impl EventEmitter<OpenServerSettings> for Session {}
 pub struct OpenChannelSettings(pub Snowflake);
 
 impl EventEmitter<OpenChannelSettings> for Session {}
+
+/// Someone wants to create a channel in `guild`, optionally under the named
+/// category (`parent`). Emitted from a category header's "Create Channel" button.
+pub struct OpenCreateChannel(pub Snowflake, pub Option<Snowflake>);
+
+impl EventEmitter<OpenCreateChannel> for Session {}
 
 /// Someone wants the privacy settings.
 pub struct OpenPrivacySettings;

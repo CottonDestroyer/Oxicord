@@ -22,12 +22,14 @@ use crate::{
     forward_dialog::{CloseForward, ForwardDialog},
     friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
     ban_dialog::{CloseBan, BanDialog},
+    timeout_dialog::{CloseTimeout, TimeoutDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
     icons::icon,
     rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
+    create_channel_dialog::{CloseCreateChannel, CreateChannelDialog},
     edit_channel_dialog::{CloseEditChannel, EditChannelDialog},
     invite_dialog::{CloseInvite, InviteDialog},
     keys::{self, QuickSwitch},
@@ -35,7 +37,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateChannel, OpenForward, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -142,6 +144,8 @@ pub struct MainView {
     friend_nick_open: bool,
     ban_dialog: Entity<BanDialog>,
     ban_dialog_open: bool,
+    timeout_dialog: Entity<TimeoutDialog>,
+    timeout_dialog_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
@@ -156,6 +160,8 @@ pub struct MainView {
     invite_open: bool,
     edit_channel: Entity<EditChannelDialog>,
     edit_channel_open: bool,
+    create_channel: Entity<CreateChannelDialog>,
+    create_channel_open: bool,
     /// Our own mute/deafen intent, shown on the user panel. The actual voice
     /// state is sent to the voice gateway once we connect (deferred).
     self_muted: bool,
@@ -216,6 +222,10 @@ impl MainView {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| BanDialog::new(session, backend, window, cx))
         };
+        let timeout_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| TimeoutDialog::new(session, backend, window, cx))
+        };
         let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
         let switcher = {
             let (session, media) = (session.clone(), media.clone());
@@ -241,6 +251,10 @@ impl MainView {
         let edit_channel = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| EditChannelDialog::new(session, backend, window, cx))
+        };
+        let create_channel = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| CreateChannelDialog::new(session, backend, window, cx))
         };
         let members_shown = session.read(cx).settings.show_members;
         let focus = cx.focus_handle();
@@ -282,6 +296,15 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, open: &OpenChannelSettings, window, cx| {
                 this.edit_channel_open = true;
                 this.edit_channel.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&create_channel, |this, _, _: &CloseCreateChannel, cx| {
+                this.create_channel_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenCreateChannel, window, cx| {
+                this.create_channel_open = true;
+                this.create_channel.update(cx, |dialog, cx| dialog.opened(open.0, open.1, window, cx));
                 cx.notify();
             }),
             cx.subscribe(&popup, |this, _, _: &ClosePopup, cx| {
@@ -349,6 +372,10 @@ impl MainView {
                 this.ban_dialog_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&timeout_dialog, |this, _, _: &CloseTimeout, cx| {
+                this.timeout_dialog_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&note_input, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.save_note(cx);
@@ -369,6 +396,18 @@ impl MainView {
                     .map(|u| u.display_name().to_owned())
                     .unwrap_or_default();
                 this.ban_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenTimeoutMember, window, cx| {
+                this.timeout_dialog_open = true;
+                let name = this
+                    .session
+                    .read(cx)
+                    .store
+                    .user(open.1)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                this.timeout_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
                 cx.notify();
             }),
             cx.subscribe(&forward, |this, _, _: &CloseForward, cx| {
@@ -461,6 +500,8 @@ impl MainView {
             friend_nick_open: false,
             ban_dialog,
             ban_dialog_open: false,
+            timeout_dialog,
+            timeout_dialog_open: false,
             note_input,
             note_prefilled_for: None,
             switcher,
@@ -476,6 +517,8 @@ impl MainView {
             invite_open: false,
             edit_channel,
             edit_channel_open: false,
+            create_channel,
+            create_channel_open: false,
             self_muted: false,
             self_deafened: false,
             server_settings,
@@ -915,6 +958,25 @@ impl MainView {
                                 }
                             }) as Box<profile::Handler>,
                         });
+                        // Timing out needs its own permission and opens a dialog.
+                        let can_timeout = self
+                            .session
+                            .read(cx)
+                            .store
+                            .guild_permissions(guild)
+                            .contains(oxicord_model::Permissions::MODERATE_MEMBERS);
+                        if can_timeout {
+                            let session = self.session.downgrade();
+                            card.actions.push(profile::CardAction {
+                                label: "Timeout",
+                                danger: true,
+                                handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                                    if let Some(session) = session.upgrade() {
+                                        session.update(cx, |_, cx| cx.emit(OpenTimeoutMember(guild, user)));
+                                    }
+                                }) as Box<profile::Handler>,
+                            });
+                        }
                     }
                 }
             }
@@ -1529,6 +1591,7 @@ impl MainView {
         if let Some((id, name)) = group.category {
             // Sentence case with the chevron after the name, 16px of air above.
             let chevron = if hidden { "chevron-right" } else { "chevron-down" };
+            let guild = self.guild;
             column = column.child(
                 div()
                     .id(("category", id.0))
@@ -1538,14 +1601,43 @@ impl MainView {
                     .flex()
                     .items_center()
                     .gap(px(4.))
-                    .cursor_pointer()
-                    .text_size(px(14.))
-                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                    .text_color(rgb(theme::CHANNELS_DEFAULT))
-                    .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle_category(id, cx)))
-                    .child(div().truncate().child(name))
-                    .child(icon(chevron, 12., theme::CHANNELS_DEFAULT)),
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
+                            .cursor_pointer()
+                            .text_size(px(14.))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_color(rgb(theme::CHANNELS_DEFAULT))
+                            .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
+                            .child(div().truncate().child(name))
+                            .child(icon(chevron, 12., theme::CHANNELS_DEFAULT)),
+                    )
+                    // Discord shows a "Create Channel" button on the right of the
+                    // category header. It opens a dialog scoped to this category.
+                    .when_some(guild, |header, guild| {
+                        header.child(
+                            div()
+                                .id(("category-create", id.0))
+                                .size(px(18.))
+                                .flex_none()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(4.))
+                                .cursor_pointer()
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.session.update(cx, |_, cx| cx.emit(OpenCreateChannel(guild, Some(id))));
+                                }))
+                                .child(icon("plus", 16., theme::TEXT_MUTED)),
+                        )
+                    }),
             );
         }
 
@@ -2409,12 +2501,14 @@ impl Render for MainView {
         let nickname = self.nickname_open.then(|| self.nickname.clone());
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
         let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
+        let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
         let invite = self.invite_open.then(|| self.invite.clone());
         let edit_channel = self.edit_channel_open.then(|| self.edit_channel.clone());
+        let create_channel = self.create_channel_open.then(|| self.create_channel.clone());
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
         let inbox = self.inbox_open.then(|| self.inbox.clone());
         let channel_status_modal = self.channel_status_modal.then(|| {
@@ -2485,9 +2579,11 @@ impl Render for MainView {
             .children(nickname)
             .children(friend_nick)
             .children(ban_dialog)
+            .children(timeout_dialog)
             .children(join)
             .children(invite)
             .children(edit_channel)
+            .children(create_channel)
             .children(server_settings)
             .children(switcher)
             .children(picker)
