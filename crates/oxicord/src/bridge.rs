@@ -553,6 +553,12 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     if let Ok(note) = api.user_note(user).await {
                         profile.note = note;
                     }
+                    if let Some(game) = profile.favorite_game_id
+                        && let Ok(name) = api.game_name(game).await
+                        && !name.is_empty()
+                    {
+                        profile.favorite_game = Some(name);
+                    }
                 }
                 let _ = events.send(Event::Profile { user, result }).await;
             });
