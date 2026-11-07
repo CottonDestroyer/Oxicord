@@ -38,6 +38,18 @@ impl ApiClient {
         .await
     }
 
+    /// Removes a member from the server. Requires the `Kick Members` permission
+    /// and a role high enough to target the member.
+    pub async fn kick_member(&self, guild: Snowflake, user: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/guilds/{guild}/members/{user}"),
+            "DELETE /guilds/:id/members/:id",
+            None,
+        )
+        .await
+    }
+
     pub async fn audit_log(&self, guild: Snowflake) -> Result<AuditLog, ApiError> {
         let body: Value = self
             .json(

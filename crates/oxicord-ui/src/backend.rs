@@ -240,6 +240,9 @@ pub enum Command {
     /// Unfriend, decline or cancel, depending on what the tie is now.
     RemoveRelationship(Snowflake),
     BlockUser(Snowflake),
+    /// Remove a member from a server we moderate. The gateway drops them from
+    /// the member list. Requires the `Kick Members` permission.
+    KickMember { guild: Snowflake, user: Snowflake },
     /// Send a friend request to this username. The outcome arrives as
     /// [`Event::FriendRequest`].
     AddFriendByName(String),
