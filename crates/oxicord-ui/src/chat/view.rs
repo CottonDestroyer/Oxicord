@@ -1509,6 +1509,13 @@ impl ChatView {
                 ),
             );
         }
+        if let Some(pinned) = allowed.pin {
+            bar = bar.child(
+                action_button(("pin", id.0), if pinned { "pin-off" } else { "pin" }, theme::TEXT_MUTED).on_click(
+                    cx.listener(move |this, _, _, cx| this.set_pinned(id, !pinned, cx)),
+                ),
+            );
+        }
         bar.child(
             action_button(("forward", id.0), "forward", theme::TEXT_MUTED)
                 .on_click(cx.listener(move |this, _, _, cx| this.forward(id, cx))),
