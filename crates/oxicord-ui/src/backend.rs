@@ -262,6 +262,9 @@ pub enum Command {
     /// Load our saved/bookmarked messages. The answer arrives as
     /// [`Event::SavedMessages`].
     LoadSavedMessages,
+    /// Load our scheduled messages. The answer arrives as
+    /// [`Event::ScheduledMessages`].
+    LoadScheduledMessages,
 }
 
 /// Things the backend reports.
@@ -335,6 +338,7 @@ pub enum Event {
         result: Result<Profile, String>,
     },
     SavedMessages(Result<Vec<oxicord_model::SavedMessage>, String>),
+    ScheduledMessages(Result<Vec<Message>, String>),
 }
 
 #[derive(Clone)]

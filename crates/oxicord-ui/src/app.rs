@@ -171,6 +171,9 @@ impl AppView {
             Event::SavedMessages(result) => {
                 self.session.update(cx, |session, cx| session.apply_saved_messages(result, cx));
             }
+            Event::ScheduledMessages(result) => {
+                self.session.update(cx, |session, cx| session.apply_scheduled_messages(result, cx));
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }
