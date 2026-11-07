@@ -34,6 +34,7 @@ pub struct SidePanel {
     muted: bool,
     camera: bool,
     screen_share: bool,
+    activity: bool,
     deafened: bool,
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
@@ -67,6 +68,7 @@ impl SidePanel {
             muted: false,
             camera: false,
             screen_share: false,
+            activity: false,
             deafened: false,
             guild: None,
             channel: None,
@@ -469,7 +471,22 @@ impl SidePanel {
                             .child(if sharing { "Stop Sharing" } else { "Share Your Screen" })
                             .into_any_element()
                     },
-                    Self::note("Start An Activity"),
+                    {
+                        let active = self.activity;
+                        div()
+                            .id("toggle-activity")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.activity = !this.activity;
+                                cx.notify();
+                            }))
+                            .child(if active { "Stop Activity" } else { "Start An Activity" })
+                            .into_any_element()
+                    },
                     {
                         let muted = self.muted;
                         div()
