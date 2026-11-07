@@ -203,6 +203,21 @@ impl SettingsView {
                         ))
                         .into_any_element(),
                 );
+                let session_for_copy = self.session.clone();
+                contact.push(
+                    div()
+                        .child(button(
+                            "copy-user-id",
+                            "Copy User ID",
+                            Tone::Plain,
+                            move |_, _, cx| {
+                                if let Some(me) = session_for_copy.read(cx).store.me() {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(me.id.to_string()));
+                                }
+                            },
+                        ))
+                        .into_any_element(),
+                );
             }
             Load::Failed(error) => {
                 contact.push(status_line("triangle-alert", error.clone(), theme::DANGER));

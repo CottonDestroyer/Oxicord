@@ -36,7 +36,8 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{MentionUser, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
+    profile,
+    session::{MentionUser, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -55,6 +56,7 @@ pub struct ChatView {
     media: Entity<Media>,
     backend: Backend,
     channel: Option<Snowflake>,
+    profile_modal: Option<Snowflake>,
     list: ListState,
     rows: Vec<Row>,
     /// Channels whose first page of history has been requested this session.
@@ -73,8 +75,9 @@ pub struct ChatView {
     /// and the composer stay clear of.
     aside_width: f32,
     editing: Option<Snowflake>,
-    /// Files chosen for the next message.
-    files: Vec<PathBuf>,
+    /// Files chosen for the next message, paired with whether each one should
+    /// be sent as a spoiler (filename prefixed with `SPOILER_`).
+    files: Vec<(PathBuf, bool)>,
     /// The message whose delete button was pressed once already.
     confirm_delete: Option<Snowflake>,
     /// Spoilers the reader has clicked open, as (message, index in message).
@@ -202,6 +205,7 @@ impl ChatView {
             media,
             backend,
             channel: None,
+            profile_modal: None,
             list,
             rows: Vec::new(),
             fetched: HashSet::new(),
@@ -825,8 +829,8 @@ impl ChatView {
 
     fn add_files(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         for path in paths {
-            if self.files.len() < Self::MAX_FILES && !self.files.contains(&path) {
-                self.files.push(path);
+            if self.files.len() < Self::MAX_FILES && !self.files.iter().any(|(p, _)| p == &path) {
+                self.files.push((path, false));
             }
         }
         cx.notify();
@@ -1506,10 +1510,32 @@ impl ChatView {
                 ),
             );
         }
+        if allowed.thread {
+            bar = bar.child(
+                action_button(("thread", id.0), "messages-square", theme::TEXT_MUTED).on_click(
+                    cx.listener(move |this, _, _, cx| this.start_thread(id, cx)),
+                ),
+            );
+        }
+        if let Some(pinned) = allowed.pin {
+            bar = bar.child(
+                action_button(("pin", id.0), if pinned { "pin-off" } else { "pin" }, theme::TEXT_MUTED).on_click(
+                    cx.listener(move |this, _, _, cx| this.set_pinned(id, !pinned, cx)),
+                ),
+            );
+        }
         bar.child(
             action_button(("forward", id.0), "forward", theme::TEXT_MUTED)
                 .on_click(cx.listener(move |this, _, _, cx| this.forward(id, cx))),
         )
+        .children(allowed.delete.then(|| {
+            action_button(("delete", id.0), "trash", theme::TEXT_MUTED).on_click(cx.listener(
+                move |this, _, _, cx| {
+                    this.confirm_delete = Some(id);
+                    cx.notify();
+                },
+            ))
+        }))
         .child(
             action_button(("more", id.0), "ellipsis", theme::TEXT_MUTED).on_click(cx.listener(
                 move |this, event: &ClickEvent, _, cx| {
@@ -1652,6 +1678,24 @@ impl ChatView {
                 )),
             )
             .children(in_dm.then(|| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        toolbar_button("start-voice-call", "phone", theme::TEXT_MUTED)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.session.update(cx, |s, cx| s.open_panel(PanelKind::VoiceDetails, cx));
+                            })),
+                    )
+                    .child(
+                        toolbar_button("start-video-call", "video", theme::TEXT_MUTED)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.session.update(cx, |s, cx| s.open_panel(PanelKind::VoiceDetails, cx));
+                            })),
+                    )
+            }))
+            .children(in_dm.then(|| {
                 toolbar_button("add-to-dm", "user-plus", theme::TEXT_MUTED).on_click(cx.listener(
                     |this, event: &ClickEvent, _, cx| {
                         let Some(channel) = this.channel else { return };
@@ -1659,6 +1703,33 @@ impl ChatView {
                         this.session.update(cx, |_, cx| {
                             cx.emit(OpenPicker { purpose: Purpose::AddTo(channel), at });
                         });
+                    },
+                ))
+            }))
+            .children(in_dm.then(|| {
+                toolbar_button("show-profile", "circle-user-round", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        if let Some(user) = this
+                            .channel
+                            .and_then(|id| this.session.read(cx).store.channel(id))
+                            .and_then(|c| c.recipients.first().map(|u| u.id))
+                        {
+                            this.open_profile(user, cx);
+                        }
+                    },
+                ))
+            }))
+            .children(in_dm.then(|| {
+                toolbar_button("view-full-profile", "user", theme::TEXT_MUTED).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        if let Some(user) = this
+                            .channel
+                            .and_then(|id| this.session.read(cx).store.channel(id))
+                            .and_then(|c| c.recipients.first().map(|u| u.id))
+                        {
+                            this.profile_modal = Some(user);
+                            cx.notify();
+                        }
                     },
                 ))
             }))
@@ -1951,6 +2022,11 @@ impl ChatView {
                             .child(Textarea::new(&self.input).appearance(false).bordered(false)),
                     )
                     .child(
+                        toolbar_button("gift", "gift", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, _, cx| this.session.update(cx, |_, cx| cx.emit(OpenGift)),
+                        )),
+                    )
+                    .child(
                         toolbar_button("gif", "images", theme::TEXT_MUTED).on_click(cx.listener(
                             |this, _, window, cx| this.open_gifs(window, cx),
                         )),
@@ -1988,10 +2064,11 @@ impl ChatView {
     /// The files waiting to be sent, each removable.
     fn render_file_chips(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let mut row = div().flex().flex_wrap().gap_2().mb_2();
-        for (index, path) in self.files.iter().enumerate() {
+        for (index, (path, spoiler)) in self.files.iter().enumerate() {
             let name = path
                 .file_name()
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            let spoiler_on = *spoiler;
             row = row.child(
                 div()
                     .max_w(px(240.))
@@ -2006,6 +2083,15 @@ impl ChatView {
                     .text_size(px(13.))
                     .child(icon("file", 14., theme::TEXT_MUTED))
                     .child(div().flex_1().min_w_0().truncate().child(name))
+                    .child(
+                        action_button(("spoiler-file", index), if spoiler_on { "eye-off" } else { "eye" }, if spoiler_on { theme::ACCENT } else { theme::TEXT_MUTED })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(entry) = this.files.get_mut(index) {
+                                    entry.1 = !entry.1;
+                                }
+                                cx.notify();
+                            })),
+                    )
                     .child(
                         action_button(("remove-file", index), "x", theme::TEXT_MUTED).on_click(
                             cx.listener(move |this, _, _, cx| {
@@ -2124,6 +2210,291 @@ impl Render for ChatView {
             )
             .children(picker.map(|panel| {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
+            }))
+            .children(self.profile_modal.map(|user| {
+                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts, accent_color, banner, mutual_guilds, presence, server_tag, note, friends_since, favorite_game, played_games) = {
+                    let session = self.session.read(cx);
+                    let store = &session.store;
+                    let account = store.user(user);
+                    let profile = session.profiles.get(&user);
+                    (
+                        account.map(|u| u.display_name().to_owned()).unwrap_or_default(),
+                        account.map(|u| u.username.clone()).unwrap_or_default(),
+                        profile.map(|p| p.pronouns.clone()).unwrap_or_default(),
+                        account.map(|u| cdn::user_avatar(u.id, u.avatar.as_deref(), 128)).unwrap_or_default(),
+                        account.and_then(|u| store.activities(u.id).first().map(|a| {
+                            if a.kind == oxicord_model::presence::ActivityType::Custom {
+                                a.state.clone().unwrap_or_else(|| a.name.clone())
+                            } else {
+                                let prefix = match a.kind {
+                                    oxicord_model::presence::ActivityType::Playing => "Playing",
+                                    oxicord_model::presence::ActivityType::Streaming => "Streaming",
+                                    oxicord_model::presence::ActivityType::Listening => "Listening to",
+                                    oxicord_model::presence::ActivityType::Watching => "Watching",
+                                    oxicord_model::presence::ActivityType::Competing => "Competing in",
+                                    _ => "",
+                                };
+                                if prefix.is_empty() {
+                                    a.name.clone()
+                                } else {
+                                    format!("{} {}", prefix, a.name)
+                                }
+                            }
+                        })).unwrap_or_default(),
+                        profile.map(|p| p.bio.clone()).unwrap_or_default(),
+                        profile.map(|p| p.mutual_friends).unwrap_or(0),
+                        profile.map(|p| p.mutual_guilds.len()).unwrap_or(0),
+                        profile.map(|p| p.badges.clone()).unwrap_or_default(),
+                        profile.and_then(|p| p.joined_server.clone()),
+                        profile.and_then(|p| p.premium_since.clone()),
+                        profile.map(|p| p.accounts.clone()).unwrap_or_default(),
+                        profile.and_then(|p| p.accent_color),
+                        profile.and_then(|p| p.banner.clone()),
+                        profile.map(|p| p.mutual_guilds.clone()).unwrap_or_default(),
+                        store.presence(user),
+                        profile.and_then(|p| p.server_tag.clone()),
+                        profile.map(|p| p.note.clone()).unwrap_or_default(),
+                        store.relationship_since(user),
+                        profile.and_then(|p| p.favorite_game.clone()),
+                        profile.map(|p| p.played_games.clone()).unwrap_or_default(),
+                    )
+                };
+                let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
+                    this.profile_modal = None;
+                    cx.notify();
+                });
+                profile::modal(
+                    div()
+                        .w(px(420.))
+                        .h(px(400.))
+                        .bg(rgb(theme::BG_PANEL))
+                        .rounded(px(theme::RADIUS))
+                        .p_4()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex()
+                                .justify_end()
+                                .child(
+                                    div()
+                                        .id("close-profile-modal")
+                                        .size(px(28.))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded(px(4.))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                            this.profile_modal = None;
+                                            cx.notify();
+                                        }))
+                                        .child(icon("x", 16., theme::TEXT_MUTED)),
+                                ),
+                        )
+                        .children(accent_color.map(|color| {
+                            div()
+                                .h(px(72.))
+                                .w_full()
+                                .rounded(px(theme::RADIUS))
+                                .bg(rgb(color))
+                        }))
+                        .children(banner.clone().map(|url| {
+                            div()
+                                .h(px(72.))
+                                .w_full()
+                                .rounded(px(theme::RADIUS))
+                                .child(div().child(url.clone()))
+                        }))
+                        .child(avatar(&self.media, &avatar_url, 64., &name, cx))
+                        .child(div().font_weight(FontWeight::BOLD).child(name.clone()))
+                        .children((!username.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("@{}", username))))
+                        .children((!pronouns.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(pronouns)))
+                        .children(server_tag.map(|tag| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("Server Tag: {}", tag))))
+                        .children((!status.is_empty()).then(|| div().text_color(rgb(theme::TEXT_MUTED)).child(status)))
+                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(match presence {
+                            oxicord_model::presence::Status::Online => "Online",
+                            oxicord_model::presence::Status::Idle => "Idle",
+                            oxicord_model::presence::Status::Dnd => "Do Not Disturb",
+                            oxicord_model::presence::Status::Offline => "Offline",
+                        }))
+                        .children((!bio.is_empty()).then(|| div().text_size(px(13.)).child(bio)))
+                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Friends", mutual_friends)))
+                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{} Mutual Servers", mutual_servers)))
+                        .children((!mutual_guilds.is_empty()).then(|| {
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Mutual Servers"))
+                                .children(mutual_guilds.iter().map(|g| {
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(g.nick.clone().unwrap_or_else(|| g.id.to_string()))
+                                }))
+                        }))
+                        .children((!badges.is_empty()).then(|| {
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Badges"))
+                                .children(badges.iter().map(|badge| {
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(if badge.description.is_empty() {
+                                            badge.id.clone()
+                                        } else {
+                                            badge.description.clone()
+                                        })
+                                }))
+                        }))
+                        .child(div()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(format!(
+                                "Member Since: {}",
+                                joined_server.clone().unwrap_or_else(|| user.datetime().format("%b %d, %Y").to_string())
+                            )))
+                        .children(premium_since.map(|since| {
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(format!("Boosting Since: {}", since))
+                        }))
+                        .children((!note.is_empty()).then(|| {
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(format!("Note: {}", note))
+                        }))
+                        .children(friends_since.map(|since| {
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(format!("Friends Since: {}", since))
+                        }))
+                        .children(favorite_game.map(|game| {
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(format!("Favorite Game: {}", game))
+                        }))
+                        .children((!played_games.is_empty()).then(|| {
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Played Games"))
+                                .children(played_games.iter().map(|game| {
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(game.clone())
+                                }))
+                        }))
+                        .children((!accounts.is_empty()).then(|| {
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("Connections"))
+                                .children(accounts.iter().map(|account| {
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(format!(
+                                            "{}: {}{}",
+                                            account.kind,
+                                            account.name,
+                                            if account.verified { " (verified)" } else { "" }
+                                        ))
+                                }))
+                        }))
+                        .child(
+                            div()
+                                .id("copy-user-id")
+                                .mt(px(8.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::BG_HOVER))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string()));
+                                }))
+                                .child(div().text_size(px(12.)).child("Copy User ID")),
+                        )
+                        .child(
+                            div()
+                                .id("copy-profile-link")
+                                .mt(px(4.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::BG_HOVER))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(format!("https://discord.com/users/{}", user)));
+                                }))
+                                .child(div().text_size(px(12.)).child("Share Profile")),
+                        )
+                        .child(
+                            div()
+                                .id("message-user")
+                                .mt(px(4.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::ACCENT))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                    this.profile_modal = None;
+                                    this.backend.send(Command::OpenDm(user));
+                                    cx.notify();
+                                }))
+                                .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_BRIGHT)).child("Message")),
+                        )
+                        .child(
+                            div()
+                                .id("copy-avatar-url")
+                                .mt(px(4.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::BG_HOVER))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(avatar_url.clone()));
+                                }))
+                                .child(div().text_size(px(12.)).child("Copy Avatar URL")),
+                        )
+                        .children(banner.clone().map(|url| {
+                            div()
+                                .id("copy-banner-url")
+                                .mt(px(4.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::BG_HOVER))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(url.clone()));
+                                }))
+                                .child(div().text_size(px(12.)).child("Copy Banner URL"))
+                        }))
+                        .into_any_element(),
+                    Box::new(on_close),
+                )
             }))
     }
 }

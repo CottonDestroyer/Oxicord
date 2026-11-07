@@ -120,6 +120,9 @@ pub struct Channel {
     /// The text people set on a voice channel while they sit in it.
     #[serde(default)]
     pub status: Option<String>,
+    /// User limit for voice channels (None = unlimited).
+    #[serde(default)]
+    pub user_limit: Option<u32>,
 }
 
 /// Whether a thread is still open. An archived thread is hidden but can be

@@ -58,6 +58,18 @@ impl ApiClient {
         .await
     }
 
+    /// Sets the personal nickname we keep for a friend, or clears it with
+    /// `None`. Discord stores it on the relationship and shows it in DMs.
+    pub async fn set_relationship_nick(&self, user: Snowflake, nick: Option<&str>) -> Result<(), ApiError> {
+        self.empty(
+            Method::PUT,
+            &format!("/users/@me/relationships/{user}"),
+            "PUT /users/@me/relationships/:id",
+            Some(&json!({ "nick": nick })),
+        )
+        .await
+    }
+
     /// Removes a friend, declines a request or cancels one we sent. Discord
     /// uses one endpoint for all three.
     pub async fn remove_relationship(&self, user: Snowflake) -> Result<(), ApiError> {

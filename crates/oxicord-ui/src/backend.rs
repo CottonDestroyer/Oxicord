@@ -38,8 +38,10 @@ pub enum Command {
         reply_to: Option<Snowflake>,
         /// False to answer without pinging the author of `reply_to`.
         ping_reply: bool,
-        /// Local files to attach. Reading them is the backend's job.
-        files: Vec<PathBuf>,
+        /// Local files to attach, each paired with whether to send it as a
+        /// spoiler (the backend prefixes the filename with `SPOILER_`).
+        /// Reading the bytes is the backend's job.
+        files: Vec<(PathBuf, bool)>,
         stickers: Vec<Snowflake>,
     },
     /// Sends a copy of `message` to each of `targets`, then `note` after it.
@@ -146,6 +148,9 @@ pub enum Command {
     /// Mark channels read, each up to its newest message.
     AckBulk(Vec<(Snowflake, Snowflake)>),
     LeaveGuild(Snowflake),
+    /// Create a new server with the given name. `GUILD_CREATE` from the
+    /// gateway adds it to the rail; this carries no answer event.
+    CreateGuild { name: String },
     /// Our nickname in a server. The answer arrives as [`Event::OwnNick`].
     LoadOwnNick(Snowflake),
     /// `None` clears the nickname.
@@ -240,6 +245,29 @@ pub enum Command {
     /// Unfriend, decline or cancel, depending on what the tie is now.
     RemoveRelationship(Snowflake),
     BlockUser(Snowflake),
+    /// Remove a member from a server we moderate. The gateway drops them from
+    /// the member list. Requires the `Kick Members` permission.
+    KickMember { guild: Snowflake, user: Snowflake },
+    /// Ban a member, optionally deleting their messages from the last few days.
+    /// Requires the `Ban Members` permission.
+    BanMember {
+        guild: Snowflake,
+        user: Snowflake,
+        delete_message_days: u32,
+    },
+    /// Time a member out until an RFC3339 instant, or lift it with `None`.
+    /// Requires the `Timeout Members` permission.
+    TimeoutMember {
+        guild: Snowflake,
+        user: Snowflake,
+        until: Option<String>,
+    },
+    /// Replace a member's roles. Requires the `Manage Roles` permission.
+    SetMemberRoles {
+        guild: Snowflake,
+        user: Snowflake,
+        roles: Vec<Snowflake>,
+    },
     /// Send a friend request to this username. The outcome arrives as
     /// [`Event::FriendRequest`].
     AddFriendByName(String),
@@ -249,6 +277,34 @@ pub enum Command {
         user: Snowflake,
         guild: Option<Snowflake>,
     },
+    /// Save the private note we keep about a user. A failure arrives as an
+    /// [`Event::Notice`].
+    SetUserNote {
+        user: Snowflake,
+        note: String,
+    },
+    /// Set the personal nickname for a friend, or clear it with `None`. A
+    /// failure arrives as an [`Event::Notice`].
+    SetFriendNick {
+        user: Snowflake,
+        nick: Option<String>,
+    },
+    /// Bookmark a message. The server records it under saved messages.
+    BookmarkMessage {
+        channel: Snowflake,
+        message: Snowflake,
+    },
+    /// Remove a bookmarked message.
+    UnbookmarkMessage {
+        channel: Snowflake,
+        message: Snowflake,
+    },
+    /// Load our saved/bookmarked messages. The answer arrives as
+    /// [`Event::SavedMessages`].
+    LoadSavedMessages,
+    /// Load our scheduled messages. The answer arrives as
+    /// [`Event::ScheduledMessages`].
+    LoadScheduledMessages,
 }
 
 /// Things the backend reports.
@@ -321,6 +377,8 @@ pub enum Event {
         user: Snowflake,
         result: Result<Profile, String>,
     },
+    SavedMessages(Result<Vec<oxicord_model::SavedMessage>, String>),
+    ScheduledMessages(Result<Vec<Message>, String>),
 }
 
 #[derive(Clone)]

@@ -47,7 +47,8 @@ pub use notification::{
     mute_active,
 };
 pub use message::{
-    Message, MessageSnapshot, MessageType, PartialMessage, Reaction, SnapshotMessage, StickerItem,
+    Message, MessageSnapshot, MessageType, PartialMessage, Reaction, SavedMessage, SavedMessageData,
+    SnapshotMessage, StickerItem,
 };
 pub use permissions::Permissions;
 pub use poll::{Poll, PollAnswer, Tally};

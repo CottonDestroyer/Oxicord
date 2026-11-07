@@ -248,10 +248,48 @@ impl Store {
         self.relationships.get(&user).map(|r| r.kind)
     }
 
+    /// When the relationship was established, if Discord sent it.
+    pub fn relationship_since(&self, user: Snowflake) -> Option<String> {
+        self.relationships.get(&user).and_then(|r| r.since.clone())
+    }
+
+    /// The personal nickname we gave a friend, if we set one.
+    pub fn relationship_nick(&self, user: Snowflake) -> Option<String> {
+        self.relationships.get(&user).and_then(|r| r.nickname.clone())
+    }
+
+    /// Updates (or clears with `None`) the personal nickname we keep for a
+    /// friend. Mirrors what Discord does the moment you save: the local copy
+    /// changes at once so the friends list and DMs reflect it immediately,
+    /// independent of the round-trip to the server.
+    pub fn set_relationship_nick(&mut self, user: Snowflake, nick: Option<String>) {
+        match self.relationships.get_mut(&user) {
+            Some(relationship) => relationship.nickname = nick,
+            None => {
+                self.relationships.insert(
+                    user,
+                    Relationship {
+                        id: user,
+                        kind: RelationshipKind::Friend,
+                        user: None,
+                        nickname: nick,
+                        since: None,
+                    },
+                );
+            }
+        }
+    }
+
     /// What to show in the DM list for a channel.
     pub fn dm_name(&self, channel: &Channel) -> String {
         if let Some(name) = channel.name.as_deref().filter(|n| !n.is_empty()) {
             return name.to_owned();
+        }
+        // A personal friend nickname shows in the DM list in place of their name.
+        if let [one] = channel.recipients.as_slice() {
+            if let Some(nick) = self.relationship_nick(one.id) {
+                return nick;
+            }
         }
         let names: Vec<_> = channel.recipients.iter().map(User::display_name).collect();
         if names.is_empty() {

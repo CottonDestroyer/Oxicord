@@ -189,6 +189,13 @@ impl SettingsView {
         }
     }
 
+    /// Opens straight on the Data & Privacy page.
+    pub fn open_data_privacy(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::DataPrivacy;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Called when the window is shown: fetch what the open page needs.
     pub fn opened(&mut self, cx: &mut Context<Self>) {
         self.reveal_contact = false;
