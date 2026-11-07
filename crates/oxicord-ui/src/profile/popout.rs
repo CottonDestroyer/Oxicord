@@ -5,6 +5,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, anchored, div, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::input::Input;
 
 use super::{
     Card, Handlers, PANEL, Tab, activity_card, avatar_with_status, badge_strip, banner, bio, display_name, icon_box,
@@ -317,29 +318,36 @@ pub fn popout(
             .child(icon("pencil", 16., 0xffffff))
             .child("Edit Profile")
     } else {
+        let typed = !card.message_input.read(cx).value().is_empty();
         div()
             .id("popout-message")
+            .relative()
             .h(px(46.))
             .pl(px(15.))
             .pr(px(8.))
             .flex()
             .items_center()
-            .justify_between()
             .rounded(px(8.))
             .bg(rgb(0x09090b))
             .border_1()
             .border_color(rgb(theme::BORDER_MUTED))
             .cursor_text()
-            .on_click(on_click(&handlers.message))
-            .child(
+            // The box has no placeholder of its own that can name the person.
+            .children((!typed).then(|| {
                 div()
-                    .truncate()
+                    .absolute()
+                    .left(px(15.))
+                    .top_0()
+                    .bottom_0()
+                    .flex()
+                    .items_center()
                     .text_size(px(14.))
                     .line_height(px(22.))
                     .text_color(rgb(theme::TEXT_FAINT))
-                    .child(format!("Message @{}", card.name)),
-            )
-            .child(div().size(px(32.)).flex().items_center().justify_center().child(icon(
+                    .child(format!("Message @{}", card.name))
+            }))
+            .child(div().flex_1().min_w_0().child(Input::new(&card.message_input).appearance(false).bordered(false).focus_bordered(false)))
+            .child(div().size(px(32.)).flex_none().flex().items_center().justify_center().child(icon(
                 "face-slightly-smiling",
                 20.,
                 theme::TEXT_MUTED,

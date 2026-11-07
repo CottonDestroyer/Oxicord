@@ -65,6 +65,8 @@ pub struct Card {
     pub actions: Vec<CardAction>,
     /// The private note we keep about them, editable in the card.
     pub note_input: Entity<InputState>,
+    /// The box under the small card that sends a message.
+    pub message_input: Entity<InputState>,
 }
 
 /// A server or a person in common, with a picture and a second line.
