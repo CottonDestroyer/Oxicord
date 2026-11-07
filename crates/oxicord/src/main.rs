@@ -65,19 +65,10 @@ fn apply_accent(cx: &mut gpui_kit::App) {
     colors.scrollbar_thumb_hover = c(0x6c6d76);
 }
 
-/// Registers the gg sans files from `discord-assets/fonts`. They are
-/// Discord's and not part of the repository, so a missing folder just leaves
-/// the system font in place.
+/// Registers the gg sans files compiled in from `discord-assets/fonts`. A
+/// build without that folder just leaves the system font in place.
 fn load_fonts(cx: &mut gpui_kit::App) {
-    let Some(dir) = assets::folder().map(|dir| dir.join("fonts")) else { return };
-    let Ok(entries) = std::fs::read_dir(&dir) else { return };
-    let fonts: Vec<_> = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "ttf"))
-        .filter_map(|path| std::fs::read(path).ok())
-        .map(std::borrow::Cow::Owned)
-        .collect();
+    let fonts = assets::fonts();
     if fonts.is_empty() {
         return;
     }
@@ -86,7 +77,7 @@ fn load_fonts(cx: &mut gpui_kit::App) {
             theme::gg_sans_loaded();
             Theme::global_mut(cx).font_family = theme::font_family().into();
         }
-        Err(err) => tracing::warn!(?err, "could not register the fonts in {}", dir.display()),
+        Err(err) => tracing::warn!(?err, "could not register the embedded fonts"),
     }
 }
 
