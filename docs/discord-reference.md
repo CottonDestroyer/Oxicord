@@ -56,6 +56,19 @@ The UI wiring (mod, session event, profile-card action, render child) was landed
 in a prior commit; this change adds the API, command, bridge arm, the
 `TimeoutDialog` itself, and the `OpenTimeoutMember` event.
 
+## Member Roles (documented assumption, 2026-11-07)
+
+Same live-capture limitation as Ban/Timeout. Implemented from documented Discord
+behavior:
+
+- Entry point: the guild member profile card shows a **"Roles"** action, gated on
+  the `Manage Roles` (`MANAGE_ROLES`) permission and not targeting the server owner.
+- Dialog: titled `Roles — <name>`, lists the server's roles (excluding `@everyone`
+  and bot-managed roles) with checkboxes pre-ticked to the member's current roles.
+- Save sends `PATCH /guilds/:guild/members/:user` with `{ "roles": [...] }`,
+  always including `@everyone` (id == guild id). We don't enforce the role
+  hierarchy on the client; the API rejects out-of-reach roles.
+
 
 
 ## Home / DM view
