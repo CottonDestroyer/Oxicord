@@ -2189,7 +2189,7 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts, accent_color, banner, mutual_guilds, presence) = {
+                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts, accent_color, banner, mutual_guilds, presence, server_tag) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
                     let account = store.user(user);
@@ -2229,6 +2229,7 @@ impl Render for ChatView {
                         profile.and_then(|p| p.banner.clone()),
                         profile.map(|p| p.mutual_guilds.clone()).unwrap_or_default(),
                         store.presence(user),
+                        profile.and_then(|p| p.server_tag.clone()),
                     )
                 };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -2284,6 +2285,7 @@ impl Render for ChatView {
                         .child(div().font_weight(FontWeight::BOLD).child(name.clone()))
                         .children((!username.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("@{}", username))))
                         .children((!pronouns.is_empty()).then(|| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(pronouns)))
+                        .children(server_tag.map(|tag| div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("Server Tag: {}", tag))))
                         .children((!status.is_empty()).then(|| div().text_color(rgb(theme::TEXT_MUTED)).child(status)))
                         .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(match presence {
                             oxicord_model::presence::Status::Online => "Online",
