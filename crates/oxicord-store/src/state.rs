@@ -248,6 +248,11 @@ impl Store {
         self.relationships.get(&user).map(|r| r.kind)
     }
 
+    /// When the relationship was established, if Discord sent it.
+    pub fn relationship_since(&self, user: Snowflake) -> Option<String> {
+        self.relationships.get(&user).and_then(|r| r.since.clone())
+    }
+
     /// What to show in the DM list for a channel.
     pub fn dm_name(&self, channel: &Channel) -> String {
         if let Some(name) = channel.name.as_deref().filter(|n| !n.is_empty()) {

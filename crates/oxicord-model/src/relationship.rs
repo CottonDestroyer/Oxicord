@@ -30,6 +30,8 @@ pub struct Relationship {
     pub user: Option<User>,
     #[serde(default)]
     pub nickname: Option<String>,
+    #[serde(default)]
+    pub since: Option<String>,
 }
 
 /// RELATIONSHIP_REMOVE carries just enough to say which tie went away.

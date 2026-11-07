@@ -2189,7 +2189,7 @@ impl Render for ChatView {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
             .children(self.profile_modal.map(|user| {
-                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts, accent_color, banner, mutual_guilds, presence, server_tag, note) = {
+                let (name, username, pronouns, avatar_url, status, bio, mutual_friends, mutual_servers, badges, joined_server, premium_since, accounts, accent_color, banner, mutual_guilds, presence, server_tag, note, friends_since) = {
                     let session = self.session.read(cx);
                     let store = &session.store;
                     let account = store.user(user);
@@ -2231,6 +2231,7 @@ impl Render for ChatView {
                         store.presence(user),
                         profile.and_then(|p| p.server_tag.clone()),
                         profile.map(|p| p.note.clone()).unwrap_or_default(),
+                        store.relationship_since(user),
                     )
                 };
                 let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -2344,6 +2345,12 @@ impl Render for ChatView {
                                 .text_size(px(12.))
                                 .text_color(rgb(theme::TEXT_MUTED))
                                 .child(format!("Note: {}", note))
+                        }))
+                        .children(friends_since.map(|since| {
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child(format!("Friends Since: {}", since))
                         }))
                         .children((!accounts.is_empty()).then(|| {
                             div()
