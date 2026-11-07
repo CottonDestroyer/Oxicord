@@ -1002,7 +1002,17 @@ impl MainView {
             let account = store.user(user)?;
             let member = guild.and_then(|g| store.member_in_guild(g, user));
             let profile = session.profiles.get(&user);
-            avatar_url = cdn::user_avatar(user, account.avatar.as_deref(), 128);
+            // Roles, nickname, join date and the server's own picture and
+            // banner belong to the server the profile was asked for in.
+            let scoped = profile.filter(|p| p.member_guild == guild);
+            avatar_url = match (guild, scoped.and_then(|p| p.server_avatar.as_deref())) {
+                (Some(guild), Some(hash)) => cdn::member_avatar(guild, user, hash, 128),
+                _ => cdn::user_avatar(user, account.avatar.as_deref(), 128),
+            };
+            let banner_url = match (guild, scoped.and_then(|p| p.server_banner.as_deref())) {
+                (Some(guild), Some(hash)) => Some(cdn::member_banner(guild, user, hash, 600)),
+                _ => profile.and_then(|p| p.banner.as_deref()).map(|hash| cdn::user_banner(user, hash, 600)),
+            };
 
             // The member list knows roles only for people it has scrolled past,
             // so the profile's own list fills in for the rest.
@@ -1010,7 +1020,7 @@ impl MainView {
                 (Some((_, roles)), _, _) => {
                     roles.iter().map(|r| (r.name.clone(), (r.color != 0).then_some(r.color))).collect()
                 }
-                (None, Some(server), Some(profile)) => {
+                (None, Some(server), Some(profile)) if profile.member_guild == guild => {
                     let mut listed: Vec<_> =
                         server.roles.iter().filter(|r| r.id != server.id && profile.member_roles.contains(&r.id)).collect();
                     listed.sort_by_key(|r| std::cmp::Reverse(r.position));
@@ -1082,7 +1092,7 @@ impl MainView {
                 name: member
                     .as_ref()
                     .and_then(|(nick, _)| nick.clone())
-                    .or_else(|| profile.and_then(|p| p.member_nick.clone()))
+                    .or_else(|| scoped.and_then(|p| p.member_nick.clone()))
                     .filter(|n| !n.is_empty())
                     .unwrap_or_else(|| account.display_name().to_owned()),
                 username: account.username.clone(),
@@ -1093,9 +1103,7 @@ impl MainView {
                 bio: profile.map(|p| p.bio.clone()).unwrap_or_default(),
                 created: Self::card_date(user.datetime().fixed_offset()),
                 roles,
-                banner_url: profile
-                    .and_then(|p| p.banner.as_deref())
-                    .map(|hash| cdn::user_banner(user, hash, 600)),
+                banner_url,
                 accent: profile.and_then(|p| p.accent_color).unwrap_or(0),
                 badges: profile
                     .map(|p| p.badges.iter().map(|b| (b.description.clone(), cdn::badge_icon(&b.icon))).collect())
@@ -1103,7 +1111,7 @@ impl MainView {
                 tag: profile.and_then(|p| p.server_tag.as_ref()).map(|t| {
                     (t.tag.clone(), t.badge.as_deref().map(|b| cdn::clan_badge(t.guild_id, b, 32)))
                 }),
-                joined_server: profile
+                joined_server: scoped
                     .and_then(|p| p.joined_server.as_deref())
                     .and_then(date)
                     .unwrap_or_default(),
