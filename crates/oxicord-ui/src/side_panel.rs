@@ -31,6 +31,8 @@ pub struct SidePanel {
     media: Entity<Media>,
     backend: Backend,
     kind: PanelKind,
+    muted: bool,
+    deafened: bool,
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
     query: Entity<InputState>,
@@ -60,6 +62,8 @@ impl SidePanel {
             media,
             backend,
             kind: PanelKind::Pins,
+            muted: false,
+            deafened: false,
             guild: None,
             channel: None,
             query,
@@ -432,7 +436,38 @@ impl SidePanel {
                     Self::note("Camera Unavailable"),
                     Self::note("Share Your Screen"),
                     Self::note("Start An Activity"),
-                    Self::note("Unmute"),
+                    {
+                        let muted = self.muted;
+                        div()
+                            .id("toggle-mute")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.muted = !this.muted;
+                                cx.notify();
+                            }))
+                            .child(if muted { "Unmute" } else { "Mute" })
+                            .into_any_element()
+                    },
+                    {
+                        let deafened = self.deafened;
+                        div()
+                            .id("toggle-deafen")
+                            .px_4()
+                            .py_2()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| {
+                                this.deafened = !this.deafened;
+                                cx.notify();
+                            }))
+                            .child(if deafened { "Undeafen" } else { "Deafen" })
+                            .into_any_element()
+                    },
                     Self::note("Disconnect"),
                 ]
             }
