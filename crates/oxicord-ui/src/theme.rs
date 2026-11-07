@@ -50,6 +50,11 @@ pub const ACCENT: u32 = 0x5865f2;
 pub const DANGER: u32 = 0xeb5f5e;
 /// background-feedback-notification.
 pub const BADGE: u32 = 0xd22d39;
+/// status-positive: the connected label, the voice channel you are in and
+/// the ring around whoever is talking.
+pub const STATUS_POSITIVE: u32 = 0x41a063;
+/// A call tile before its owner's color is known.
+pub const CALL_TILE: u32 = 0x1e1f22;
 pub const ONLINE: u32 = 0x3d9e60;
 pub const IDLE: u32 = 0xfdb833;
 pub const DND: u32 = 0xda3e44;

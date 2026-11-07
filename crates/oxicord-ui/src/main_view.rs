@@ -168,10 +168,6 @@ pub struct MainView {
     create_channel_open: bool,
     gift_dialog: Entity<GiftDialog>,
     gift_open: bool,
-    /// Our own mute/deafen intent, shown on the user panel. The actual voice
-    /// state is sent to the voice gateway once we connect (deferred).
-    self_muted: bool,
-    self_deafened: bool,
     server_settings: Entity<ServerSettings>,
     server_settings_open: bool,
     /// Held by the root so shortcuts work when nothing else has focus.
@@ -561,8 +557,6 @@ impl MainView {
             create_channel_open: false,
             gift_dialog,
             gift_open: false,
-            self_muted: false,
-            self_deafened: false,
             server_settings,
             server_settings_open: false,
             focus,
@@ -862,11 +856,11 @@ impl MainView {
     }
 
     /// Joins a voice channel of the open server and shows the call panel.
-    fn join_voice(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+    fn join_voice(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
         let (guild, backend) = (self.guild, self.backend.clone());
         self.session
             .update(cx, |session, cx| session.join_voice(&backend, guild, channel, cx));
-        self.open_panel(PanelKind::VoiceDetails, window, cx);
+        cx.notify();
     }
 
     /// Goes to any channel we know, for example from a search result.
@@ -1718,19 +1712,19 @@ impl MainView {
             .map(|m| {
                 // A green ring around the avatar of whoever is talking.
                 let speaking = self.session.read(cx).voice.speaking.contains(&m.user);
-                let ring = if speaking { theme::ONLINE } else { theme::BG_SIDEBAR };
+                let ring = if speaking { theme::STATUS_POSITIVE } else { theme::BG_SIDEBAR };
                 let mut row = div()
                     .id(("voice-member", m.user.0))
-                    .h(px(28.))
-                    .ml(px(30.))
+                    .h(px(32.))
+                    .ml(px(28.))
                     .px_2()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .rounded(px(4.))
+                    .rounded(px(theme::RADIUS))
                     .cursor_pointer()
                     .text_size(px(14.))
-                    .text_color(rgb(theme::TEXT_MUTED))
+                    .text_color(rgb(theme::CHANNELS_DEFAULT))
                     .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT)))
                     .child(
                         div()
@@ -1782,7 +1776,11 @@ impl MainView {
             k if k.is_thread() => "corner-down-right",
             _ => "hash",
         };
-        let color = if selected || channel.unread.unread {
+        // The voice channel we sit in is drawn green, with its status prompt.
+        let in_call = self.session.read(cx).voice.target.is_some_and(|(_, call)| call == id);
+        let color = if in_call {
+            theme::STATUS_POSITIVE
+        } else if selected || channel.unread.unread {
             theme::TEXT_BRIGHT
         } else if channel.muted {
             theme::CHANNEL_MUTED
@@ -1812,7 +1810,7 @@ impl MainView {
             .rounded(px(theme::RADIUS))
             .cursor_pointer()
             .font_weight(gpui_kit::FontWeight::MEDIUM)
-            .text_color(rgb(color))
+            .text_color(rgb(if in_call { theme::TEXT_BRIGHT } else { color }))
             .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
             .hover(|s| {
                 let s = s.bg(rgb(theme::BG_HOVER));
@@ -1821,7 +1819,7 @@ impl MainView {
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_channel(id, window, cx);
                 if joins_voice {
-                    this.join_voice(id, window, cx);
+                    this.join_voice(id, cx);
                 }
             }))
             .child(icon(glyph, 20., color))
@@ -1894,7 +1892,7 @@ impl MainView {
                 .child(text)
         });
 
-        let set_status = (channel.kind == ChannelType::GuildVoice || channel.kind == ChannelType::GuildStageVoice).then(|| {
+        let set_status = (in_call && is_voice(channel.kind)).then(|| {
             div()
                 .id(("set-status", channel.id.0))
                 .ml(px(30.))
@@ -2382,18 +2380,32 @@ impl MainView {
         };
         let backend = self.backend.clone();
 
+        // Deafening shows the microphone as off too, as the official panel does.
+        let (mic_off, deafened) = {
+            let call = &self.session.read(cx).voice;
+            (call.muted || call.deafened, call.deafened)
+        };
+
+        let call_panel = self.render_call_panel(cx);
+
         // A card floating 8px in from the edges, as the official panels are.
+        // While in a call the connection panel sits on top, inside the card.
         div().flex_none().p(px(8.)).child(
+        div()
+            .flex()
+            .flex_col()
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(theme::BORDER_MUTED))
+            .bg(rgb(theme::BG_SIDEBAR))
+            .children(call_panel)
+            .child(
         div()
             .h(px(56.))
             .flex()
             .items_center()
             .gap(px(8.))
             .p(px(8.))
-            .rounded(px(theme::RADIUS))
-            .border_1()
-            .border_color(rgb(theme::BORDER_MUTED))
-            .bg(rgb(theme::BG_SIDEBAR))
             .child(
                 div()
                     .id("me")
@@ -2450,13 +2462,13 @@ impl MainView {
                     .cursor_pointer()
                     .hover(|s| s.bg(rgb(theme::BG_HOVER)))
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.self_muted = !this.self_muted;
-                        cx.notify();
+                        let backend = this.backend.clone();
+                        this.session.update(cx, |session, cx| session.toggle_voice_mute(&backend, cx));
                     }))
                     .child(icon(
-                        if self.self_muted { "mic-off" } else { "mic" },
-                        18.,
-                        if self.self_muted { theme::DANGER } else { theme::TEXT_MUTED },
+                        if mic_off { "mic-off" } else { "mic" },
+                        20.,
+                        if mic_off { theme::DANGER } else { theme::TEXT_MUTED },
                     )),
             )
             .child(
@@ -2470,13 +2482,13 @@ impl MainView {
                     .cursor_pointer()
                     .hover(|s| s.bg(rgb(theme::BG_HOVER)))
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.self_deafened = !this.self_deafened;
-                        cx.notify();
+                        let backend = this.backend.clone();
+                        this.session.update(cx, |session, cx| session.toggle_voice_deafen(&backend, cx));
                     }))
                     .child(icon(
-                        if self.self_deafened { "headphone-off" } else { "headphones" },
-                        18.,
-                        if self.self_deafened { theme::DANGER } else { theme::TEXT_MUTED },
+                        if deafened { "headphone-off" } else { "headphones" },
+                        20.,
+                        if deafened { theme::DANGER } else { theme::TEXT_MUTED },
                     )),
             )
             .child(
@@ -2509,6 +2521,308 @@ impl MainView {
                     .on_click(move |_, _, _| backend.send(Command::Logout))
                     .child(icon("log-out", 18., theme::TEXT_MUTED)),
             ),
+            ),
+        )
+    }
+
+    /// Whether the open channel is the voice channel we are in. Then the
+    /// main area shows the call, as the official client does, not a chat.
+    fn in_call_view(&self, cx: &App) -> bool {
+        let Some(channel) = self.channel else { return false };
+        let session = self.session.read(cx);
+        session.voice.target.is_some_and(|(guild, call)| guild.is_some() && call == channel)
+            && session.store.channel(channel).is_some_and(|c| is_voice(c.kind))
+    }
+
+    /// The call: a tile per person, and the controls along the bottom.
+    fn render_call_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        const GAP: f32 = 8.;
+        let Some(channel) = self.channel else { return div().into_any_element() };
+        let (name, people, call) = {
+            let session = self.session.read(cx);
+            let store = &session.store;
+            let item = store.channel(channel).map(|c| channel_item(store, c));
+            match item {
+                Some(item) => (item.name, item.voice, session.voice.clone()),
+                None => (String::new(), Vec::new(), session.voice.clone()),
+            }
+        };
+
+        // The biggest 16:9 tiles that fit the area, whatever the count.
+        let viewport = window.viewport_size();
+        let area_w = f32::from(viewport.width) - theme::RAIL_WIDTH - theme::SIDEBAR_WIDTH - 2. * GAP;
+        let area_h = f32::from(viewport.height) - title_bar::HEIGHT - theme::CHANNEL_HEADER_HEIGHT - 50. - 48.;
+        let (tile_w, tile_h) = call_tile_size(people.len(), area_w, area_h, GAP);
+
+        let tiles: Vec<AnyElement> = people
+            .iter()
+            .map(|person| {
+                let speaking = call.speaking.contains(&person.user);
+                let avatar_size = (tile_h * 0.27).clamp(40., 80.);
+                let mut pill = div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .h(px(32.))
+                    .px(px(8.))
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgba(0x0000_008f))
+                    .text_size(px(16.))
+                    .line_height(px(20.))
+                    .text_color(rgb(0xffffff))
+                    .child(person.name.clone());
+                if person.deafened {
+                    pill = pill.child(icon("headphone-off", 16., 0xffffff));
+                } else if person.muted {
+                    pill = pill.child(icon("mic-off", 16., 0xffffff));
+                }
+                div()
+                    .id(("call-tile", person.user.0))
+                    .relative()
+                    .flex_none()
+                    .w(px(tile_w))
+                    .h(px(tile_h))
+                    .rounded(px(theme::RADIUS))
+                    .overflow_hidden()
+                    .bg(rgb(theme::CALL_TILE))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(avatar(&self.media, &person.avatar, avatar_size, &person.name, cx))
+                    .child(div().absolute().left(px(12.)).bottom(px(12.)).child(pill))
+                    // The ring goes on top so the speaker's tile is easy to spot.
+                    .child(
+                        div()
+                            .absolute()
+                            .size_full()
+                            .rounded(px(theme::RADIUS))
+                            .border_2()
+                            .border_color(if speaking { rgb(theme::STATUS_POSITIVE) } else { rgba(0) }),
+                    )
+                    .into_any_element()
+            })
+            .collect();
+
+        // A control the official bar has but we cannot do yet is drawn all
+        // the same, so the bar looks right.
+        let button = |id: &'static str, glyph: &'static str, color: u32| {
+            div()
+                .id(id)
+                .size(px(40.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(theme::RADIUS))
+                .child(icon(glyph, 20., color))
+        };
+        let backend = self.backend.clone();
+        let (mute_backend, leave_backend) = (backend.clone(), backend);
+        let (mute_session, leave_session) = (self.session.clone(), self.session.clone());
+        let mic_off = call.muted || call.deafened;
+        let cluster = || div().flex().gap(px(GAP)).p(px(4.)).rounded(px(12.)).bg(rgb(theme::BG_PANEL));
+
+        div()
+            .relative()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(rgb(theme::BG_CHAT))
+            .child(
+                div()
+                    .h(px(theme::CHANNEL_HEADER_HEIGHT))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .px(px(16.))
+                    .child(icon("volume-2", 24., theme::TEXT_MUTED))
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .line_height(px(20.))
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(name),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .justify_center()
+                    .content_center()
+                    .gap(px(GAP))
+                    .p(px(GAP))
+                    .children(tiles),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .h(px(50. + 16.))
+                    .pb(px(16.))
+                    .flex()
+                    .items_start()
+                    .justify_center()
+                    .gap(px(12.))
+                    .child(
+                        cluster()
+                            .child(
+                                button("call-bar-mute", if mic_off { "mic-off" } else { "mic" }, if mic_off { theme::DANGER } else { theme::TEXT_BRIGHT })
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                    .on_click(move |_, _, cx| {
+                                        mute_session.update(cx, |s, cx| s.toggle_voice_mute(&mute_backend, cx));
+                                    }),
+                            )
+                            .child(button("call-bar-camera", "camera-off", theme::TEXT_BRIGHT)),
+                    )
+                    .child(
+                        cluster()
+                            .child(button("call-bar-share", "screen-share", theme::TEXT_BRIGHT))
+                            .child(button("call-bar-activity", "activity", theme::TEXT_BRIGHT))
+                            .child(button("call-bar-soundboard", "soundboard", theme::TEXT_BRIGHT))
+                            .child(button("call-bar-more", "ellipsis", theme::TEXT_BRIGHT)),
+                    )
+                    .child(
+                        div()
+                            .id("call-bar-hangup")
+                            .w(px(66.))
+                            .h(px(50.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(12.))
+                            .bg(rgb(theme::BADGE))
+                            .cursor_pointer()
+                            .on_click(move |_, _, cx| {
+                                leave_session.update(cx, |s, cx| s.leave_voice(&leave_backend, cx));
+                            })
+                            .child(icon("voice-hangup", 20., 0xffffff)),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// The "Voice Connected" block above the user row: where we are, the
+    /// hang up button and the four call actions (camera, share, activity,
+    /// soundboard), which are not supported yet and so only show.
+    fn render_call_panel(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (call, place) = {
+            let session = self.session.read(cx);
+            let (guild, channel) = session.voice.target?;
+            let store = &session.store;
+            let channel_name = store.channel(channel).map_or_else(String::new, |c| match &c.name {
+                Some(name) => name.clone(),
+                None => store.dm_name(c),
+            });
+            let place = match guild.and_then(|g| store.guild(g)) {
+                Some(guild) => format!("{channel_name} / {}", guild.name),
+                None => channel_name,
+            };
+            (session.voice.clone(), place)
+        };
+        let backend = self.backend.clone();
+        let session = self.session.clone();
+
+        let (label, label_color) = if call.connected {
+            ("Voice Connected", theme::STATUS_POSITIVE)
+        } else {
+            ("Voice Connecting", theme::TEXT_MUTED)
+        };
+        let action = |id: &'static str, glyph: &'static str| {
+            div()
+                .id(id)
+                .flex_1()
+                .h(px(32.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(theme::RADIUS))
+                .border_1()
+                .border_color(rgb(theme::BORDER_MUTED))
+                .bg(rgb(theme::BG_HOVER))
+                .child(icon(glyph, 20., theme::TEXT_BRIGHT))
+        };
+
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(12.))
+                .p(px(12.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .size(px(32.))
+                                .flex_none()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(icon("voice-signal", 20., label_color)),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(16.))
+                                        .line_height(px(20.))
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .text_color(rgb(label_color))
+                                        .child(label),
+                                )
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(12.))
+                                        .line_height(px(16.))
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(place),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id("disconnect-call")
+                                .size(px(32.))
+                                .flex_none()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(theme::RADIUS))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                .on_click(move |_, _, cx| {
+                                    session.update(cx, |session, cx| session.leave_voice(&backend, cx));
+                                })
+                                .child(icon("voice-hangup", 20., theme::TEXT_MUTED)),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(action("call-camera", "camera-off"))
+                        .child(action("call-share", "screen-share"))
+                        .child(action("call-activity", "activity"))
+                        .child(action("call-soundboard", "soundboard")),
+                )
+                .into_any_element(),
         )
     }
 }
@@ -2517,7 +2831,10 @@ impl Render for MainView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rail = self.render_rail(cx);
         let sidebar = self.render_sidebar(cx);
-        let content = if self.guild.is_none() && self.channel.is_none() {
+        let in_call = self.in_call_view(cx);
+        let content = if in_call {
+            self.render_call_view(window, cx)
+        } else if self.guild.is_none() && self.channel.is_none() {
             self.friends.clone().into_any_element()
         } else if self.channel.is_some_and(|c| self.is_forum(c, cx)) {
             self.forum.clone().into_any_element()
@@ -2527,6 +2844,7 @@ impl Render for MainView {
         let in_forum = self.channel.is_some_and(|c| self.is_forum(c, cx));
         let members = (self.guild.is_some()
             && !in_forum
+            && !in_call
             && !self.panel_open
             && self.session.read(cx).settings.show_members)
             .then(|| self.members.clone());
@@ -2542,7 +2860,7 @@ impl Render for MainView {
         let panel = self.panel_open.then(|| self.panel.clone());
         // The chat header runs over the column on its right, so the column
         // is laid over the chat and the chat leaves room for it.
-        let over_chat = !(self.guild.is_none() && self.channel.is_none()) && !in_forum;
+        let over_chat = !(self.guild.is_none() && self.channel.is_none()) && !in_forum && !in_call;
         let aside_width = if members.is_some() {
             theme::MEMBERS_WIDTH
         } else if dm_column.is_some() {
@@ -2778,6 +3096,23 @@ fn is_voice(kind: ChannelType) -> bool {
     matches!(kind, ChannelType::GuildVoice | ChannelType::GuildStageVoice)
 }
 
+/// The size of the biggest 16:9 tiles that fit `count` of them into an area.
+/// Like the official client it fills rows before stacking: never fewer columns
+/// than the square root of the count, so two people sit side by side.
+fn call_tile_size(count: usize, area_w: f32, area_h: f32, gap: f32) -> (f32, f32) {
+    let mut best = 0f32;
+    let count = count.max(1);
+    let fewest = (count as f32).sqrt().ceil() as usize;
+    for columns in fewest..=count {
+        let rows = count.div_ceil(columns);
+        let by_width = (area_w - gap * (columns - 1) as f32) / columns as f32;
+        let by_height = (area_h - gap * (rows - 1) as f32) / rows as f32 * 16. / 9.;
+        best = best.max(by_width.min(by_height));
+    }
+    let width = best.max(120.);
+    (width, width * 9. / 16.)
+}
+
 fn connection_label(state: &ConnectionState) -> &'static str {
     match state {
         ConnectionState::Connecting => "Connecting...",
@@ -2816,7 +3151,7 @@ fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> Cha
         unread: store.unread(c.id),
         muted: store.is_muted(c),
         status: c.status.clone(),
-        user_limit: c.user_limit,
+        user_limit: c.user_limit.filter(|&limit| limit > 0),
         can_invite: !c.kind.is_thread()
             && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE),
         voice: store
@@ -2864,6 +3199,29 @@ fn thread_items(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn two_people_in_a_wide_area_sit_side_by_side_like_the_official_client() {
+        // The measured web client: 1064 wide area with 8px padding gave
+        // two 520 wide tiles of 16:9.
+        let (w, h) = call_tile_size(2, 1048., 700., 8.);
+        assert!((w - 520.).abs() < 0.5, "{w}");
+        assert!((h - 292.5).abs() < 0.5, "{h}");
+    }
+
+    #[test]
+    fn a_short_area_shrinks_the_tiles_to_fit_their_height() {
+        let (w, h) = call_tile_size(1, 1000., 300., 8.);
+        assert!((h - 300.).abs() < 0.5, "{h}");
+        assert!((w / h - 16. / 9.).abs() < 0.01);
+    }
+
+    #[test]
+    fn many_people_wrap_into_rows() {
+        let (w, _) = call_tile_size(6, 1000., 600., 8.);
+        // Three columns of two rows beat one row of six.
+        assert!(w > 1000. / 6., "{w}");
+    }
 
     #[test]
     fn invisible_looks_offline_and_the_rest_look_like_themselves() {
