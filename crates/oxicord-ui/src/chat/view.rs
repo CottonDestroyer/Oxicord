@@ -2371,6 +2371,21 @@ impl Render for ChatView {
                         )
                         .child(
                             div()
+                                .id("copy-profile-link")
+                                .mt(px(4.))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded(px(4.))
+                                .bg(rgb(theme::BG_HOVER))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+                                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(format!("https://discord.com/users/{}", user)));
+                                }))
+                                .child(div().text_size(px(12.)).child("Copy Profile Link")),
+                        )
+                        .child(
+                            div()
                                 .id("copy-avatar-url")
                                 .mt(px(4.))
                                 .px(px(8.))
