@@ -1,4 +1,4 @@
-use oxicord_model::{Snowflake, User};
+use oxicord_model::{Message, Snowflake, User};
 use reqwest::Method;
 use serde::Deserialize;
 
@@ -95,6 +95,17 @@ impl ApiClient {
             )
             .await?;
         Ok(response.results)
+    }
+
+    /// Messages scheduled to send later.
+    pub async fn scheduled_messages(&self) -> Result<Vec<Message>, ApiError> {
+        self.json(
+            Method::GET,
+            "/users/@me/scheduled-messages",
+            "GET /users/@me/scheduled-messages",
+            None,
+        )
+        .await
     }
 
     /// The display name of a game, for a profile's favorite game.

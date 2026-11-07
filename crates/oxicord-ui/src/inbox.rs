@@ -61,6 +61,7 @@ impl Inbox {
         let backend = self.backend.clone();
         self.session.update(cx, |s, cx| s.request_mentions(&backend, cx));
         self.session.update(cx, |s, cx| s.request_saved_messages(&backend, cx));
+        self.session.update(cx, |s, cx| s.request_scheduled_messages(&backend, cx));
         cx.notify();
     }
 
@@ -300,9 +301,20 @@ impl Render for Inbox {
                 }
                 _ => list = list.child(empty_note("Loading...")),
             },
-            Tab::Scheduled => {
-                list = list.child(empty_note("Nothing here yet."));
-            }
+            Tab::Scheduled => match self.session.read(cx).scheduled_messages.clone() {
+                Load::Ready(messages) if messages.is_empty() => {
+                    list = list.child(empty_note("No scheduled messages."));
+                }
+                Load::Ready(messages) => {
+                    for message in &messages {
+                        list = list.child(self.mention_card(message, None, cx));
+                    }
+                }
+                Load::Failed(error) => {
+                    list = list.child(empty_note(&format!("Could not load scheduled messages. {error}")));
+                }
+                _ => list = list.child(empty_note("Loading...")),
+            },
         }
 
         let header = div()

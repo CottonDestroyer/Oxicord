@@ -33,6 +33,7 @@ pub struct Session {
     /// Recent mentions for the inbox.
     pub mentions: Load<Vec<Message>>,
     pub saved_messages: Load<Vec<SavedMessage>>,
+    pub scheduled_messages: Load<Vec<Message>>,
     pub bookmarked: HashSet<Snowflake>,
     /// The latest search: what was asked and how it went.
     pub search: Option<(String, Load<SearchPage>)>,
@@ -210,6 +211,7 @@ impl Session {
             commands: HashMap::new(),
             mentions: Load::Idle,
             saved_messages: Load::Idle,
+            scheduled_messages: Load::Idle,
             bookmarked: HashSet::new(),
             invite_joined: None,
             created_invite: Load::Idle,
@@ -283,6 +285,20 @@ impl Session {
                 self.bookmarked = list.iter().map(|saved| saved.message.id).collect();
                 Load::Ready(list)
             }
+            Err(error) => Load::Failed(error),
+        };
+        cx.notify();
+    }
+
+    pub fn request_scheduled_messages(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.scheduled_messages = Load::Loading;
+        backend.send(Command::LoadScheduledMessages);
+        cx.notify();
+    }
+
+    pub fn apply_scheduled_messages(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
+        self.scheduled_messages = match result {
+            Ok(list) => Load::Ready(list),
             Err(error) => Load::Failed(error),
         };
         cx.notify();
