@@ -170,3 +170,34 @@ Observed by starting a voice call to "Cotton" (then disconnected).
 This file is a reference snapshot; Discord's UI changes over time. Re-capture as needed.
 
 
+## User Profile Popout / Full Profile
+
+Observed in the logged-in browser (read-only, no posting).
+
+Mini profile popout labels:
+- "Manage profile and status"
+- Custom status prompt: "What fictional world would you live in?"
+- Avatar aria-label: "View Full Profile"
+- "Server Tag: LWIQ"
+- "Edit Profile"
+- "Your Status: Do Not Disturb"
+- "Badges" / "150 Orbs" / "new"
+- "Switch Accounts"
+- "Copy User ID"
+
+Full profile editor ("Your full profile") sections:
+- "Profile styles panel"
+- "Select profile"
+- "Main Profile"
+- "Nameplate"
+- "Avatar & Decoration"
+- "Banner Color"
+- "Profile Effect & Frame"
+- "Level up your look, only with Nitro"
+- "Preview Nitro"
+- "Display Name Style"
+- "Profile Theme"
+- "Profile Banner"
+- "Animated Avatar"
+
+Oxicord profile modal already covers: avatar, display name, username, pronouns, activity status, bio, presence, badges, mutual friends count, mutual servers list, joined date, boost date, linked accounts, banner, accent color, copy user ID/avatar/banner URLs.
