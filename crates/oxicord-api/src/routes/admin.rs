@@ -50,6 +50,23 @@ impl ApiClient {
         .await
     }
 
+    /// Bans a member, optionally wiping their recent messages. Requires the
+    /// `Ban Members` permission and a role high enough to target them.
+    pub async fn ban_member(
+        &self,
+        guild: Snowflake,
+        user: Snowflake,
+        delete_message_days: u32,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::PUT,
+            &format!("/guilds/{guild}/bans/{user}"),
+            "PUT /guilds/:id/bans/:id",
+            Some(&json!({ "delete_message_days": delete_message_days })),
+        )
+        .await
+    }
+
     pub async fn audit_log(&self, guild: Snowflake) -> Result<AuditLog, ApiError> {
         let body: Value = self
             .json(

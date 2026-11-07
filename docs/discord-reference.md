@@ -21,6 +21,24 @@ Reset sends an empty/none nick. Update broadcast via gateway `RELATIONSHIP_UPDAT
 The profile popout/panel has a Note textbox with placeholder **"Click to add a note"**
 and helper text "Only visible to you" (in the context menu it is "Add Note\nOnly visible to you").
 
+## Member Ban (documented assumption, 2026-11-07)
+
+Live capture of the guild member popout/ban UI was unstable (page crashes, guild
+navigation failed), so the Ban flow is implemented from documented Discord behavior:
+
+- Entry point: the guild member profile card. Discord shows a red **"Ban"** action
+  (gated on the `Ban Members` permission and not targeting the server owner), next
+  to **"Kick"**.
+- Confirmation: Discord opens a confirm dialog titled `Ban @<name>?` (we render
+  `Ban <name>?`), with body text warning the member cannot rejoin without an
+  unban, and a toggle **"Delete this member's messages for the last 7 days"**.
+- Confirm uses `PUT /guilds/:guild/bans/:user` with `{ "delete_message_days": 7 }`
+  when the toggle is on, else `0`.
+- A failure arrives as an `Event::Notice`.
+
+To verify against live Discord, re-run the member-popout capture once the browser
+CDP session is stable.
+
 
 
 ## Home / DM view

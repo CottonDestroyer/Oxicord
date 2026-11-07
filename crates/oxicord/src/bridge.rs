@@ -623,6 +623,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::BanMember { guild, user, delete_message_days } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.ban_member(guild, user, delete_message_days).await {
+                    notify(&events, "ban that member", &err).await;
+                }
+            });
+        }
         Command::AddFriendByName(username) => {
             tokio::spawn(async move {
                 let result = api.add_friend_by_name(&username).await.map_err(|err| {

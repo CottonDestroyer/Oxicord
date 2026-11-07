@@ -243,6 +243,13 @@ pub enum Command {
     /// Remove a member from a server we moderate. The gateway drops them from
     /// the member list. Requires the `Kick Members` permission.
     KickMember { guild: Snowflake, user: Snowflake },
+    /// Ban a member, optionally deleting their messages from the last few days.
+    /// Requires the `Ban Members` permission.
+    BanMember {
+        guild: Snowflake,
+        user: Snowflake,
+        delete_message_days: u32,
+    },
     /// Send a friend request to this username. The outcome arrives as
     /// [`Event::FriendRequest`].
     AddFriendByName(String),
