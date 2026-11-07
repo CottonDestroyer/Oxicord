@@ -1422,6 +1422,22 @@ impl MainView {
                     .when(self.guild.is_some(), |header| header.px_4().child(
                         div().flex_1().min_w_0().truncate().child(title),
                     ))
+                    .children(self.channel.filter(|_| self.guild.is_some()).map(|channel| {
+                        div()
+                            .id("invite-server")
+                            .size(px(32.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(theme::RADIUS))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
+                            }))
+                            .child(icon("user-plus", 16., theme::TEXT_MUTED))
+                    }))
                     .children(self.guild.map(|_| icon("chevron-down", 16., theme::TEXT_MUTED).mr_4()))
             )
             .child(
