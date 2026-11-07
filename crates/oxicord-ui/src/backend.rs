@@ -254,6 +254,9 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// Load our saved/bookmarked messages. The answer arrives as
+    /// [`Event::Bookmarks`].
+    LoadBookmarks,
 }
 
 /// Things the backend reports.
@@ -326,6 +329,7 @@ pub enum Event {
         user: Snowflake,
         result: Result<Profile, String>,
     },
+    Bookmarks(Result<Vec<Message>, String>),
 }
 
 #[derive(Clone)]

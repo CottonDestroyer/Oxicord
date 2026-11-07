@@ -32,6 +32,7 @@ pub struct Session {
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
     pub mentions: Load<Vec<Message>>,
+    pub bookmarks: Load<Vec<Message>>,
     /// The latest search: what was asked and how it went.
     pub search: Option<(String, Load<SearchPage>)>,
     /// The thread list last asked for per channel: open threads and, once
@@ -197,6 +198,7 @@ impl Session {
             invite: Load::Idle,
             commands: HashMap::new(),
             mentions: Load::Idle,
+            bookmarks: Load::Idle,
             invite_joined: None,
             created_invite: Load::Idle,
             previews: HashMap::new(),
@@ -251,6 +253,20 @@ impl Session {
 
     pub fn apply_mentions(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
         self.mentions = match result {
+            Ok(list) => Load::Ready(list),
+            Err(error) => Load::Failed(error),
+        };
+        cx.notify();
+    }
+
+    pub fn request_bookmarks(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.bookmarks = Load::Loading;
+        backend.send(Command::LoadBookmarks);
+        cx.notify();
+    }
+
+    pub fn apply_bookmarks(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
+        self.bookmarks = match result {
             Ok(list) => Load::Ready(list),
             Err(error) => Load::Failed(error),
         };

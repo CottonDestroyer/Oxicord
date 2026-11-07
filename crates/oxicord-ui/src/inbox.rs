@@ -60,6 +60,7 @@ impl Inbox {
     pub fn opened(&mut self, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
         self.session.update(cx, |s, cx| s.request_mentions(&backend, cx));
+        self.session.update(cx, |s, cx| s.request_bookmarks(&backend, cx));
         cx.notify();
     }
 
@@ -255,7 +256,19 @@ impl Render for Inbox {
                     list = list.child(self.pending_row(item, cx));
                 }
             }
-            Tab::Bookmarks | Tab::Reminders | Tab::Scheduled => {
+            Tab::Bookmarks => match self.session.read(cx).bookmarks.clone() {
+                Load::Ready(messages) if messages.is_empty() => {
+                    list = list.child(empty_note("No bookmarked messages."));
+                }
+                Load::Ready(messages) => {
+                    for message in &messages {
+                        list = list.child(self.mention_card(message, cx));
+                    }
+                }
+                Load::Failed(error) => list = list.child(empty_note(&format!("Could not load bookmarks. {error}"))),
+                _ => list = list.child(empty_note("Loading...")),
+            },
+            Tab::Reminders | Tab::Scheduled => {
                 list = list.child(empty_note("Nothing here yet."));
             }
         }

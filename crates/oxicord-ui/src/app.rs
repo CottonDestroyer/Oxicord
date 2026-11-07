@@ -168,6 +168,9 @@ impl AppView {
             Event::Mentions(result) => {
                 self.session.update(cx, |session, cx| session.apply_mentions(result, cx));
             }
+            Event::Bookmarks(result) => {
+                self.session.update(cx, |session, cx| session.apply_bookmarks(result, cx));
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }
