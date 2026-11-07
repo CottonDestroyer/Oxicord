@@ -206,3 +206,23 @@ Observed in `notantque's server` > `#general` (read-only; no state changed).
   (mirrors the existing `unban` call shape in this repo).
 - Implemented: profile popout now shows a red **Kick** button for guild members
   the viewer may remove (has `KICK_MEMBERS`, target is not the guild owner).
+
+## Server header (captured 2026-11-07, read-only in notantque's server)
+
+Inside a guild, the sidebar header (`CHANNEL_HEADER_HEIGHT`, border-bottom) holds
+two controls, left-aligned:
+
+- The **server name** as a button (heading level 2). Clicking it opens the server
+  actions menu (the same `Target::Guild` menu Oxicord already opens).
+- A dedicated **"Invite to Server"** button (icon button, `user-plus`) immediately
+  to its right. It opens the invite creator for the current channel.
+
+Below it, the channel list shows categories ("Text Channels", "Voice Channels",
+each collapsible with a "Create Channel" affordance) and, on hover, each text
+channel row reveals two icon buttons: **Invite to Channel** (`user-plus`) and
+**Edit Channel** (pencil). Oxicord already renders the hover **Invite to Channel**
+button; the header **Invite to Server** button and the hover **Edit Channel**
+button are the missing pieces.
+
+For the smallest first-run change: add the header **Invite to Server** button
+reusing the existing `OpenInviteDialog(channel)` event + `InviteDialog`.
