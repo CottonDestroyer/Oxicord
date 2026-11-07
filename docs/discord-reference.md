@@ -1,264 +1,168 @@
-# Discord Web Client — UI/UX Reference (for Oxicord)
-
-Captured via browser automation on 2026-11-06 against the live Discord web client
-(`https://discord.com/channels/@me`). **Read-only observation; no messages were sent.**
-
-This document is a structural/a11y-level reference for the Rust rewrite (Oxicord).
-It describes layout, regions, controls and states, not pixel-perfect visuals.
-
-## Top-level layout (in-server view)
-
-Regions, left-to-right / top-to-bottom:
-
-1. **Servers sidebar** (far left, vertical)
-   - `navigation "Servers sidebar"` containing a `tree`.
-   - Top item: **Direct Messages** (`treeitem`, level 1, selectable).
-   - Then **Servers** group (`group "Servers"`) with one `treeitem` per server (level 1).
-     - Each server item may show: unread badge, mention count badge, voice-call-active indicator, scheduled-event indicator.
-     - Selected server is marked `active`/`selected`.
-   - Bottom: user area is separate (see User bar).
-
-2. **Channels sidebar** (second column)
-   - Server name header (`heading` level 2, e.g. "Neverlose Roblox").
-   - `heading "Channels"` (level 2) grouping channel list.
-   - Channels grouped into categories (`heading` level 3, e.g. `-main`, `-utils`, `-chats`).
-   - Channel items are `treeitem`s (text/voice/forum) with unread/mention state.
-
-3. **Main content area**
-   - **Channel header** (`region "Channel header"`):
-     - Channel type label (e.g. "Text Channel").
-     - Channel name (`heading` level 1, e.g. "Neverlose Roblox: status-🟡").
-     - Action buttons: Threads, Notification Settings, Pinned Messages, Show/Hide Member List.
-     - Search combobox ("Search <server>").
-   - **Message list** (`main "<channel> (channel)"`):
-     - Channel intro heading (level 2, e.g. "status-🟡 chat") + "Welcome to … / This is the beginning of this server."
-     - `list "Messages in <channel>"` containing message groups.
-     - Permission notice when user cannot send: "You do not have permission to send messages in this channel."
-   - **Message input** is absent/locked in read-only channels; otherwise a text input at bottom.
-
-4. **Member list** (right sidebar, toggleable)
-   - `heading "Members list for <channel>"` (level 2) + `list "Members"`.
-   - Role groups as `heading` level 3 with member counts (e.g. "dev — 3", "User — 59").
-   - Each member `listitem`: avatar image with presence (e.g. "Do Not Disturb"), display name, optional server tag, optional activity ("Playing …").
-
-5. **User bar** (bottom of servers/channels column)
-   - Avatar, username, status.
-   - Mute/Deafen switches, Input/Output options.
-   - "User Settings" button.
-
-## Direct Messages / Friends view
-
-- Servers sidebar still present; DMs group at top with unread counts.
-- Main area `main "Friends"`:
-  - Heading "Friends" (level 1).
-  - Tablist: **Online**, **All**, **Pending** (with badge count), **Add Friend**.
-  - Searchbox "Search".
-  - Friend list items:
-    - Avatar + presence + activity ("Playing …").
-    - Name, server tag badge, activity emoji/text.
-    - Buttons: "Message <name>", "More options for <name>".
-  - "Looking for accounts you've blocked or ignored? Go to settings" link.
-
-## Common UI elements / states
-
-- **Unread indicators:** bold channel/server names, unread badges, mention count badges (e.g. "7 mentions").
-- **Voice activity:** server icons show "Voice call active" / "Screenshare active".
-- **Scheduled events:** server icons show "Scheduled event".
-- **Presence:** Do Not Disturb, Online, etc.; shown in avatar tooltip/alt text.
-- **Activities:** "Playing <game>" with optional emoji.
-- **Server tags:** displayed next to usernames (e.g. "Server Tag: ETHR").
-- **Promo banner:** top banner with heading + "Claim Offer" + "Dismiss".
-- **Top bar buttons:** Inbox, Help (support link).
-- **ARIA landmarks used heavily:** banner, navigation (servers/channels/private/settings), main, complementary, region, tree, list, tablist, searchbox, combobox.
-
-## Settings (user settings overlay)
-
-Opened via "User Settings" button; URL stays `/channels/@me`, overlay with "Close".
-
-Navigation `navigation "Settings pages"` grouped:
-- **General:** Account (Account Info, Password & Security, Account Status, Family Center), Data & Privacy, Messaging Permissions, Notifications.
-- **Billing:** Nitro, Server Boost, Subscriptions, Gift Inventory, Billing.
-- **Experience:** Voice & Video, Appearance, Accessibility, System, Language & Time.
-- **Games & Apps:** Activity Privacy, Connected Apps.
-- **Other:** Developer, Log Out.
-
-Footer: version string (click to copy), Privacy Policy, Terms of Service, More.
-Breadcrumb shows current page; content pane shows page heading (e.g. "Account Info").
-
-## Message area details
-
-- Channel header buttons: Threads, Notification Settings, Pinned Messages, Show/Hide Member List, Search.
-- Message list shows intro header + "beginning of this server" for new channels.
-- Permission-gated channels show "You do not have permission to send messages in this channel."
-- Member list role groups show counts; members include presence + activity.
-
-## Notes for Oxicord (Rust) implementation
-
-- Mirror the three-column layout + toggleable member list.
-- Preserve ARIA roles/labels for accessibility and testability.
-- Unread/mention/voice indicators are first-class state in the sidebar models.
-- Settings should be an overlay with categorized navigation and a content pane.
-- Friends view needs tabbed filtering (Online/All/Pending/Add Friend) with search.
-- Member list should group by role with counts and show presence + activity.
-- Channel header should expose Threads/Pins/Notifications/Search/Member-list toggle.
-- Keep permission notices inline in the message area.
-- Activities and server tags are part of member rendering.
-
-## Direct Message conversation layout
-
-Observed on a 1:1 DM ("my cute little bf").
-
-- Channel header (`region "Channel header"`):
-  - Label "Direct Message".
-  - Partner display name + username (heading level 1).
-  - Optional activity line (emoji + text, e.g. "Harcèlement Informatique").
-  - Action buttons: **Start Voice Call**, **Start Video Call**, Pinned Messages, Add to DM.
-  - "Show User Profile" button (may be disabled).
-  - Search combobox ("Search <partner>").
-- Main area `main "<partner> (channel)"`:
-  - Heading (level 2) "<partner> chat".
-  - `list "Messages in <partner>"`.
-  - Message input textbox "Message @<partner>" at bottom.
-- No member list; right side absent.
-
-## Voice channel (in-server) layout
-
-Observed in "Low iq gaymers" → voice channel **General** (joined for observation).
-
-- Channel list entry:
-  - Voice channel item labelled "Voice (Limited) General" with an "Open Chat" affordance and a live timer (e.g. "4:03:25").
-  - "Set a channel status" link.
-- When connected, a **Voice Details** panel appears:
-  - "Voice Connected" + "General / <server>".
-  - Controls: Camera (Unavailable), Share Your Screen, Start An Activity.
-  - Current user row with presence + "In voice"; Mute/Deafen/Unmute controls.
-  - Other users in voice listed with presence (e.g. "In voice (General)", muted indicators).
-- Voice state is reflected on the server icon ("Voice call active") and in the member list ("In voice (General)").
-- Main content area stays on the last text channel; voice connection is a global overlay state, not a page navigation.
-- "Voice (Limited)" indicates a limited-capacity voice channel variant.
-
-## Observed voice-related states
-
-- User bar shows "In voice" status and Mute/Deafen switches while connected.
-- Member list marks users "In voice (General)" and shows muted/deafened icons.
-- Activities (e.g. "Playing …") continue to display for voice participants.
-
-## Notes for Oxicord (Rust) implementation (additions)
-
-- DM view needs voice/video call launch buttons in the channel header.
-- Voice connection is global state: keep text channel view mounted while showing a Voice Details panel.
-- Voice channel list items need an "Open Chat" action and live duration timer.
-- Limited voice channels should be visually distinguished ("Voice (Limited)").
-- Member list must reflect in-voice presence and mute/deafen per user.
-
-## Direct Message voice call
-
-Observed by starting a voice call to "Cotton" (then disconnected).
-
-- DM header already exposes **Start Voice Call** / **Start Video Call** buttons.
-- When connected, a **Voice Details** panel appears (same as in-server voice):
-  - "Voice Connected" + partner name.
-  - Controls: Mute/Unmute, Deafen, Share Your Screen, Start An Activity.
-  - Disconnect button to hang up.
-- DM voice call is a global voice state; the DM chat view remains mounted.
-
-## Notes for Oxicord (Rust) implementation (additions)
-
-- DM voice calls reuse the same Voice Details panel as server voice channels.
-- Header must switch from "Start Voice Call" to connected-state controls.
-
-This file is a reference snapshot; Discord's UI changes over time. Re-capture as needed.
+# Discord reference (live capture 2026-11-07T10:48:31.917Z)
 
 
-## User Profile Popout / Full Profile
+## Home / DM view
 
-Observed in the logged-in browser (read-only, no posting).
+```json
+{
+  "guild_rail": [],
+  "channel_list": [],
+  "main_header": "Direct Messages",
+  "bodySample": "Online tab added\nFriends\nDirect Messages\n6\nNeverlose Roblox\nNeverlose Roblox\nGIF Central\nGIF Central\nUnread messages, Counter Blox | Headwind\nCounter Blox | Headwind\nUnread messages, Constantiam Presidential Elections\nConstantiam Presidential Elections\nProject Aurora\nProject Aurora\nUnread messages, "
+}
+```
 
-Mini profile popout labels:
-- "Manage profile and status"
-- Custom status prompt: "What fictional world would you live in?"
-- Avatar aria-label: "View Full Profile"
-- "Server Tag: LWIQ"
-- "Edit Profile"
-- "Your Status: Do Not Disturb"
-- "Badges" / "150 Orbs" / "new"
-- "Switch Accounts"
-- "Copy User ID"
+## Message row structure
 
-Full profile editor ("Your full profile") sections:
-- "Profile styles panel"
-- "Select profile"
-- "Main Profile"
-- "Nameplate"
-- "Avatar & Decoration"
-- "Banner Color"
-- "Profile Effect & Frame"
-- "Level up your look, only with Nitro"
-- "Preview Nitro"
-- "Display Name Style"
-- "Profile Theme"
-- "Profile Banner"
-- "Animated Avatar"
+```json
+{
+  "found": false
+}
+```
 
-Oxicord profile modal already covers: avatar, display name, username, pronouns, activity status, bio, presence, badges, mutual friends count, mutual servers list, joined date, boost date, linked accounts, banner, accent color, copy user ID/avatar/banner URLs.
+## User Settings sidebar sections
 
-## User Profile Note
+```json
+{
+  "sections": [
+    "Home",
+    "Log In",
+    "Download",
+    "Nitro",
+    "Discover",
+    "Quests",
+    "Safety",
+    "Support",
+    "Blog",
+    "Developers",
+    "Careers",
+    "Status",
+    "App Directory",
+    "About",
+    "Jobs",
+    "Brand",
+    "Newsroom",
+    "Fall Release",
+    "Feedback",
+    "Creators",
+    "Community",
+    "Official 3rd Party Merch",
+    "Terms",
+    "Privacy",
+    "Cookie Settings",
+    "Guidelines",
+    "Acknowledgements",
+    "Licenses",
+    "Company Information"
+  ]
+}
+```
 
-Observed in Cotton's full profile.
+## Profile popout (own) - Note field + actions
 
-- Section label: "Note (only visible to you)".
-- Input placeholder: "Note".
-- Stored value is per-viewer and fetched separately from `/users/@me/notes/{user_id}`.
-- Response shape: `{"user_id":..., "note_user_id":..., "note":"..."}`.
+```json
+{
+  "note_placeholders": [
+    "Search"
+  ],
+  "buttons": [
+    "Find or start a conversation"
+  ],
+  "headings": [
+    "Direct Messages",
+    "Friends",
+    "Online — 41",
+    "a.oi",
+    "Aliolii",
+    "AncientFigurine",
+    "barrett",
+    "bebo",
+    "CBRNUNIT",
+    "Critaata"
+  ]
+}
+```
 
-Oxicord now fetches this note while loading a profile and shows it as "Note: ..." in the profile modal.
+## Right-click context menu on a DM
 
-## Message context menu
+```json
+{
+  "found": false
+}
+```
 
-Observed on a normal text message in a DM.
+## Inbox view
 
-Menu items:
-- Add Reaction
-- Edit Message / Reply / Forward
-- Copy Text
-- Pin Message
-- Bookmark Message
-- Create Reminder
-- Apps
-- Mark Unread
-- Copy Message Link
-- Speak Message
-- Delete Message
-- Copy Message ID
+```json
+{
+  "tabs": [
+    "Direct Messages\n6\nNeverlose Roblox\nNeverlose Roblox\nGIF Central\nGIF Central\nUnread messages, Counter Blox | Headwind\nCounter Blox | Headwind\nUnread messages, Constantiam Presidential Elections\nConstantiam Presidential Elections\nProject Aurora\nProject Aurora\nUnread messages, The Order\nThe Order\nUnread messages, Sovereign Constantiam, Voice call active\nSovereign Constantiam\nUnread messages, FishAnarchy.net\nFishAnarchy.net\nUnread messages, 𖤐 Japsterdam 𖤐\n𖤐 Japsterdam 𖤐\nGorilla Mercenary Services\nGorilla Mercenary Services\nUnread messages, anarchy configs\nanarchy configs\nUnread messages, Torn Exchange\nTorn Exchange\nUnread messages, 2b2t Census Bureau\n2b2t Census Bureau\nUnread messages, HiddenDevs | Roblox, Scheduled event\nHiddenDevs | Roblox\nUnread messages, Hard Working Sloths\nHard Working Sloths\n1 mention, Void | Roblox Trading Tools\n1\nVoid | Roblox Trading Tools\nnotantque's server\nns\nnotantque's server\nnotantque's server\nns\nnotantque's server\nnotantque's server\nns\nnotantque's server\nUnread messages, 2b2t/Constantiam Chest Shop\n2b2t/Constantiam Chest Shop\nnotantque's server\nns\nnotantque's server\nUnread messages, Parliament of Minecraft Anarchy\nParliament of Minecraft Anarchy\nUnread messages, Rolimon's | Roblox Trading\nRolimon's | Roblox Trading\nUnread messages, Constantiam Tier List\nConstantiam Tier List\nUnread messages, Evil space\nEvil space\nUnread messages, Natro Macro, Voice call active\nNatro Macro\nUnread messages, Grave/Digger Community Server\nGrave/Digger Community Server\n8 mentions, Alt Hub Fanclub™, Scheduled event\n8\nAlt Hub Fanclub™\n5 mentions, BBCHUB\n5\nBBCHUB\nUnread messages, aspect.sys\naspect.sys\nUnread messages, specter.club\nspecter.club\nUnread messages, Potassium, Voice call active\nPotassium\nUnread messages, astra [BETA]\nastra [BETA]\n1 mention, Tomboy.Hook\n1\nTomboy.Hook\n24 mentions, Site 80 \"Jacoby\" | Faction Hub\n24\nSite 80 \"Jacoby\" | Faction Hub\nUnread messages, Five-O Community\nFive-O Community\n1 mention, The GIA, Voice call active\n1\nThe GIA\n4 mentions, Grand Alfheim\n4\nGrand Alfheim\nUnread messages, Constantiam Base Archive\nConstantiam Base Archive\nUnread messages, The Rishi Verdhana\nThe Rishi Verdhana\nUnread messages, Research Site-73 | SCP:RP\nResearch Site-73 | SCP:RP\nUnread messages, 10builders10tools Official\n10builders10tools Official\nUnread messages, Vanity Services\nVanity Services\nUnread messages, TORN\nTORN\nEmpire Studios\nEmpire Studios\nUnread messages, Constantiam Chat Room\nConstantiam Chat Room\nUnread messages, InfraNet\nInfraNet\nUnread messages, Mush Technologia\nMush Technologia\nnotantque's server\nns\nnotantque's server\n337 mentions, SCP:RP | Installation - 45\n337\nSCP:RP | Installation - 45\nWrath's Discord\nWrath's Discord\n17 mentions, Site 80 \"Jacoby\" | The New Beginning\n17\nSite 80 \"Jacoby\" | The New Beginning\n3 mentions, Blackhub\n3\nBlackhub\nConst Mapart Contests\nConst Mapart Contests\nUnread messages, Edp Watch\nEdp Watch\nUnread messages, Map Artists of Constantiam\nMap Artists of Constantiam\nUnread messages, SCP | Factions Hub Reports and Appeals\nSCP | Factions Hub Reports and Appeals\nUnread messages, The Care Home\nThe Care Home\nUnread messages, Map Artists of 2b2t\nMap Artists of 2b2t\nRubiRedstone's Community Hub\nRubiRedstone's Community Hub\nUnread messages, The Hunter’s Union of Constantiam\nThe Hunter’s Union of Constantiam\nUnread messages, Ascension Studios\nAscension Studios\nUnread messages, [M.E.G] Major Explorer Group\n[M.E.G] Major Explorer Group\n2 mentions, 🎨 ⋆ Octolinguski ⋆ ✨\n2\n🎨 ⋆ Octolinguski ⋆ ✨\nUnread messages, Bite By Night Support Server\nBite By Night Support Server\n3 mentions, 𝐒𝐈𝐓𝐄 - 64 (wip)\n3\n𝐒𝐈𝐓𝐄 - 64 (wip)\n2 mentions, .gg/riths\n2\n.gg/riths\nUnread messages, Imperials of Constantiam\nImperials of Constantiam\nUnread messages, Constantiam Highway Builders\nConstantiam Highway Builders\nPhoenix Corp.\nPhoenix Corp.\nUnread messages, rfresh technologies\nrfresh technologies\nUnread messages, Amadeus\nAmadeus\nConstantiam Chat Broadcast, Constantiam Farms, folder\nnotantque's server\nns\nnotantque's server\nUnread messages, mioclient.me | DLC\nmioclient.me | DLC\n1 mention, DupersUnited\n1\nDupersUnited\nUnread messages, Constantiam trading platform/travel outposts\nConstantiam trading platform/travel outposts\nUnread messages, Constantiam Info\nConstantiam Info\nUnread messages, The Constantiam Alliance\nThe Constantiam Alliance\nUnread messages, Rusher Community\nRusher Community\n9 mentions, valentinee471 HOOD\n9\nvalentinee471 HOOD\nDD | Support\nDD | Support\n7 mentions, Defuse Division\n7\nDefuse Division\nfreaks only\nfreaks only\nUnread messages, Dew Drinker Discord\nDew Drinker Discord\n248 mentions, ◥ SITE-53 | ARCHIVED | ꜱᴄᴘ:ʀᴘ ◤\n248\n◥ SITE-53 | ARCHIVED | ꜱᴄᴘ:ʀᴘ ◤\nUnread messages, R.R.T. | IV Branch\nR.R.T. | IV Branch\n40 mentions, Site-47 | \"A New Life\"\n40\nSite-47 | \"A New Life\"\nLow iq gaymers\nLow iq gaymers\nlocked in\nlocked in\nUnread messages, TempleOS, Scheduled event\nTempleOS\nnotantque's server\nns\nnotantque's server\nUnread messages, Starscape Community\nStarscape Community\nUnread messages, Hapless Studios, Voice call active\nHapless Studios\nSprawa M.W i M.K\nSM.WiM.K\nSprawa M.W i M.K",
+    "Friends\n5\nMessage Requests\n1\nNitro\nOFFER\nShop\nQuests\nDirect Messages\nmy cute little bf\nServer Tag: ZOE\nZOE\nHarcèlement Informatique\nCotton \nServer Tag: LWIQ\nLWIQ\nhekknaw\n‧₊˚✧[NYX]✧˚₊‧ \nServer Tag: TFR\nTFR\nGabriel \nServer Tag: LWIQ\nLWIQ\nZharrs\nRimWorld\n•\nje me fait chier\nMore_Orgasm\nGeneric GC V2\n10 Members\nBloxlink\n/invite | blox.link\n/invite | blox.link\ngray \nServer Tag: TUNE\nTUNE\nlil fat bro \nServer Tag: ᶻz𐰁\nᶻz𐰁\n747 (carti edition)\nDiscord\nOFFICIAL DISCORD MESSAGE\nOFFICIAL\nOfficial Discord Message\nRaika\nServer Tag: Ado\nAdo\nSCP Secret Laboratory with Medal\n•\nJust remember in the winter Far beneath the bitter snows Lies the seed that with the sun's love In the spring becomes the rose.\nHΛNTΞL \nServer Tag: G4S\nG4S\nOris\nServer Tag: MYMY\nMYMY",
+    "Friends",
+    "Online",
+    "All",
+    "Pending, 5 new",
+    "Add Friend",
+    "Looking for accounts you've blocked or ignored? Go to settings\nOnline — 41\na.oi\nServer Tag: EXAM\nEXAM\nROBLOX\nROBLOX\n•\nrasonia\nAliolii\nDo Not Disturb\nAncientFigurine\nmeow\nbarrett\nServer Tag: NANO\nNANO\nRoblox with Medal\n+1\nRoblox with Medal\nthe screams of the damned\nbebo\nDo Not Disturb\nCBRNUNIT\nIdle\nCritaata\nServer Tag: SCP\nSCP\nDo Not Disturb\nDel\nServer Tag: UN\nUN\nOnline\nevylen\nDo Not Disturb\nfiremaster\nServer Tag: FEET\nFEET\nMeteor Client\nMeteor Client\n•\nbye\nFlan\nJarona!\nFlandreu\nServer Tag: IMPS\nIMPS\nOnline\nfluff\nDo Not Disturb\ngoopdestroyer3700\nDo Not Disturb\nhhugo\nIdle\nIgor\nServer Tag: RIP\nRIP\nOnline\nActive Now\nMaddie 🦃, Better TTS, and 1 other\nIn a Voice Channel\nSovereign Constantiam\nvoice 1\nMaddie 🦃\nBetter TTS\ndarq\nSera\nROBLOX – 12h\nRoblox\n1 Person\nSera\nbarrett\nRoblox with Medal – 38m\nClipping Roblox\nwith Medal\n38:30 elapsed\nfiremaster\nMeteor Client – 34m\nF1remast3r\nMeteor on Crack!\n34:48 elapsed\nStarman\nPlaying on Xbox\nBlizzard Arcade Collection\n1 Person\nStarman\nrynim\nCounter-Strike 2 – 18m\nCounter-Strike 2\n1 Person\nrynim\nZenith\nROBLOX – 6m\nRoblox\n1 Person\nZenith\na.oi\nROBLOX – 11m\nRoblox\n1 Person\na.oi\nRaika\nSCP Secret Laboratory with Medal – 1h\nClipping SCP Secret Laboratory\nwith Medal\n01:57:24 elapsed\nunderd0sed\nMinecraft – 5h\nMinecraft\n1 Person\nunderd0sed\nZharrs\nRimWorld – 1h\nRimWorld\n1 Person\nZharrs",
+    "Online — 41\na.oi\nServer Tag: EXAM\nEXAM\nROBLOX\nROBLOX\n•\nrasonia\nAliolii\nDo Not Disturb\nAncientFigurine\nmeow\nbarrett\nServer Tag: NANO\nNANO\nRoblox with Medal\n+1\nRoblox with Medal\nthe screams of the damned\nbebo\nDo Not Disturb\nCBRNUNIT\nIdle\nCritaata\nServer Tag: SCP\nSCP\nDo Not Disturb\nDel\nServer Tag: UN\nUN\nOnline\nevylen\nDo Not Disturb\nfiremaster\nServer Tag: FEET\nFEET\nMeteor Client\nMeteor Client\n•\nbye\nFlan\nJarona!\nFlandreu\nServer Tag: IMPS\nIMPS\nOnline\nfluff\nDo Not Disturb\ngoopdestroyer3700\nDo Not Disturb\nhhugo\nIdle\nIgor\nServer Tag: RIP\nRIP\nOnline"
+  ],
+  "headers": [
+    "Direct Messages",
+    "Friends",
+    "Online — 41",
+    "Active Now"
+  ]
+}
+```
 
-Bookmarking calls `PUT /users/@me/saved-messages/{channel}/{message}` with body `{"source":"context_menu"}`.
+## Open Friends tab
 
-## User Profile More menu
+```json
+{
+  "clickedFriends": true
+}
+```
 
-Observed in Cotton's full profile.
+## Profile popout via clicking a friend row
 
-- "More" button opens a menu with:
-  - Share Profile
-  - Invite to Server
-  - Ignore
-  - Block
-  - Report User Profile
-  - Copy User ID
+```json
+{
+  "noteFields": [
+    {
+      "ph": "Search",
+      "aria": "Search",
+      "cls": "input_0PLWhS"
+    }
+  ],
+  "buttons": [
+    "Find or start a conversation"
+  ],
+  "headings": [
+    "Direct Messages",
+    "Friends",
+    "Online — 43",
+    "a.oi",
+    "Aliolii",
+    "AncientFigurine",
+    "barrett",
+    "CBRNUNIT"
+  ],
+  "noteRegion": []
+}
+```
 
-## Server context menu
+## Open a DM channel
 
-Observed on "Low iq gaymers".
+```json
+{
+  "header": "Direct Messages"
+}
+```
 
-Menu items include:
-- Mark as read
-- Mute Server
-- Notification Settings
-- Suppress @everyone and @here
-- Hide Muted Channels
-- Server Settings
-- Privacy Settings
-- Edit Per-server Profile
-- Create Event
-- Move to...
-- Leave Server
-- Copy Server ID
+## Message row + right-click context menu
+
+```json
+{
+  "found": false
+}
+```
