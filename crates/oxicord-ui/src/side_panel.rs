@@ -437,8 +437,39 @@ impl SidePanel {
                     }
                     None => "Voice Channel".to_owned(),
                 };
-                vec![
+                let participants: Vec<AnyElement> = self
+                    .channel
+                    .map(|id| {
+                        let store = &self.session.read(cx).store;
+                        store
+                            .voice_in(id)
+                            .iter()
+                            .map(|voice| {
+                                let name = store
+                                    .user(voice.user_id)
+                                    .map(|u| u.display_name().to_owned())
+                                    .unwrap_or_else(|| voice.user_id.to_string());
+                                let suffix = if voice.self_mute || voice.mute {
+                                    " (muted)"
+                                } else if voice.self_deaf || voice.deaf {
+                                    " (deafened)"
+                                } else {
+                                    ""
+                                };
+                                Self::note(format!("{}{}", name, suffix))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut rows = vec![
                     Self::note(format!("Connected to {}", channel_name)),
+                ];
+                if participants.is_empty() {
+                    rows.push(Self::note("No one else is here."));
+                } else {
+                    rows.extend(participants);
+                }
+                rows.extend([
                     {
                         let camera = self.camera;
                         div()
@@ -529,7 +560,8 @@ impl SidePanel {
                         .on_click(cx.listener(|_, _: &gpui_kit::ClickEvent, _, cx| cx.emit(ClosePanel)))
                         .child("Disconnect")
                         .into_any_element(),
-                ]
+                ]);
+                rows
             }
         }
     }
