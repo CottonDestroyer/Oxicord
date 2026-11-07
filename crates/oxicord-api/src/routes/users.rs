@@ -64,6 +64,21 @@ impl ApiClient {
         .await
     }
 
+    /// Remove a saved/bookmarked message.
+    pub async fn unbookmark_message(
+        &self,
+        channel: Snowflake,
+        message: Snowflake,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/users/@me/saved-messages/{channel}/{message}"),
+            "DELETE /users/@me/saved-messages/:channel/:message",
+            None,
+        )
+        .await
+    }
+
     /// Our saved/bookmarked messages.
     pub async fn bookmarks(&self) -> Result<Vec<Message>, ApiError> {
         #[derive(Deserialize)]
