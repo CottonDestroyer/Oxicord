@@ -637,6 +637,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::SetMemberRoles { guild, user, roles } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_member_roles(guild, user, roles.clone()).await {
+                    notify(&events, "change that member's roles", &err).await;
+                }
+            });
+        }
         Command::AddFriendByName(username) => {
             tokio::spawn(async move {
                 let result = api.add_friend_by_name(&username).await.map_err(|err| {

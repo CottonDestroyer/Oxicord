@@ -23,6 +23,7 @@ use crate::{
     friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
     ban_dialog::{CloseBan, BanDialog},
     timeout_dialog::{CloseTimeout, TimeoutDialog},
+    roles_dialog::{CloseRoles, RolesDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
     join_server::{CloseJoin, JoinServerView},
     friends::FriendsView,
@@ -38,7 +39,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -147,6 +148,8 @@ pub struct MainView {
     ban_dialog_open: bool,
     timeout_dialog: Entity<TimeoutDialog>,
     timeout_dialog_open: bool,
+    roles_dialog: Entity<RolesDialog>,
+    roles_dialog_open: bool,
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
@@ -228,6 +231,10 @@ impl MainView {
         let timeout_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| TimeoutDialog::new(session, backend, window, cx))
+        };
+        let roles_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| RolesDialog::new(session, backend, window, cx))
         };
         let note_input = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
         let switcher = {
@@ -391,6 +398,10 @@ impl MainView {
                 this.timeout_dialog_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&roles_dialog, |this, _, _: &CloseRoles, cx| {
+                this.roles_dialog_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&note_input, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.save_note(cx);
@@ -423,6 +434,18 @@ impl MainView {
                     .map(|u| u.display_name().to_owned())
                     .unwrap_or_default();
                 this.timeout_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenRolesMember, window, cx| {
+                this.roles_dialog_open = true;
+                let name = this
+                    .session
+                    .read(cx)
+                    .store
+                    .user(open.1)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                this.roles_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
                 cx.notify();
             }),
             cx.subscribe(&forward, |this, _, _: &CloseForward, cx| {
@@ -517,6 +540,8 @@ impl MainView {
             ban_dialog_open: false,
             timeout_dialog,
             timeout_dialog_open: false,
+            roles_dialog,
+            roles_dialog_open: false,
             note_input,
             note_prefilled_for: None,
             switcher,
@@ -995,6 +1020,25 @@ impl MainView {
                             });
                         }
                     }
+                }
+                // Editing roles needs its own permission and opens a dialog.
+                let can_manage_roles = self
+                    .session
+                    .read(cx)
+                    .store
+                    .guild_permissions(guild)
+                    .contains(oxicord_model::Permissions::MANAGE_ROLES);
+                if can_manage_roles && !is_owner {
+                    let session = self.session.downgrade();
+                    card.actions.push(profile::CardAction {
+                        label: "Roles",
+                        danger: false,
+                        handler: Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                            if let Some(session) = session.upgrade() {
+                                session.update(cx, |_, cx| cx.emit(OpenRolesMember(guild, user)));
+                            }
+                        }) as Box<profile::Handler>,
+                    });
                 }
             }
         }
@@ -2519,6 +2563,7 @@ impl Render for MainView {
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
         let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
         let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
+        let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
@@ -2598,6 +2643,7 @@ impl Render for MainView {
             .children(friend_nick)
             .children(ban_dialog)
             .children(timeout_dialog)
+            .children(roles_dialog)
             .children(join)
             .children(invite)
             .children(edit_channel)

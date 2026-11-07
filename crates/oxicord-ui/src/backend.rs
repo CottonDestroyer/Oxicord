@@ -257,6 +257,12 @@ pub enum Command {
         user: Snowflake,
         until: Option<String>,
     },
+    /// Replace a member's roles. Requires the `Manage Roles` permission.
+    SetMemberRoles {
+        guild: Snowflake,
+        user: Snowflake,
+        roles: Vec<Snowflake>,
+    },
     /// Send a friend request to this username. The outcome arrives as
     /// [`Event::FriendRequest`].
     AddFriendByName(String),

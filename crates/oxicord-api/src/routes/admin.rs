@@ -85,6 +85,24 @@ impl ApiClient {
         .await
     }
 
+    /// Replaces a member's roles. Requires the `Manage Roles` permission and a
+    /// role hierarchy high enough to target them. `@everyone` (the role whose
+    /// id equals the guild) is always included and cannot be removed.
+    pub async fn set_member_roles(
+        &self,
+        guild: Snowflake,
+        user: Snowflake,
+        roles: Vec<Snowflake>,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/members/{user}"),
+            "PATCH /guilds/:id/members/:id",
+            Some(&json!({ "roles": roles })),
+        )
+        .await
+    }
+
     pub async fn audit_log(&self, guild: Snowflake) -> Result<AuditLog, ApiError> {
         let body: Value = self
             .json(

@@ -141,6 +141,11 @@ pub struct OpenTimeoutMember(pub Snowflake, pub Snowflake);
 
 impl EventEmitter<OpenTimeoutMember> for Session {}
 
+/// Someone wants to edit this member's roles in this server.
+pub struct OpenRolesMember(pub Snowflake, pub Snowflake);
+
+impl EventEmitter<OpenRolesMember> for Session {}
+
 /// Someone wants the settings of this server.
 pub struct OpenServerSettings(pub Snowflake);
 
@@ -162,6 +167,13 @@ impl EventEmitter<OpenCreateChannel> for Session {}
 pub struct OpenGift;
 
 impl EventEmitter<OpenGift> for Session {}
+
+/// Someone wants to open the "Application Launcher" from the composer's "Apps"
+/// button. Discord fills this with its global app directory and server activities;
+/// Oxicord has no such backend yet, so the launcher shows an honest empty state.
+pub struct OpenApps;
+
+impl EventEmitter<OpenApps> for Session {}
 
 /// Someone wants the privacy settings.
 pub struct OpenPrivacySettings;
