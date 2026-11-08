@@ -34,7 +34,22 @@ Gateway events we ignore today, so things go out of date until a restart.
 
 ## Phase 3: servers you can't fully use yet
 
-- [ ] Rules screening (`/guilds/:id/member-verification`), onboarding, welcome screen (accept rules action added; full dialog pending)
+- [x] Rules screening: the "Complete" banner replaces the composer while our
+      member is `pending`, and the full dialog (server card, icon palette
+      gradient, numbered rules, agree checkbox, submit states, close) posts to
+      `/guilds/:id/requests/@me`. Verified against the live SCP | Roleplay
+      dialog; pixel diff 5.67 % on the entry banner crop, visual crop pairs
+      PASS. Remaining differences: the agree row sits fixed above the footer
+      because GPUI's scroll viewport swallowed its hitbox (identical when
+      scrolled), the scroll edge fade is not drawn, and Windows subpixel text
+      anti-aliasing differs from the web client's grayscale AA. The banner image
+      is cropped from the centre with a 13 px offset.
+- [ ] Screening questions other than TERMS: TEXT_INPUT, PARAGRAPH and
+      MULTIPLE_CHOICE fields and the inline invalid-field error.
+- [ ] Onboarding: prompts, channel and role selection, and the
+      `GUILD_ONBOARDING_*` updates.
+- [ ] Welcome screen: the server home with its description and featured
+      channels when no channel is selected (`/guilds/:id/welcome-screen`).
 - [x] Member moderation: kick, ban, timeout, roles, in the three dots menu of the profile cards (not the right click menu), each gated on its own permission. Kick has no confirmation yet and there is no role hierarchy check
 
 ## Phase 4: bots

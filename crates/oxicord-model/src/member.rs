@@ -27,6 +27,9 @@ pub struct Member {
     pub joined_at: Option<String>,
     #[serde(default)]
     pub communication_disabled_until: Option<String>,
+    /// True until we pass the server's membership screening.
+    #[serde(default)]
+    pub pending: bool,
 }
 
 impl Member {

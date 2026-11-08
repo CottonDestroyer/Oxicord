@@ -31,6 +31,14 @@ pub const TEXT_MUTED: u32 = 0x96979e;
 pub const TEXT_FAINT: u32 = 0x81828a;
 /// background-surface-higher: menus and popouts.
 pub const BG_MENU: u32 = 0x121214;
+/// The guild card in the screening dialog, one step above the dialog.
+pub const BG_CARD: u32 = 0x17181b;
+/// background-feedback-positive, the screening dialog's submit button.
+pub const SUCCESS: u32 = 0x008545;
+/// The same button under the pointer.
+pub const SUCCESS_HOVER: u32 = 0x006c37;
+/// control-checked-background-default, the screening dialog's checkbox.
+pub const CHECKBOX: u32 = 0x4452bb;
 /// background-feedback-mod-critical over a menu, behind a focused danger item.
 pub const DANGER_HOVER: u32 = 0x231819;
 /// status-positive-background, the add server button on hover.

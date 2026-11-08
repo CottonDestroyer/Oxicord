@@ -76,6 +76,15 @@ pub struct Session {
     /// `None` is the system default.
     pub audio_input: Option<String>,
     pub audio_output: Option<String>,
+    /// The membership screening dialog, while it is open or loading.
+    pub verification: Option<VerificationState>,
+}
+
+/// The form and card of the screening dialog, and how submitting went.
+pub struct VerificationState {
+    pub guild: Snowflake,
+    pub info: Load<oxicord_model::VerificationInfo>,
+    pub submit: Option<Result<(), String>>,
 }
 
 /// Where our own voice call stands.
@@ -253,6 +262,13 @@ pub struct OpenInbox;
 
 impl EventEmitter<OpenInbox> for Session {}
 
+/// Someone asked the rules screening dialog for a server.
+pub struct OpenRulesScreening {
+    pub guild: Snowflake,
+}
+
+impl EventEmitter<OpenRulesScreening> for Session {}
+
 /// A view wants the friend picker for starting or growing a conversation.
 pub struct OpenPicker {
     pub purpose: crate::dm_picker::Purpose,
@@ -324,6 +340,7 @@ impl Session {
             voice: VoiceCall::default(),
             audio_input: None,
             audio_output: None,
+            verification: None,
         }
     }
 
@@ -757,7 +774,59 @@ impl Session {
     }
 
     pub fn apply_admin(&mut self, event: crate::AdminEvent, cx: &mut Context<Self>) {
+        match &event {
+            crate::AdminEvent::MemberVerification(guild, result) => {
+                if let Some(state) = &mut self.verification
+                    && state.guild == *guild
+                {
+                    state.info = Load::from_result((**result).clone());
+                }
+            }
+            crate::AdminEvent::Verified(guild, result) => {
+                if let Some(state) = &mut self.verification
+                    && state.guild == *guild
+                {
+                    state.submit = Some(result.clone());
+                }
+            }
+            _ => {}
+        }
         self.admin.apply(event);
+        cx.notify();
+    }
+
+    /// Opens the screening dialog for `guild` and asks for its form.
+    pub fn request_verification(&mut self, backend: &Backend, guild: Snowflake, cx: &mut Context<Self>) {
+        self.verification = Some(VerificationState {
+            guild,
+            info: Load::Loading,
+            submit: None,
+        });
+        backend.send(Command::Admin(crate::AdminRequest::LoadMemberVerification(guild)));
+        cx.notify();
+    }
+
+    pub fn submit_verification(
+        &mut self,
+        backend: &Backend,
+        guild: Snowflake,
+        form: oxicord_model::VerificationForm,
+        agreed: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(state) = &mut self.verification {
+            state.submit = None;
+        }
+        backend.send(Command::Admin(crate::AdminRequest::SubmitMemberVerification {
+            guild,
+            form,
+            agreed,
+        }));
+        cx.notify();
+    }
+
+    pub fn close_verification(&mut self, cx: &mut Context<Self>) {
+        self.verification = None;
         cx.notify();
     }
 

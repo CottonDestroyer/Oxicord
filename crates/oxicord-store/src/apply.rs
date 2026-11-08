@@ -617,6 +617,7 @@ impl Store {
         self.voice.retain(|channel, _| self.channels.contains_key(channel));
         self.guilds.remove(&delete.id);
         self.my_roles.remove(&delete.id);
+        self.pending.remove(&delete.id);
         self.member_lists.remove(&delete.id);
         self.guild_order.retain(|id| *id != delete.id);
         changes.channel_lists.insert(delete.id);
@@ -627,6 +628,13 @@ impl Store {
             return;
         }
         self.my_roles.insert(update.guild_id, update.roles);
+        if let Some(pending) = update.pending {
+            if pending {
+                self.pending.insert(update.guild_id);
+            } else {
+                self.pending.remove(&update.guild_id);
+            }
+        }
         // Our roles decide which channels we see.
         changes.guild_list = true;
         changes.channel_lists.insert(update.guild_id);

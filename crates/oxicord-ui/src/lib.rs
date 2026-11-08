@@ -35,6 +35,7 @@ mod popup;
 mod member_list;
 mod profile;
 mod rail;
+mod rules_screening;
 mod search_query;
 mod session;
 mod server_settings;

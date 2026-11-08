@@ -18,7 +18,14 @@ pub enum AdminRequest {
     Unban { guild: Snowflake, user: Snowflake },
     LoadAudit(Snowflake),
     EditGuild { guild: Snowflake, fields: Value },
-    AcceptMemberVerification(Snowflake),
+    /// The screening form and the card beside it.
+    LoadMemberVerification(Snowflake),
+    /// Answers the screening form. The gateway clears `pending` on success.
+    SubmitMemberVerification {
+        guild: Snowflake,
+        form: oxicord_model::VerificationForm,
+        agreed: bool,
+    },
     SetServerAvatar { guild: Snowflake, avatar: Option<String> },
     SetServerBanner { guild: Snowflake, banner: Option<String> },
     CreateRole { guild: Snowflake, name: String },
@@ -37,6 +44,9 @@ pub enum AdminEvent {
     Invites(Snowflake, Result<Vec<InviteEntry>, String>),
     Bans(Snowflake, Result<Vec<BanEntry>, String>),
     Audit(Snowflake, Result<AuditLog, String>),
+    MemberVerification(Snowflake, Box<Result<oxicord_model::VerificationInfo, String>>),
+    /// How answering the screening form went.
+    Verified(Snowflake, Result<(), String>),
 }
 
 /// The lists last loaded, for the server whose settings are open.
@@ -61,6 +71,7 @@ impl AdminState {
             AdminEvent::Invites(g, r) if self.guild == Some(g) => self.invites = Load::from_result(r),
             AdminEvent::Bans(g, r) if self.guild == Some(g) => self.bans = Load::from_result(r),
             AdminEvent::Audit(g, r) if self.guild == Some(g) => self.audit = Load::from_result(r),
+            AdminEvent::MemberVerification(..) | AdminEvent::Verified(..) => {}
             _ => {}
         }
     }

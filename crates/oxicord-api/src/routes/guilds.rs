@@ -96,23 +96,47 @@ impl ApiClient {
     }
 
     /// Fetches the member verification form for `guild`.
-    pub async fn member_verification(&self, guild: Snowflake) -> Result<serde_json::Value, ApiError> {
+    pub async fn member_verification(
+        &self,
+        guild: Snowflake,
+    ) -> Result<oxicord_model::VerificationForm, ApiError> {
         self.json(
             Method::GET,
-            &format!("/guilds/{guild}/member-verification"),
+            &format!("/guilds/{guild}/member-verification?with_guild=false"),
             "GET /guilds/:id/member-verification",
             None,
         )
         .await
     }
 
-    /// Accepts the member verification form for `guild`.
-    pub async fn accept_member_verification(&self, guild: Snowflake) -> Result<(), ApiError> {
+    /// The card the screening dialog shows beside the form.
+    pub async fn guild_profile(
+        &self,
+        guild: Snowflake,
+    ) -> Result<oxicord_model::GuildProfile, ApiError> {
+        self.json(
+            Method::GET,
+            &format!("/guilds/{guild}/profile"),
+            "GET /guilds/:id/profile",
+            None,
+        )
+        .await
+    }
+
+    /// Answers the membership screening form, which lifts `pending` from our
+    /// member through the gateway.
+    pub async fn submit_member_verification(
+        &self,
+        guild: Snowflake,
+        form: &oxicord_model::VerificationForm,
+        agreed: bool,
+    ) -> Result<(), ApiError> {
+        let body = form.submission(agreed);
         self.empty(
             Method::PUT,
-            &format!("/guilds/{guild}/member-verification"),
-            "PUT /guilds/:id/member-verification",
-            Some(&serde_json::json!({})),
+            &format!("/guilds/{guild}/requests/@me"),
+            "PUT /guilds/:id/requests/@me",
+            Some(&body),
         )
         .await
     }

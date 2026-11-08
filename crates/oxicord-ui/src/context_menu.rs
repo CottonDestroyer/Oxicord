@@ -10,12 +10,11 @@ use gpui_kit::{
 use oxicord_model::{Channel, NotifyLevel, Snowflake};
 
 use crate::{
-    admin::AdminRequest,
     backend::{Backend, Command},
     icons::icon,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
     server_settings,
-    session::{OpenInviteDialog, OpenPrivacySettings, OpenServerProfile, OpenServerSettings, Session},
+    session::{OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerProfile, OpenServerSettings, Session},
     theme,
 };
 
@@ -356,8 +355,7 @@ impl Render for ContextMenu {
             }, cx));
             menu = menu.child(self.item("accept-rules", "Accept Server Rules", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                 if let Some(Target::Guild(guild)) = this.target {
-                    let backend = this.backend.clone();
-                    this.session.update(cx, |s, cx| s.request_admin(&backend, AdminRequest::AcceptMemberVerification(guild), cx));
+                    this.session.update(cx, |_, cx| cx.emit(OpenRulesScreening { guild }));
                 }
                 this.close(cx);
             }, cx));
