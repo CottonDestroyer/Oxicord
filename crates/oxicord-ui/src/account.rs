@@ -40,6 +40,7 @@ pub enum AccountRequest {
     LoadApps,
     RevokeApp(Snowflake),
     LoadConnections,
+    RemoveConnection { kind: String, id: String },
     LoadSessions,
     LogoutOtherSessions,
     LoadNotificationCenter,

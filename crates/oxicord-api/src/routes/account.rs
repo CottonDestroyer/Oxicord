@@ -105,6 +105,17 @@ impl ApiClient {
         .await
     }
 
+    /// Removes a linked connection.
+    pub async fn remove_connection(&self, kind: &str, id: &str) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/users/@me/connections/{kind}/{id}"),
+            "DELETE /users/@me/connections/:type/:id",
+            None,
+        )
+        .await
+    }
+
     /// Notification center items for the "For You" inbox tab.
     pub async fn notification_center_items(&self) -> Result<Vec<serde_json::Value>, ApiError> {
         self.json(

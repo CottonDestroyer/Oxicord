@@ -860,6 +860,12 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             say(AccountEvent::Apps(api.authorized_apps().await.map_err(text))).await;
         }
         AccountRequest::LoadConnections => say(AccountEvent::Connections(api.connections().await.map_err(text))).await,
+        AccountRequest::RemoveConnection { kind, id } => {
+            if let Err(err) = api.remove_connection(&kind, &id).await {
+                notify(events, "remove that connection", &err).await;
+            }
+            say(AccountEvent::Connections(api.connections().await.map_err(text))).await;
+        }
         AccountRequest::LoadSessions => say(AccountEvent::Sessions(api.login_sessions().await.map_err(text))).await,
         AccountRequest::LoadNotificationCenter => say(AccountEvent::NotificationCenter(api.notification_center_items().await.map_err(text))).await,
         AccountRequest::LogoutOtherSessions => {
