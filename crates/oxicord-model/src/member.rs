@@ -20,6 +20,8 @@ pub struct Member {
     #[serde(default)]
     pub avatar: Option<String>,
     #[serde(default)]
+    pub banner: Option<String>,
+    #[serde(default)]
     pub roles: Vec<Snowflake>,
     #[serde(default)]
     pub joined_at: Option<String>,

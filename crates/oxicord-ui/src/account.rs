@@ -43,6 +43,8 @@ pub enum AccountRequest {
     LoadSessions,
     SetDisplayName(String),
     EditProfile { bio: String, pronouns: String },
+    SetAvatar(Option<String>),
+    SetBanner(Option<String>),
 }
 
 /// The answers.

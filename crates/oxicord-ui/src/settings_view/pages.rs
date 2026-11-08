@@ -1,5 +1,5 @@
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, IntoElement, ParentElement as _,
+    AnyElement, ClickEvent, Context, IntoElement, ParentElement as _, PathPromptOptions, StyledImage as _,
     Styled as _, div, px, rgb,
     component::input::{Input, Textarea},
 };
@@ -34,6 +34,21 @@ pub(super) fn toggle_friend_source(flags: u32, source: u32) -> u32 {
         (EVERYONE, true) => flags & !EVERYONE,
         (bit, false) => flags | bit,
         (bit, true) => flags & !(bit | EVERYONE),
+    }
+}
+
+fn mime_for(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => "image/png",
     }
 }
 
@@ -272,12 +287,160 @@ impl SettingsView {
                 });
             },
         ));
+
+        // Current avatar/banner, taken from the account details when they
+        // have loaded, falling back to what the store already knows.
+        let (_me_id, avatar_url, banner_url, has_avatar, has_banner) = {
+            let session = self.session.read(cx);
+            let me = session.store.me();
+            let id = me.map(|m| m.id);
+            let details = session.account.details.ready().cloned();
+            let avatar_hash = details
+                .as_ref()
+                .and_then(|d| d.avatar.clone())
+                .or_else(|| me.and_then(|m| m.avatar.clone()));
+            let banner_hash = details.as_ref().and_then(|d| d.banner.clone());
+            let avatar_url = id
+                .map(|i| oxicord_media::cdn::user_avatar(i, avatar_hash.as_deref(), 128))
+                .unwrap_or_default();
+            let banner_url = id.and_then(|i| banner_hash.as_ref().map(|h| oxicord_media::cdn::user_banner(i, h, 600)));
+            (id, avatar_url, banner_url, avatar_hash.is_some(), banner_hash.is_some())
+        };
+
+        let backend = self.backend.clone();
+        let session = self.session.clone();
+        let media = self.media.clone();
+        let name_for_avatar = self.session.read(cx).store.me().map(|m| m.display_name().to_owned()).unwrap_or_default();
+
+        let mut avatar_col = div().flex().flex_col().gap_2().child(button("upload-avatar", "Upload Avatar", Tone::Primary, cx.listener(
+            move |_this, _: &ClickEvent, _, cx| {
+                let chosen = cx.prompt_for_paths(PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: false,
+                    prompt: None,
+                });
+                let backend = backend.clone();
+                let session = session.clone();
+                cx.spawn(async move |this, cx| {
+                    if let Ok(Ok(Some(paths))) = chosen.await
+                        && let Some(path) = paths.first()
+                        && let Ok(data) = std::fs::read(path) {
+                                let mime = mime_for(path);
+                                let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+                                let uri = format!("data:{};base64,{}", mime, b64);
+                                this.update(cx, |_, cx| {
+                                    session.update(cx, |s, cx| {
+                                        s.request_account(&backend, AccountRequest::SetAvatar(Some(uri)), cx);
+                                    });
+                                })
+                                .ok();
+                        }
+                })
+                .detach();
+            },
+        )));
+        if has_avatar {
+            avatar_col = avatar_col.child(button("remove-avatar", "Remove", Tone::Plain, cx.listener(
+                move |this, _: &ClickEvent, _, cx| {
+                    let backend = this.backend.clone();
+                    let session = this.session.clone();
+                    session.update(cx, |s, cx| {
+                        s.request_account(&backend, AccountRequest::SetAvatar(None), cx);
+                    });
+                },
+            )));
+        }
+        let avatar_group = group(
+            "Avatar",
+            vec![
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(crate::media::avatar(&media, &avatar_url, 80., &name_for_avatar, cx))
+                    .child(avatar_col)
+                    .into_any_element(),
+            ],
+        );
+
+        let backend2 = self.backend.clone();
+        let session2 = self.session.clone();
+        let banner_preview = match banner_url.as_deref().and_then(|url| media.update(cx, |m, _| m.get(url))) {
+            Some(image) => div()
+                .h(px(80.))
+                .w(px(240.))
+                .rounded(px(theme::RADIUS))
+                .overflow_hidden()
+                .child(gpui_kit::img(gpui_kit::ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover))
+                .into_any_element(),
+            None => div()
+                .h(px(80.))
+                .w(px(240.))
+                .rounded(px(theme::RADIUS))
+                .bg(rgb(theme::BG_ACTIVE))
+                .into_any_element(),
+        };
+        let mut banner_col = div().flex().flex_col().gap_2().child(button("upload-banner", "Upload Banner", Tone::Primary, cx.listener(
+            move |_this, _: &ClickEvent, _, cx| {
+                let chosen = cx.prompt_for_paths(PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: false,
+                    prompt: None,
+                });
+                let backend = backend2.clone();
+                let session = session2.clone();
+                cx.spawn(async move |this, cx| {
+                    if let Ok(Ok(Some(paths))) = chosen.await
+                        && let Some(path) = paths.first()
+                        && let Ok(data) = std::fs::read(path) {
+                                let mime = mime_for(path);
+                                let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+                                let uri = format!("data:{};base64,{}", mime, b64);
+                                this.update(cx, |_, cx| {
+                                    session.update(cx, |s, cx| {
+                                        s.request_account(&backend, AccountRequest::SetBanner(Some(uri)), cx);
+                                    });
+                                })
+                                .ok();
+                        }
+                })
+                .detach();
+            },
+        )));
+        if has_banner {
+            banner_col = banner_col.child(button("remove-banner", "Remove", Tone::Plain, cx.listener(
+                move |this, _: &ClickEvent, _, cx| {
+                    let backend = this.backend.clone();
+                    let session = this.session.clone();
+                    session.update(cx, |s, cx| {
+                        s.request_account(&backend, AccountRequest::SetBanner(None), cx);
+                    });
+                },
+            )));
+        }
+        let banner_group = group(
+            "Banner",
+            vec![
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(banner_preview)
+                    .child(banner_col)
+                    .into_any_element(),
+            ],
+        );
+
         div()
             .flex()
             .flex_col()
             .gap_2()
             .child(title("Profile"))
             .child(blurb("How you appear to people who open your profile."))
+            .child(avatar_group)
+            .child(banner_group)
             .child(group("Pronouns", vec![Input::new(&self.pronouns).into_any_element()]))
             .child(group("About me", vec![Textarea::new(&self.bio).into_any_element()]))
             .child(div().mt_3().child(save))

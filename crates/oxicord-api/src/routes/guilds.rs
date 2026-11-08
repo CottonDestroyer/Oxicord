@@ -73,6 +73,28 @@ impl ApiClient {
         .await
     }
 
+    /// Sets our server avatar in `guild`, or clears it with `None`.
+    pub async fn set_server_avatar(&self, guild: Snowflake, avatar: Option<&str>) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/members/@me"),
+            "PATCH /guilds/:id/members/@me",
+            Some(&json!({ "avatar": avatar })),
+        )
+        .await
+    }
+
+    /// Sets our server banner in `guild`, or clears it with `None`.
+    pub async fn set_server_banner(&self, guild: Snowflake, banner: Option<&str>) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/members/@me"),
+            "PATCH /guilds/:id/members/@me",
+            Some(&json!({ "banner": banner })),
+        )
+        .await
+    }
+
     pub async fn leave_guild(&self, guild: Snowflake) -> Result<(), ApiError> {
         self.empty(
             Method::DELETE,

@@ -15,6 +15,7 @@ oxicord-markdown.workspace = true
 # Only to list the microphones and speakers for the voice menus.
 oxicord-voice.workspace = true
 async-channel.workspace = true
+base64 = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

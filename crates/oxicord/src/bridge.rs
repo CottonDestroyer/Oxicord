@@ -814,6 +814,8 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         }
         AdminRequest::LoadAudit(guild) => say(AdminEvent::Audit(guild, api.audit_log(guild).await.map_err(text))).await,
         AdminRequest::EditGuild { guild, fields } => check(api.edit_guild(guild, &fields).await, "save the server").await,
+        AdminRequest::SetServerAvatar { guild, avatar } => check(api.set_server_avatar(guild, avatar.as_deref()).await, "change your server avatar").await,
+        AdminRequest::SetServerBanner { guild, banner } => check(api.set_server_banner(guild, banner.as_deref()).await, "change your server banner").await,
         AdminRequest::CreateRole { guild, name } => check(api.create_role(guild, &name).await, "create that role").await,
         AdminRequest::EditRole { guild, role, fields } => check(api.edit_role(guild, role, &fields).await, "save that role").await,
         AdminRequest::DeleteRole { guild, role } => check(api.delete_role(guild, role).await, "delete that role").await,
@@ -867,6 +869,18 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
         AccountRequest::EditProfile { bio, pronouns } => {
             if let Err(err) = api.edit_profile(&bio, &pronouns).await {
                 notify(events, "save your profile", &err).await;
+            }
+            say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
+        }
+        AccountRequest::SetAvatar(avatar) => {
+            if let Err(err) = api.set_avatar(avatar.as_deref()).await {
+                notify(events, "change your avatar", &err).await;
+            }
+            say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
+        }
+        AccountRequest::SetBanner(banner) => {
+            if let Err(err) = api.set_banner(banner.as_deref()).await {
+                notify(events, "change your banner", &err).await;
             }
             say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
         }

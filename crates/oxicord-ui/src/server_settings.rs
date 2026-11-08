@@ -5,13 +5,28 @@
 use chrono::Local;
 use gpui_kit::{
     AnyElement, AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription,
-    Window, div, px, rgb,
+    IntoElement, ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
+    StyledImage as _, Subscription, Window, div, px, rgb,
     component::input::{Input, InputState},
 };
 use oxicord_media::cdn;
 use oxicord_model::{ChannelType, Permissions, Snowflake, admin::action_name};
 use serde_json::json;
+
+fn mime_for(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => "image/png",
+    }
+}
 
 use crate::{
     account::Load,
@@ -437,6 +452,101 @@ impl ServerSettings {
             .map(|g| g.name.clone())
             .unwrap_or_default();
 
+        let name_for_avatar = self.session.read(cx).store.me().map(|m| m.display_name().to_owned()).unwrap_or_default();
+        let avatar_url = String::new();
+        let has_avatar = false;
+        let banner_url: Option<String> = None;
+        let has_banner = false;
+
+        let media = self.media.clone();
+        let guild_for_upload = guild;
+
+        // avatar upload column
+        let mut avatar_col = div().flex().flex_col().gap_2().child(button("upload-server-avatar", "Upload Avatar", Tone::Primary, cx.listener(
+            move |_, _: &ClickEvent, _, cx| {
+                let chosen = cx.prompt_for_paths(PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: false,
+                    prompt: None,
+                });
+                let guild = guild_for_upload;
+                cx.spawn(async move |this, cx| {
+                    if let Ok(Ok(Some(paths))) = chosen.await
+                        && let Some(path) = paths.first()
+                        && let Ok(data) = std::fs::read(path) {
+                        let mime = mime_for(path);
+                        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+                        let uri = format!("data:{};base64,{}", mime, b64);
+                        this.update(cx, |this, cx| {
+                            this.send(AdminRequest::SetServerAvatar { guild, avatar: Some(uri) }, cx);
+                        })
+                        .ok();
+                    }
+                })
+                .detach();
+            },
+        )));
+        if has_avatar {
+            let guild = guild_for_upload;
+            avatar_col = avatar_col.child(button("remove-server-avatar", "Remove", Tone::Plain, cx.listener(
+                move |this, _: &ClickEvent, _, cx| {
+                    this.send(AdminRequest::SetServerAvatar { guild, avatar: None }, cx);
+                },
+            )));
+        }
+
+        let guild_for_upload2 = guild;
+        let mut banner_col = div().flex().flex_col().gap_2().child(button("upload-server-banner", "Upload Banner", Tone::Primary, cx.listener(
+            move |_, _: &ClickEvent, _, cx| {
+                let chosen = cx.prompt_for_paths(PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: false,
+                    prompt: None,
+                });
+                let guild = guild_for_upload2;
+                cx.spawn(async move |this, cx| {
+                    if let Ok(Ok(Some(paths))) = chosen.await
+                        && let Some(path) = paths.first()
+                        && let Ok(data) = std::fs::read(path) {
+                        let mime = mime_for(path);
+                        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+                        let uri = format!("data:{};base64,{}", mime, b64);
+                        this.update(cx, |this, cx| {
+                            this.send(AdminRequest::SetServerBanner { guild, banner: Some(uri) }, cx);
+                        })
+                        .ok();
+                    }
+                })
+                .detach();
+            },
+        )));
+        if has_banner {
+            let guild = guild_for_upload2;
+            banner_col = banner_col.child(button("remove-server-banner", "Remove", Tone::Plain, cx.listener(
+                move |this, _: &ClickEvent, _, cx| {
+                    this.send(AdminRequest::SetServerBanner { guild, banner: None }, cx);
+                },
+            )));
+        }
+
+        let banner_preview = match banner_url.as_deref().and_then(|url| media.update(cx, |m, _| m.get(url))) {
+            Some(image) => div()
+                .h(px(80.))
+                .w(px(240.))
+                .rounded(px(theme::RADIUS))
+                .overflow_hidden()
+                .child(gpui_kit::img(gpui_kit::ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover))
+                .into_any_element(),
+            None => div()
+                .h(px(80.))
+                .w(px(240.))
+                .rounded(px(theme::RADIUS))
+                .bg(rgb(theme::BG_ACTIVE))
+                .into_any_element(),
+        };
+
         div()
             .flex()
             .flex_col()
@@ -449,6 +559,12 @@ impl ServerSettings {
                     widgets::info_row("Server ID", guild.to_string()),
                 ],
             ))
+            .child(group("Avatar", vec![
+                div().flex().items_center().gap_3().child(crate::media::avatar(&media, &avatar_url, 80., &name_for_avatar, cx)).child(avatar_col).into_any_element(),
+            ]))
+            .child(group("Banner", vec![
+                div().flex().items_center().gap_3().child(banner_preview).child(banner_col).into_any_element(),
+            ]))
             .into_any_element()
     }
 
