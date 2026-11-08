@@ -278,6 +278,21 @@ impl ApiClient {
         )
         .await
     }
+
+    /// The people who voted for `answer` on a poll.
+    pub async fn poll_voters(&self, channel: Snowflake, message: Snowflake, answer: u32) -> Result<Vec<oxicord_model::User>, ApiError> {
+        #[derive(serde::Deserialize)]
+        struct Body { #[serde(default)] users: Vec<oxicord_model::User> }
+        let resp: Body = self
+            .json(
+                Method::GET,
+                &format!("/channels/{channel}/polls/{message}/answers/{answer}"),
+                &format!("GET /channels/{channel}/polls/{message}/answers/:id"),
+                None,
+            )
+            .await?;
+        Ok(resp.users)
+    }
 }
 
 #[cfg(test)]

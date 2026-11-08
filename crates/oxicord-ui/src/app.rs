@@ -218,6 +218,13 @@ impl AppView {
                 self.session
                     .update(cx, |session, cx| session.apply_profile(user, result, cx));
             }
+            Event::PollVoters { message, answer: _, users } => {
+                self.session.update(cx, |session, cx| {
+                    session.store.add_users(users);
+                    cx.emit(oxicord_store::Changes::full());
+                });
+                let _ = message;
+            }
             Event::DmOpened(result) => {
                 self.session.update(cx, |session, cx| session.apply_dm(result, cx));
             }

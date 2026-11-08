@@ -370,6 +370,16 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::LoadPollVoters { channel, message, answer } => {
+            tokio::spawn(async move {
+                match api.poll_voters(channel, message, answer).await {
+                    Ok(users) => {
+                        let _ = events.send(Event::PollVoters { message, answer, users }).await;
+                    }
+                    Err(err) => notify(&events, "load those voters", &err).await,
+                }
+            });
+        }
         Command::FollowChannel { source, target } => {
             tokio::spawn(async move {
                 if let Err(err) = api.follow_channel(source, target).await {
