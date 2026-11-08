@@ -47,7 +47,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 
 - [ ] Message requests and the spam inbox (blocked: inbox rework needed)
 - [x] Saved messages (`/users/@me/saved-messages`): bookmark and remove from the message menu, listed in the inbox with reminders and scheduled messages
-- [ ] Inbox "For You" tab (notification center) (blocked: notification center API/model needed)
+- [x] Inbox "For You" tab (notification center items) (NOTIF_CENTER_ITEMS)
 - [ ] Scheduled events: list, RSVP, live updates (`GUILD_SCHEDULED_EVENT_*`) (blocked: scheduled event model/API needed)
 - [x] Create a server (`POST /guilds`): API, bridge and UI dialog wired, sends from the server rail plus button
 - [ ] Announcement channels: publish done, follow (`/followers`) pending (needs channel picker dialog)

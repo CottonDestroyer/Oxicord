@@ -28,6 +28,7 @@ impl EventEmitter<CloseInbox> for Inbox {}
 enum Tab {
     Unreads,
     Mentions,
+    ForYou,
     Bookmarks,
     Reminders,
     Scheduled,
@@ -62,6 +63,7 @@ impl Inbox {
         self.session.update(cx, |s, cx| s.request_mentions(&backend, cx));
         self.session.update(cx, |s, cx| s.request_saved_messages(&backend, cx));
         self.session.update(cx, |s, cx| s.request_scheduled_messages(&backend, cx));
+        self.session.update(cx, |s, cx| s.request_notification_center(&backend, cx));
         cx.notify();
     }
 
@@ -255,6 +257,23 @@ impl Render for Inbox {
                 Load::Failed(error) => list = list.child(empty_note(&format!("Could not load mentions. {error}"))),
                 _ => list = list.child(empty_note("Loading...")),
             },
+            Tab::ForYou => {
+                let loaded = self.session.read(cx).account.notification_center.clone();
+                match loaded {
+                    Load::Ready(items) if items.is_empty() => {
+                        list = list.child(empty_note("Nothing for you right now."));
+                    }
+                    Load::Ready(items) => {
+                        for item in &items {
+                            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("Notification").to_owned();
+                            let body = item.get("body").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+                            list = list.child(empty_note(&format!("{title}: {body}")));
+                        }
+                    }
+                    Load::Failed(error) => list = list.child(empty_note(&format!("Could not load. {error}"))),
+                    _ => list = list.child(empty_note("Loading...")),
+                }
+            }
             Tab::Unreads => {
                 let items = self.pending(cx);
                 if items.is_empty() {
@@ -330,6 +349,7 @@ impl Render for Inbox {
             .child(div().font_weight(FontWeight::BOLD).text_color(rgb(theme::TEXT_BRIGHT)).child("Inbox"))
             .child(div().flex_1())
             .child(self.tab_button(Tab::Mentions, "Mentions", cx))
+            .child(self.tab_button(Tab::ForYou, "For You", cx))
             .child(self.tab_button(Tab::Unreads, "Unreads", cx))
             .child(self.tab_button(Tab::Bookmarks, "Bookmarks", cx))
             .child(self.tab_button(Tab::Reminders, "Reminders", cx))
