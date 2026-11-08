@@ -160,6 +160,11 @@ pub struct OpenNickname(pub Snowflake);
 
 impl EventEmitter<OpenNickname> for Session {}
 
+/// Someone wants to create a new server.
+pub struct OpenCreateServer;
+
+impl EventEmitter<OpenCreateServer> for Session {}
+
 /// Someone wants to ban this member from this server.
 pub struct OpenBanMember(pub Snowflake, pub Snowflake);
 
