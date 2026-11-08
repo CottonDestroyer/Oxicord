@@ -165,13 +165,6 @@ pub struct OpenCreateServer;
 
 impl EventEmitter<OpenCreateServer> for Session {}
 
-pub struct OpenCreatePoll {
-    pub channel: Snowflake,
-    pub guild: Option<Snowflake>,
-}
-
-impl EventEmitter<OpenCreatePoll> for Session {}
-
 /// Someone wants to ban this member from this server.
 pub struct OpenBanMember(pub Snowflake, pub Snowflake);
 
