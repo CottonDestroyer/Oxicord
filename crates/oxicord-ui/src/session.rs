@@ -794,6 +794,7 @@ impl Session {
             AccountRequest::LoadApps | AccountRequest::RevokeApp(_) => self.account.apps = Load::Loading,
             AccountRequest::LoadConnections => self.account.connections = Load::Loading,
             AccountRequest::LoadSessions => self.account.sessions = Load::Loading,
+            AccountRequest::SetAvatar(_) | AccountRequest::SetBanner(_) => self.account.details = Load::Loading,
             _ => {}
         }
         backend.send(Command::Account(request));

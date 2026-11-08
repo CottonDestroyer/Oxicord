@@ -22,6 +22,12 @@ pub struct AccountDetails {
     pub pronouns: Option<String>,
     #[serde(default)]
     pub global_name: Option<String>,
+    #[serde(default)]
+    pub avatar: Option<String>,
+    #[serde(default)]
+    pub banner: Option<String>,
+    #[serde(default)]
+    pub accent_color: Option<u32>,
 }
 
 /// An app we granted access to.
