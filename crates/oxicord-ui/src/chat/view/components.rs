@@ -377,10 +377,31 @@ impl ChatView {
             (false, Some(end)) => format!("{total} votes \u{b7} {}", ends_in(end - now)),
             (false, None) => format!("{total} votes"),
         };
-        Some(
-            card.child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(footer))
-                .into_any_element(),
-        )
+        let is_mine = self.session.read(cx).store.me().map(|u| u.id) == Some(message.author.id);
+        let mut card = card.child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(footer));
+        if is_mine && !over {
+            let backend = self.backend.clone();
+            let (channel, message_id) = (message.channel_id, message.id);
+            card = card.child(
+                div()
+                    .id("end-poll")
+                    .h(px(28.))
+                    .px(px(10.))
+                    .flex()
+                    .items_center()
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgb(theme::BG_HOVER))
+                    .text_size(px(12.))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .on_click(cx.listener(move |_, _, _, _| {
+                        backend.send(Command::EndPoll { channel, message: message_id });
+                    }))
+                    .child("End Poll"),
+            );
+        }
+        Some(card.into_any_element())
     }
 
     /// Votes for `answer`: shown at once, then sent.
