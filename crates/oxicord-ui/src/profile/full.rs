@@ -59,7 +59,9 @@ pub fn full(
     let tab = visible_tab(&card, tab);
 
     let (mut frame_back, mut frame_front) = (Vec::new(), Vec::new());
-    if let Some(frame) = &card.frame {
+    // Discord hides the frame when the window is too short to fit it.
+    if height >= 785. {
+        if let Some(frame) = &card.frame {
         let card_width = 400.;
         let scale = card_width / frame.inner_width as f32;
         let soh = frame.overflow_horizontal as f32 * scale;
@@ -94,6 +96,7 @@ pub fn full(
                 frame_front.push(el);
             }
         }
+    }
     }
     let effect = card.effect.clone();
     let left = left_column(&card, handlers, media, effect, window, cx);

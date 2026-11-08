@@ -93,7 +93,9 @@ pub fn popout(
 
     // The frame's layers, split by depth so the back ones sit behind the card.
     let (mut frame_back, mut frame_front) = (Vec::new(), Vec::new());
-    if let Some(frame) = &card.frame {
+    // Discord hides the frame when the window is too short to fit it.
+    if height >= 480. {
+        if let Some(frame) = &card.frame {
         let scale = WIDTH / frame.inner_width as f32;
         let soh = frame.overflow_horizontal as f32 * scale;
         let sot = frame.overflow_top as f32 * scale;
@@ -128,7 +130,8 @@ pub fn popout(
             }
         }
     }
-
+    }
+    
     let add = card.actions.iter().find(|a| matches!(a.label, "Add Friend" | "Accept")).map(|a| a.run.clone());
     let round_button = |id: &'static str, glyph: &'static str| {
         div()
