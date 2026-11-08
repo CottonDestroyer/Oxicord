@@ -910,9 +910,9 @@ fn show_notification(title: String, body: String) {
 /// most accounts and it reports that itself, this only protects our memory.
 const MAX_UPLOAD_BYTES: u64 = 100 * 1024 * 1024;
 
-async fn read_files(files: &[(PathBuf, bool)]) -> Result<Vec<Upload>, String> {
+async fn read_files(files: &[(PathBuf, bool, String)]) -> Result<Vec<Upload>, String> {
     let mut uploads = Vec::new();
-    for (path, spoiler) in files {
+    for (path, spoiler, alt) in files {
         let base = path
             .file_name()
             .map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned());
@@ -932,7 +932,7 @@ async fn read_files(files: &[(PathBuf, bool)]) -> Result<Vec<Upload>, String> {
         let data = tokio::fs::read(path)
             .await
             .map_err(|err| format!("Couldn't read {name}: {err}"))?;
-        uploads.push(Upload { filename: name, data: std::sync::Arc::new(data), description: None });
+        uploads.push(Upload { filename: name, data: std::sync::Arc::new(data), description: (!alt.trim().is_empty()).then(|| alt.trim().to_owned()) });
     }
     Ok(uploads)
 }

@@ -41,7 +41,7 @@ pub enum Command {
         /// Local files to attach, each paired with whether to send it as a
         /// spoiler (the backend prefixes the filename with `SPOILER_`).
         /// Reading the bytes is the backend's job.
-        files: Vec<(PathBuf, bool)>,
+        files: Vec<(PathBuf, bool, String)>,
         stickers: Vec<Snowflake>,
         /// A poll to attach, as (question, answers, duration_hours, multiselect).
         poll: Option<(String, Vec<String>, u32, bool)>,

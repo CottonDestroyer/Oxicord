@@ -14,7 +14,7 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
     SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
     list, px, rgb,
-    component::input::{Escape, InputEvent, Textarea, TextareaState},
+    component::input::{Escape, Input, InputEvent, InputState, Textarea, TextareaState},
 };
 use oxicord_markdown::Block;
 use oxicord_media::cdn;
@@ -75,7 +75,8 @@ pub struct ChatView {
     editing: Option<Snowflake>,
     /// Files chosen for the next message, paired with whether each one should
     /// be sent as a spoiler (filename prefixed with `SPOILER_`).
-    files: Vec<(PathBuf, bool)>,
+    files: Vec<(PathBuf, bool, String)>,
+    alt_inputs: Vec<Entity<InputState>>,
     /// The message whose delete button was pressed once already.
     confirm_delete: Option<Snowflake>,
     /// Spoilers the reader has clicked open, as (message, index in message).
@@ -215,6 +216,7 @@ impl ChatView {
             aside_width: 0.,
             editing: None,
             files: Vec::new(),
+    alt_inputs: Vec::new(),
             confirm_delete: None,
             revealed: HashSet::new(),
             picker_for: None,
@@ -808,6 +810,11 @@ impl ChatView {
             }),
             None => {
                 let guild = self.guild(cx);
+                for i in 0..self.files.len() {
+                    if i < self.alt_inputs.len() {
+                        self.files[i].2 = self.alt_inputs[i].read(cx).value().to_string();
+                    }
+                }
                 self.backend.send(Command::SendMessage {
                     channel,
                     guild,
@@ -830,8 +837,8 @@ impl ChatView {
 
     fn add_files(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         for path in paths {
-            if self.files.len() < Self::MAX_FILES && !self.files.iter().any(|(p, _)| p == &path) {
-                self.files.push((path, false));
+            if self.files.len() < Self::MAX_FILES && !self.files.iter().any(|(p, _, _)| p == &path) {
+                self.files.push((path, false, String::new()));
             }
         }
         cx.notify();
@@ -1924,7 +1931,7 @@ impl ChatView {
     }
 
     /// The notice banner, the reply or edit bar, and the text box.
-    fn render_composer(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if self.channel.is_none() {
             return div().into_any_element();
         }
@@ -1998,7 +2005,7 @@ impl ChatView {
             column = column.child(bar);
         }
         if !self.files.is_empty() && self.editing.is_none() {
-            column = column.child(self.render_file_chips(cx));
+            column = column.child(self.render_file_chips(window, cx));
         }
 
         column
@@ -2084,46 +2091,66 @@ impl ChatView {
 
     /// "Replying to X" or "Editing message", with a button to cancel.
     /// The files waiting to be sent, each removable.
-    fn render_file_chips(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_file_chips(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        // Keep one alt-text input per attached file.
+        while self.alt_inputs.len() < self.files.len() {
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder("Alt text"));
+            self.alt_inputs.push(input);
+        }
+        while self.alt_inputs.len() > self.files.len() {
+            self.alt_inputs.pop();
+        }
+
         let mut row = div().flex().flex_wrap().gap_2().mb_2();
-        for (index, (path, spoiler)) in self.files.iter().enumerate() {
+        for (index, (path, spoiler, alt)) in self.files.iter().enumerate() {
             let name = path
                 .file_name()
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
             let spoiler_on = *spoiler;
+            let input = self.alt_inputs[index].clone();
             row = row.child(
                 div()
-                    .max_w(px(240.))
-                    .h(px(30.))
-                    .pl_3()
-                    .pr_1()
                     .flex()
-                    .items_center()
-                    .gap_2()
-                    .rounded(px(theme::RADIUS))
-                    .bg(rgb(theme::BG_INPUT))
-                    .text_size(px(13.))
-                    .child(icon("file", 14., theme::TEXT_MUTED))
-                    .child(div().flex_1().min_w_0().truncate().child(name))
+                    .flex_col()
+                    .gap_1()
+                    .max_w(px(240.))
                     .child(
-                        action_button(("spoiler-file", index), if spoiler_on { "eye-off" } else { "eye" }, if spoiler_on { theme::ACCENT } else { theme::TEXT_MUTED })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                if let Some(entry) = this.files.get_mut(index) {
-                                    entry.1 = !entry.1;
-                                }
-                                cx.notify();
-                            })),
+                        div()
+                            .h(px(30.))
+                            .pl_3()
+                            .pr_1()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .rounded(px(theme::RADIUS))
+                            .bg(rgb(theme::BG_INPUT))
+                            .text_size(px(13.))
+                            .child(icon("file", 14., theme::TEXT_MUTED))
+                            .child(div().flex_1().min_w_0().truncate().child(name))
+                            .child(
+                                action_button(("spoiler-file", index), if spoiler_on { "eye-off" } else { "eye" }, if spoiler_on { theme::ACCENT } else { theme::TEXT_MUTED })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Some(entry) = this.files.get_mut(index) {
+                                            entry.1 = !entry.1;
+                                        }
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                action_button(("remove-file", index), "x", theme::TEXT_MUTED).on_click(
+                                    cx.listener(move |this, _, _, cx| {
+                                        if index < this.files.len() {
+                                            this.files.remove(index);
+                                            if index < this.alt_inputs.len() {
+                                                this.alt_inputs.remove(index);
+                                            }
+                                        }
+                                        cx.notify();
+                                    }),
+                                ),
+                            ),
                     )
-                    .child(
-                        action_button(("remove-file", index), "x", theme::TEXT_MUTED).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                if index < this.files.len() {
-                                    this.files.remove(index);
-                                }
-                                cx.notify();
-                            }),
-                        ),
-                    ),
+                    .child(Input::new(&input)),
             );
         }
         row.into_any_element()
@@ -2193,11 +2220,11 @@ impl ChatView {
 }
 
 impl Render for ChatView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let picker = self.emoji_for.is_some().then(|| self.emoji.clone());
         let header = self.render_header(cx);
         let body = self.render_body(cx);
-        let composer = self.render_composer(cx);
+        let composer = self.render_composer(window, cx);
 
         div()
             .flex_1()
