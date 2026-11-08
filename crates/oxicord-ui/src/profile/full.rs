@@ -95,7 +95,8 @@ pub fn full(
             }
         }
     }
-    let left = left_column(&card, handlers, media, window, cx);
+    let effect = card.effect.clone();
+    let left = left_column(&card, handlers, media, effect, window, cx);
     let right = right_column(&card, handlers, tab, media, cx);
 
     let content = div()
@@ -114,18 +115,6 @@ pub fn full(
         .bg(rgb(0x000000))
         .border_1()
         .border_color(rgb(theme::BORDER))
-        // The effect starts at the top of the modal, behind everything.
-        .children(card.effect.clone().map(|e| {
-            let modal_h = (height - 2. * MARGIN).clamp(360., 840.);
-            let modal_w = WIDTH.min(width - 32.);
-            div()
-                .absolute()
-                .top(px(0.))
-                .left(px(0.))
-                .w(px(modal_w))
-                .h(px(modal_h))
-                .child(e)
-        }))
         .child(
             div()
                 .relative()
@@ -298,7 +287,7 @@ fn connection(account: &Connection) -> Div {
         )
 }
 
-fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: &mut Window, cx: &mut gpui_kit::App) -> Div {
+fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, effect: Option<gpui_kit::Entity<crate::profile::EffectView>>, window: &mut Window, cx: &mut gpui_kit::App) -> Div {
     let more = handlers.more.clone();
 
     let mut who = div().flex().flex_wrap().items_center().gap_x(px(6.)).gap_y(px(4.));
@@ -346,8 +335,7 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
         .flex()
         .flex_col()
         .gap(px(24.))
-        // Opaque so the effect stays in the header behind the banner.
-        .bg(rgb(theme::BG_PANEL))
+        // Transparent so the effect shows through the whole card.
         .child(div().flex().flex_col().child(display_name(card, 24., 32.)).child(who))
         .child(buttons);
 
@@ -400,6 +388,10 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
         .rounded_t(px(16.))
         .overflow_hidden()
         .bg(rgb(theme::BG_PANEL))
+        // The effect covers the whole card, behind the words.
+        .children(effect.clone().map(|e| {
+            div().absolute().top_0().left_0().w(px(400.)).h_full().child(e)
+        }))
         .child(
             div()
                 .relative()
