@@ -55,7 +55,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 ## Phase 6: account and admin
 
 - [ ] Change password, enable and disable 2FA (blocked: auth flows needed)
-- [ ] Log out other devices, add and remove connections (blocked: session management UI needed)
+- [ ] Log out other devices, add and remove connections (log out others done; add/remove connections pending)
 - [ ] Disable or delete the account (blocked: account deletion flow needed)
 - [ ] Server admin: channel permission overwrites, AutoMod, webhooks, integrations,
       welcome screen and onboarding setup, templates, prune (blocked: admin UI breadth)

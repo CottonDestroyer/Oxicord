@@ -41,6 +41,7 @@ pub enum AccountRequest {
     RevokeApp(Snowflake),
     LoadConnections,
     LoadSessions,
+    LogoutOtherSessions,
     SetDisplayName(String),
     EditProfile { bio: String, pronouns: String },
     SetAvatar(Option<String>),
