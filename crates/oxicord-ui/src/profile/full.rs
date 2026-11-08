@@ -99,7 +99,7 @@ pub fn full(
     }
     }
     let effect = card.effect.clone();
-    let left = left_column(&card, handlers, media, window, cx);
+    let left = left_column(&card, handlers, media, effect, window, cx);
     let right = right_column(&card, handlers, tab, media, cx);
 
     let content = div()
@@ -114,7 +114,6 @@ pub fn full(
         .pr(px(32.))
         .pl(px(48.))
         .rounded(px(16.))
-        .overflow_hidden()
         .bg(rgb(0x000000))
         .border_1()
         .border_color(rgb(theme::BORDER))
@@ -147,24 +146,8 @@ pub fn full(
         )
         .into_any_element();
 
-    // Effect spills outside the card; container rounds its own top corners.
-    let wrapper = div()
-        .relative()
-        .w(px(WIDTH.min(width - 32.)))
-        .h(px((height - 2. * MARGIN).clamp(360., 840.)))
-        .child(content)
-        .children(effect.map(|e| {
-            div()
-                .absolute()
-                .top(px(48.))
-                .left(px(48.))
-                .w(px(400.))
-                .h(px(900.))
-                .child(e)
-        }));
-
     let close = handlers.close.clone();
-    modal(wrapper.into_any_element(), Box::new(move |_, window, cx| close(window, cx)))
+    modal(content, Box::new(move |_, window, cx| close(window, cx)))
 }
 
 // ---- left: the person ------------------------------------------------------
@@ -306,7 +289,7 @@ fn connection(account: &Connection) -> Div {
         )
 }
 
-fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: &mut Window, cx: &mut gpui_kit::App) -> Div {
+fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, effect: Option<gpui_kit::Entity<crate::profile::EffectView>>, window: &mut Window, cx: &mut gpui_kit::App) -> Div {
     let more = handlers.more.clone();
 
     let mut who = div().flex().flex_wrap().items_center().gap_x(px(6.)).gap_y(px(4.));
@@ -421,6 +404,27 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
                 ),
         )
         .child(body)
+        // Profile effect covers the whole card, clipped to its rounded top.
+        .children(effect.clone().map(|e| {
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .w(px(400.))
+                .h_full()
+                .overflow_hidden()
+                .rounded_t(px(16.))
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .w(px(400.))
+                        .h_full()
+                        .child(e),
+                )
+        }))
+
 }
 
 // ---- right: tabs --------------------------------------------------------
