@@ -43,6 +43,8 @@ pub enum Command {
         /// Reading the bytes is the backend's job.
         files: Vec<(PathBuf, bool)>,
         stickers: Vec<Snowflake>,
+        /// A poll to attach, as (question, answers, duration_hours, multiselect).
+        poll: Option<(String, Vec<String>, u32, bool)>,
     },
     /// Sends a copy of `message` to each of `targets`, then `note` after it.
     ForwardMessage {

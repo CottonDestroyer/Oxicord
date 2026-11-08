@@ -722,6 +722,7 @@ impl ChatView {
                 ping_reply: self.reply_ping,
                 files: Vec::new(),
                 stickers: vec![sticker],
+                    poll: None,
             });
         }
         cx.notify();
@@ -741,6 +742,7 @@ impl ChatView {
                 ping_reply: self.reply_ping,
                 files: Vec::new(),
                 stickers: Vec::new(),
+                poll: None,
             });
         }
         cx.notify();
@@ -814,6 +816,7 @@ impl ChatView {
                     ping_reply: self.reply_ping,
                     files: std::mem::take(&mut self.files),
                     stickers: Vec::new(),
+                    poll: None,
                 });
             }
         }

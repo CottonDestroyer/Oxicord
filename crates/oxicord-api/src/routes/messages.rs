@@ -78,6 +78,30 @@ pub struct SendMessage {
     /// Only set to silence the ping a reply sends to its author.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_mentions: Option<AllowedMentions>,
+    /// A poll attached to this message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poll: Option<PollCreate>,
+}
+
+/// A poll to attach to a new message.
+#[derive(Clone, Debug, Serialize)]
+pub struct PollCreate {
+    pub question: PollMedia,
+    pub answers: Vec<PollAnswerCreate>,
+    /// Hours until the poll closes.
+    pub duration: u32,
+    #[serde(rename = "allow_multiselect")]
+    pub multiselect: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PollMedia {
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PollAnswerCreate {
+    pub poll_media: PollMedia,
 }
 
 /// Which mentions in a message may notify. Naming every kind but leaving

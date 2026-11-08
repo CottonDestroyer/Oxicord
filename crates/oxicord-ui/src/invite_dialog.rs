@@ -109,7 +109,7 @@ impl InviteDialog {
 
     fn send_to(&mut self, dm: Snowflake, cx: &mut Context<Self>) {
         if let Some(link) = self.link(cx) {
-            self.backend.send(Command::SendMessage { channel: dm, guild: None, content: link, reply_to: None, ping_reply: true, files: Vec::new(), stickers: Vec::new() });
+            self.backend.send(Command::SendMessage { channel: dm, guild: None, content: link, reply_to: None, ping_reply: true, files: Vec::new(), stickers: Vec::new(), poll: None });
             self.sent.insert(dm);
             cx.notify();
         }
