@@ -1230,6 +1230,27 @@ impl MainView {
         if is_owner {
             return actions;
         }
+        // Role hierarchy: we may only moderate people whose highest role sits
+        // below our own. Administrators are exempt from the check.
+        let can_manage = {
+            let store = &self.session.read(cx).store;
+            if permissions.contains(oxicord_model::Permissions::ADMINISTRATOR) {
+                true
+            } else {
+                let my_position = store
+                    .my_roles(guild)
+                    .iter()
+                    .filter_map(|id| store.guild(guild)?.roles.iter().find(|r| r.id == *id))
+                    .map(|r| r.position)
+                    .max()
+                    .unwrap_or(i32::MIN);
+                let their_position = store
+                    .member_in_guild(guild, user)
+                    .map(|(_, roles)| roles.iter().map(|r| r.position).max().unwrap_or(i32::MIN))
+                    .unwrap_or(i32::MIN);
+                my_position > their_position
+            }
+        };
         let session = self.session.downgrade();
         let backend = self.backend.clone();
         let emit = |label: &'static str, glyph: &'static str, danger: bool, run: profile::Action| profile::CardAction {
@@ -1238,7 +1259,7 @@ impl MainView {
             danger,
             run,
         };
-        if permissions.contains(oxicord_model::Permissions::KICK_MEMBERS) {
+        if permissions.contains(oxicord_model::Permissions::KICK_MEMBERS) && can_manage {
             let backend = backend.clone();
             actions.push(emit(
                 "Kick",
@@ -1247,7 +1268,7 @@ impl MainView {
                 Rc::new(move |_: &mut Window, _: &mut App| backend.send(Command::KickMember { guild, user })),
             ));
         }
-        if permissions.contains(oxicord_model::Permissions::BAN_MEMBERS) {
+        if permissions.contains(oxicord_model::Permissions::BAN_MEMBERS) && can_manage {
             let session = session.clone();
             actions.push(emit(
                 "Ban",
@@ -1260,7 +1281,7 @@ impl MainView {
                 }),
             ));
         }
-        if permissions.contains(oxicord_model::Permissions::MODERATE_MEMBERS) {
+        if permissions.contains(oxicord_model::Permissions::MODERATE_MEMBERS) && can_manage {
             let session = session.clone();
             actions.push(emit(
                 "Timeout",
@@ -1274,7 +1295,7 @@ impl MainView {
             ));
         }
         // Editing roles needs its own permission and opens a dialog.
-        if permissions.contains(oxicord_model::Permissions::MANAGE_ROLES) {
+        if permissions.contains(oxicord_model::Permissions::MANAGE_ROLES) && can_manage {
             actions.push(emit(
                 "Roles",
                 "shield",
