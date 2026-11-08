@@ -11,6 +11,7 @@ mod forum;
 mod context_menu;
 mod dm_picker;
 mod create_channel_dialog;
+mod create_poll_dialog;
 mod create_server_dialog;
 mod edit_channel_dialog;
 mod forward_dialog;

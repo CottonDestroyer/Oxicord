@@ -22,6 +22,7 @@ use crate::{
     forward_dialog::{CloseForward, ForwardDialog},
     friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
     ban_dialog::{CloseBan, BanDialog},
+    create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
     kick_dialog::{CloseKick, KickDialog},
     timeout_dialog::{CloseTimeout, TimeoutDialog},
@@ -41,7 +42,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -166,6 +167,8 @@ pub struct MainView {
     ban_dialog_open: bool,
     create_server_dialog: Entity<CreateServerDialog>,
     create_server_open: bool,
+    create_poll_dialog: Entity<CreatePollDialog>,
+    create_poll_open: bool,
     kick_dialog: Entity<KickDialog>,
     kick_dialog_open: bool,
     timeout_dialog: Entity<TimeoutDialog>,
@@ -249,6 +252,10 @@ impl MainView {
         let create_server_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| CreateServerDialog::new(session, backend, window, cx))
+        };
+        let create_poll_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| CreatePollDialog::new(session, backend, window, cx))
         };
         let kick_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -425,6 +432,10 @@ impl MainView {
                 this.create_server_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&create_poll_dialog, |this, _, _: &CloseCreatePoll, cx| {
+                this.create_poll_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&kick_dialog, |this, _, _: &CloseKick, cx| {
                 this.kick_dialog_open = false;
                 cx.notify();
@@ -450,6 +461,11 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, _: &OpenCreateServer, window, cx| {
                 this.create_server_open = true;
                 this.create_server_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenCreatePoll, window, cx| {
+                this.create_poll_open = true;
+                this.create_poll_dialog.update(cx, |dialog, cx| dialog.opened(open.channel, open.guild, window, cx));
                 cx.notify();
             }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenBanMember, window, cx| {
@@ -615,6 +631,8 @@ impl MainView {
             ban_dialog_open: false,
             create_server_dialog,
             create_server_open: false,
+            create_poll_dialog,
+            create_poll_open: false,
             kick_dialog,
             kick_dialog_open: false,
             timeout_dialog,
@@ -3719,6 +3737,7 @@ impl Render for MainView {
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
         let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
         let create_server_dialog = self.create_server_open.then(|| self.create_server_dialog.clone());
+        let create_poll_dialog = self.create_poll_open.then(|| self.create_poll_dialog.clone());
         let kick_dialog = self.kick_dialog_open.then(|| self.kick_dialog.clone());
         let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
         let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
@@ -3810,6 +3829,7 @@ impl Render for MainView {
             .children(ban_dialog)
             .children(kick_dialog)
             .children(create_server_dialog)
+            .children(create_poll_dialog)
             .children(timeout_dialog)
             .children(roles_dialog)
             .children(join)
