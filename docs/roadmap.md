@@ -25,7 +25,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Forward a message
 - [x] Who reacted, tooltip done (`GET /channels/:id/messages/:id/reactions/:emoji`), super reactions
 - [x] Polls: create, voters modal, end early (`/polls/:id/expire`)
-- [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text field plumbed through API and bridge, UI input pending (blocked: needs per-file input state)
+- [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text input in composer
 - [x] Syntax highlighting in code blocks
 - [x] Reply ping toggle (`allowed_mentions.replied_user`)
 - [x] Avatar and banner upload (account and server profile) (`PATCH /users/@me`, `PATCH /guilds/:id/members/@me`); pixel diff 7.19% (window size mismatch); visual verification partial
