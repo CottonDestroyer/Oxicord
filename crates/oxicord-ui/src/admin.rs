@@ -18,6 +18,7 @@ pub enum AdminRequest {
     Unban { guild: Snowflake, user: Snowflake },
     LoadAudit(Snowflake),
     EditGuild { guild: Snowflake, fields: Value },
+    AcceptMemberVerification(Snowflake),
     SetServerAvatar { guild: Snowflake, avatar: Option<String> },
     SetServerBanner { guild: Snowflake, banner: Option<String> },
     CreateRole { guild: Snowflake, name: String },

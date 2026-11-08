@@ -34,7 +34,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 
 ## Phase 3: servers you can't fully use yet
 
-- [ ] Rules screening (`/guilds/:id/member-verification`), onboarding, welcome screen (blocked: member-verification payload/live capture not available in this session)
+- [ ] Rules screening (`/guilds/:id/member-verification`), onboarding, welcome screen (accept rules action added; full dialog pending)
 - [x] Member moderation: kick, ban, timeout, roles, in the three dots menu of the profile cards (not the right click menu), each gated on its own permission. Kick has no confirmation yet and there is no role hierarchy check
 
 ## Phase 4: bots

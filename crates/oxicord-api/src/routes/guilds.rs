@@ -95,6 +95,28 @@ impl ApiClient {
         .await
     }
 
+    /// Fetches the member verification form for `guild`.
+    pub async fn member_verification(&self, guild: Snowflake) -> Result<serde_json::Value, ApiError> {
+        self.json(
+            Method::GET,
+            &format!("/guilds/{guild}/member-verification"),
+            "GET /guilds/:id/member-verification",
+            None,
+        )
+        .await
+    }
+
+    /// Accepts the member verification form for `guild`.
+    pub async fn accept_member_verification(&self, guild: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::PUT,
+            &format!("/guilds/{guild}/member-verification"),
+            "PUT /guilds/:id/member-verification",
+            Some(&serde_json::json!({})),
+        )
+        .await
+    }
+
     pub async fn leave_guild(&self, guild: Snowflake) -> Result<(), ApiError> {
         self.empty(
             Method::DELETE,
