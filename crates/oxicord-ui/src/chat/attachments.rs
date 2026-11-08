@@ -168,7 +168,14 @@ fn file_card(attachment: &Attachment, message: &Message) -> AnyElement {
                         .text_size(px(12.))
                         .text_color(rgb(theme::TEXT_MUTED))
                         .child(human_size(attachment.size)),
-                ),
+                )
+                .children(attachment.description.as_ref().filter(|d| !d.is_empty()).map(|d| {
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .truncate()
+                        .child(d.clone())
+                })),
         )
         .child(icon("download", 18., theme::TEXT_MUTED))
         .into_any_element()
