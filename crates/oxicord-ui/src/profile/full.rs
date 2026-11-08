@@ -410,6 +410,26 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, effect: 
                 ),
         )
         .child(body)
+        // Profile effect covers the whole card, clipped to its rounded top.
+        .children(effect.clone().map(|e| {
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .w(px(400.))
+                .h_full()
+                .overflow_hidden()
+                .rounded_t(px(16.))
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .w(px(400.))
+                        .h_full()
+                        .child(e),
+                )
+        }))
 }
 
 // ---- right: tabs --------------------------------------------------------
