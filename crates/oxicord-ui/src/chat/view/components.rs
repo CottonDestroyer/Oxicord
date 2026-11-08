@@ -12,6 +12,7 @@ use crate::{
     backend::Command,
     chat::attachments::{fit, picture, resized},
     icons::icon,
+    session::OpenPollVoters,
     theme,
 };
 
@@ -359,8 +360,20 @@ impl ChatView {
                         .children(tally.me.then(|| icon("check", 14., theme::TEXT_BRIGHT)))
                         .child(
                             div()
+                                .id(SharedString::from(format!("voters-{message_id}-{answer_id}")))
                                 .text_size(px(12.))
                                 .text_color(rgb(theme::TEXT_MUTED))
+                                .cursor_pointer()
+                                .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if let Some(channel) = this.channel {
+                                        let guild = this.guild(cx);
+                                        let _ = guild;
+                                        this.session.update(cx, |_, cx| {
+                                            cx.emit(OpenPollVoters { channel, message: message_id, answer: answer_id });
+                                        });
+                                    }
+                                }))
                                 .child(format!("{} \u{b7} {:.0}%", tally.count, share * 100.)),
                         ),
                 );

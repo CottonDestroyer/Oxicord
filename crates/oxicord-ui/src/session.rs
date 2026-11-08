@@ -165,6 +165,14 @@ pub struct OpenCreateServer;
 
 impl EventEmitter<OpenCreateServer> for Session {}
 
+pub struct OpenPollVoters {
+    pub channel: Snowflake,
+    pub message: Snowflake,
+    pub answer: u32,
+}
+
+impl EventEmitter<OpenPollVoters> for Session {}
+
 pub struct OpenCreatePoll {
     pub channel: Snowflake,
     pub guild: Option<Snowflake>,

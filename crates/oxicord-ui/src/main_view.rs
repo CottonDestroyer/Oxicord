@@ -42,7 +42,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -167,6 +167,8 @@ pub struct MainView {
     ban_dialog_open: bool,
     create_server_dialog: Entity<CreateServerDialog>,
     create_server_open: bool,
+    pub poll_voters_open: bool,
+    pub poll_voters: Vec<oxicord_model::User>,
     create_poll_dialog: Entity<CreatePollDialog>,
     create_poll_open: bool,
     kick_dialog: Entity<KickDialog>,
@@ -463,6 +465,12 @@ impl MainView {
                 this.create_server_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
                 cx.notify();
             }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenPollVoters, _, cx| {
+                this.poll_voters_open = true;
+                this.poll_voters.clear();
+                this.backend.send(Command::LoadPollVoters { channel: open.channel, message: open.message, answer: open.answer });
+                cx.notify();
+            }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenCreatePoll, window, cx| {
                 this.create_poll_open = true;
                 this.create_poll_dialog.update(cx, |dialog, cx| dialog.opened(open.channel, open.guild, window, cx));
@@ -631,6 +639,8 @@ impl MainView {
             ban_dialog_open: false,
             create_server_dialog,
             create_server_open: false,
+            poll_voters_open: false,
+            poll_voters: Vec::new(),
             create_poll_dialog,
             create_poll_open: false,
             kick_dialog,
@@ -3737,6 +3747,27 @@ impl Render for MainView {
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
         let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
         let create_server_dialog = self.create_server_open.then(|| self.create_server_dialog.clone());
+        let poll_voters_modal = self.poll_voters_open.then(|| {
+            let users = self.poll_voters.clone();
+            let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.poll_voters_open = false;
+                cx.notify();
+            });
+            profile::modal(
+                div()
+                    .w(px(320.))
+                    .max_h(px(400.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .p(px(16.))
+                    .bg(rgb(theme::BG_PANEL))
+                    .rounded(px(theme::RADIUS))
+                    .children(users.iter().map(|u| div().child(u.display_name().to_owned())))
+                    .into_any_element(),
+                Box::new(on_close),
+            )
+        });
         let create_poll_dialog = self.create_poll_open.then(|| self.create_poll_dialog.clone());
         let kick_dialog = self.kick_dialog_open.then(|| self.kick_dialog.clone());
         let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
@@ -3829,6 +3860,7 @@ impl Render for MainView {
             .children(ban_dialog)
             .children(kick_dialog)
             .children(create_server_dialog)
+            .children(poll_voters_modal)
             .children(create_poll_dialog)
             .children(timeout_dialog)
             .children(roles_dialog)
