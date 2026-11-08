@@ -473,7 +473,9 @@ pub fn popout(
                         .border_color(rgba(0xffffff14))
                         .shadow_lg()
                         .overflow_hidden()
-                        // The effect sits over the card's fill but under its words.
+                        .child(header)
+                        .child(body)
+                        // The effect overlays the banner and card fill.
                         .children(card.effect.clone().map(|e| {
                             div()
                                 .absolute()
@@ -485,8 +487,6 @@ pub fn popout(
                                 .rounded(px(8.))
                                 .child(div().absolute().top_0().left_0().size_full().child(e))
                         }))
-                        .child(header)
-                        .child(body)
                         .child(div().flex_none().px(px(16.)).pb(px(12.)).child(footer)),
                 )
                 .children(frame_front),
