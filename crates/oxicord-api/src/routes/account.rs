@@ -29,6 +29,20 @@ impl ApiClient {
             .await
     }
 
+    /// Upload a new avatar (a base64 data URI) or clear it with `None`.
+    pub async fn set_avatar(&self, avatar: Option<&str>) -> Result<(), ApiError> {
+        let body = json!({ "avatar": avatar });
+        self.empty(Method::PATCH, "/users/@me", "PATCH /users/@me", Some(&body))
+            .await
+    }
+
+    /// Upload a new banner (a base64 data URI) or clear it with `None`.
+    pub async fn set_banner(&self, banner: Option<&str>) -> Result<(), ApiError> {
+        let body = json!({ "banner": banner });
+        self.empty(Method::PATCH, "/users/@me", "PATCH /users/@me", Some(&body))
+            .await
+    }
+
     pub async fn edit_profile(&self, bio: &str, pronouns: &str) -> Result<(), ApiError> {
         let body = json!({ "bio": bio, "pronouns": pronouns });
         self.empty(
