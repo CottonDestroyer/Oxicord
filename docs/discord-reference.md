@@ -362,3 +362,101 @@ dialog without charging anything (documented in `gift_dialog.rs`).
 Implemented: a **gift** button on the composer (emits `OpenGift`) opening
 `GiftDialog`, a centered modal with the Nitro / Nitro Basic tier cards, perks, and
 the Patron Badge footer. Closing via ✕, Esc, or backdrop emits `CloseGift`.
+## Rules screening dialog (captured 2026-11-08, live)
+
+Server used: SCP | Roleplay (605462595239149568), 1920x1080, dark theme, 100% zoom.
+The modal is reached from the channel banner "You must complete a few more steps
+before you can talk." and its "Complete" button, and is the web client's
+`in-app-member-verification` modal.
+
+### Entry banner
+
+- Sits where the composer would be, inset 8 px from the message area on each
+  side and 8 px above the bottom.
+- Box: 1263 x 58, radius 8, border 1 px rgba(150,151,159,0.2), background
+  #000000, padding 12 px 0.
+- Text: 16 px / 20 px, weight 600, #dcdcdf, 16 px from the left.
+- Button: 83 x 32, radius 8, border 1 px rgba(255,255,255,0.08), background
+  #5865f2, text 14 px / 20 px weight 500 white, 13 px from the right.
+- Button hover is #4752c4 (web), the port uses the same.
+
+### Backdrop and frame
+
+- Scrim: black at 72 % (rgba(0,0,0,0.72)).
+- Card: 1280 x 968, centered, radius 12, border 1 px rgba(150,151,159,0.2),
+  background #0a0a0c, shadow 0 12 px 24 px rgba(0,0,0,0.24).
+- Card padding is visual only: the left pane has 8 px / 16 px outer margins,
+  the right column runs the full height.
+
+### Left pane and server card
+
+- Pane: 419 x 950, 16 px side margins, 8 px top/bottom, radius 8, clipped.
+- Background: linear-gradient(315deg, dominant icon colour, generated accent),
+  opacity 0.33 over the card background. The accent is the first generated
+  colour of the web client: take the icon's most common colour (skip alpha <
+  125 and pixels above 250 in all channels, sample every tenth pixel), convert
+  to HSL, add 30 to saturation when below 30, subtract 40 from lightness above
+  80, add 15 below 20, then rotate hue by 90 degrees.
+- Server card: 282 wide, radius 16, background #17181b, border 1 px
+  rgba(150,151,159,0.2), clipped. Vertically centered.
+- Banner: 280 x 120, background `discovery-splashes/{guild}/{custom_banner_hash}.jpg?size=512`,
+  cover.
+- Avatar: 64 px round, 16 px from the left, centered in a 70 px row that overlaps
+  the banner by 34 px.
+- Name: 16 px / 20 px weight 600 #dcdcdf, row 21 px high, 4 px gaps to the
+  discoverable badge (18 x 18) and the server tag chip.
+- Tag chip: 16 px high, 4 px side padding, radius 4, background
+  rgba(151,151,159,0.24), 14 px clan badge image, 12 px / 16 px weight 600 text.
+- Counts: 14 px / 18 px #96979e, 8 px round dots, online #3d9e60, members
+  #9d9ea5, 4 px between dot and text, 8 px between the two groups.
+- Established line: 14 px / 18 px #96979e.
+- Description: 14 px / 18 px #96979e, 10 px above, 16 px side padding, 16 px
+  bottom padding.
+- Displayed counts use comma grouping (41,786 and 182,412).
+
+### Right column
+
+- Column: 688 wide, centered in the remaining pane, padding 60 px top, 24 px
+  sides, 36 px bottom. Everything above the footer scrolls.
+- Heading: "Before you can talk here...", 32 px / 40 px weight 500 #dcdcdf,
+  8 px top and bottom margin.
+- Subtitle: "You'll need to complete the required steps below.", 14 px / 18 px
+  #d4d5d8.
+- Question: 40 px below the subtitle. Title "Agree to rules" 16 px / 20 px
+  #dcdcdf, 12 px below.
+- Terms field: background rgba(151,151,159,0.12), radius 8, padding 10 px 17 px.
+- Rule row: 4 px side padding, 16 px top and bottom (first row 8 px top, last
+  8 px bottom), border bottom 1 px rgba(150,151,159,0.2) except the last.
+  Number 16 px / 20 px #81828a, 12 px before the text, text 16 px / 20 px
+  #d4d5d8.
+- Checkbox row: 16 px below the field, 20 px high, padding-left 32, 12 px gap.
+  In the captured scrolled state the whole row is drawn at about 63 % opacity,
+  making the fill and label read dimmer than their tokens. Box 20 x 20,
+  radius 4. Unchecked background rgba(0,0,0,0.08), border 1 px
+  rgba(151,151,159,0.8). Checked background #4452bb, no visible border, white
+  check mark 13 px. Label 16 px / 20 px #d4d5d8.
+- Scroll edges: the content has a 120 px black fade at the top once scrolled
+  and at the bottom whenever more rules follow (the number column dims from
+  #81828a to about #4f505a at the edge).
+- Footer: 56 px high, padding 8 px 0, right aligned.
+- Submit: 100 x 40, radius 8, border 1 px rgba(255,255,255,0.08), background
+  #008545, text 16 px / 20 px weight 500 white. Hover #006c37. Disabled is the
+  same green at opacity 0.5. Disabled hint (tooltip): "All required fields must
+  be filled, including agreeing to the rules."
+- Close: 40 x 40 at 32 px from the top and right, radius 8, X icon 20 px
+  #96979e, hover background #121213.
+
+### Endpoints and state
+
+- `GET /guilds/:id/member-verification?with_guild=false` returns `version`,
+  `description` and `form_fields` (TERMS fields carry `values`).
+- `GET /guilds/:id/profile` fills the card: `name`, `icon_hash`,
+  `online_count`, `member_count`, `description`, `custom_banner_hash`, `tag`,
+  `badge`, `badge_hash`, `premium_tier`, `premium_subscription_count`.
+- `PUT /guilds/:id/requests/@me` answers the form with
+  `{ "version": ..., "form_fields": [ { ...field, "response": true } ] }`.
+  Success clears `pending` on our member through `GUILD_MEMBER_UPDATE`.
+- Our own member carries `pending: true` until the form is accepted; that is
+  what shows the banner and replaces the composer.
+- Only TERMS questions are filled in so far. TEXT_INPUT, PARAGRAPH and
+  MULTIPLE_CHOICE questions still need their own inputs.

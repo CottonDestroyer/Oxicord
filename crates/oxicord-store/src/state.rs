@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oxicord_model::{
     Activity, Channel, ChannelType, Guild, GuildNotificationSettings, Member, Permissions, ReadState,
@@ -59,6 +59,8 @@ pub struct Store {
     pub(crate) notifications: HashMap<Option<Snowflake>, GuildNotificationSettings>,
     /// Who is in each voice channel, keyed by the channel.
     pub(crate) voice: HashMap<Snowflake, Vec<VoiceState>>,
+    /// Servers whose membership screening we still have to pass.
+    pub(crate) pending: HashSet<Snowflake>,
 }
 
 impl Store {
@@ -126,6 +128,12 @@ impl Store {
             (Some(me), Some(g)) => perms::base_permissions(g, me.id, self.my_roles(guild)),
             _ => Permissions::empty(),
         }
+    }
+
+    /// Whether the server's membership screening still stands between us and
+    /// sending messages.
+    pub fn is_pending(&self, guild: Snowflake) -> bool {
+        self.pending.contains(&guild)
     }
 
     /// What we may do in `channel`. Threads inherit from their parent.
@@ -403,6 +411,11 @@ impl Store {
             .find(|m| m.id().is_some() && m.id() == me);
         if let Some(member) = mine {
             self.my_roles.insert(guild.id, member.roles.clone());
+            if member.pending {
+                self.pending.insert(guild.id);
+            } else {
+                self.pending.remove(&guild.id);
+            }
         }
 
         let channels: Vec<_> = guild

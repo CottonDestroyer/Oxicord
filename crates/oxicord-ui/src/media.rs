@@ -55,6 +55,8 @@ pub struct Media {
     images: HashMap<String, Slot>,
     /// The main color of each picture we have looked at, found once.
     dominant: HashMap<String, Option<u32>>,
+    /// The two ends of the gradient drawn from a picture, found once.
+    gradients: HashMap<String, Option<(u32, u32)>>,
     /// Animated pictures decoded at the width they are shown at.
     animations: HashMap<AnimationKey, Animation>,
     /// Counts lookups, so the least recently used animation can be told.
@@ -67,6 +69,7 @@ impl Media {
             backend,
             images: HashMap::new(),
             dominant: HashMap::new(),
+            gradients: HashMap::new(),
             animations: HashMap::new(),
             tick: 0,
         }
@@ -176,6 +179,18 @@ impl Media {
         let image = self.get(url)?;
         let found = dominant_color_of(&image.bytes);
         self.dominant.insert(url.to_owned(), found);
+        found
+    }
+
+    /// The two ends of the gradient a server's icon gives the screening
+    /// dialog: its main color and the accent Discord derives from it.
+    pub fn gradient_colors(&mut self, url: &str) -> Option<(u32, u32)> {
+        if let Some(found) = self.gradients.get(url) {
+            return *found;
+        }
+        let image = self.get(url)?;
+        let found = gradient_colors_of(&image.bytes);
+        self.gradients.insert(url.to_owned(), found);
         found
     }
 
@@ -318,6 +333,82 @@ fn dominant_color_of(bytes: &[u8]) -> Option<u32> {
     Some((r << 16) | (g << 8) | b)
 }
 
+/// The two ends of Discord's icon gradient. The first is the most common
+/// color of the picture; the second is a hue turned, saturated cousin of it,
+/// the same recipe the web client uses for the screening dialog.
+fn gradient_colors_of(bytes: &[u8]) -> Option<(u32, u32)> {
+    let picture = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let mut buckets: HashMap<(u8, u8, u8), (u32, [u32; 3])> = HashMap::new();
+    for (i, pixel) in picture.pixels().enumerate() {
+        // The web client samples every tenth pixel and ignores near white.
+        if i % 10 != 0 {
+            continue;
+        }
+        let [r, g, b, a] = pixel.0;
+        if a < 125 || (r > 250 && g > 250 && b > 250) {
+            continue;
+        }
+        let bucket = buckets.entry((r >> 4, g >> 4, b >> 4)).or_default();
+        bucket.0 += 1;
+        for (sum, value) in bucket.1.iter_mut().zip([r, g, b]) {
+            *sum += u32::from(value);
+        }
+    }
+    let (count, sums) = buckets.into_values().max_by_key(|(count, _)| *count)?;
+    let [r, g, b] = sums.map(|sum| sum / count);
+    let base = (r << 16) | (g << 8) | b;
+
+    let (mut h, mut s, mut l) = rgb_to_hsl(r as u8, g as u8, b as u8);
+    if s < 0.3 {
+        s += 0.3;
+    }
+    if l > 0.8 {
+        l -= 0.4;
+    }
+    if l < 0.2 {
+        l += 0.15;
+    }
+    h = (h - 0.25).rem_euclid(1.0);
+    let accent = hsl_to_rgb(h, s, l);
+    Some((base, accent))
+}
+
+fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
+    let (r, g, b) = (f32::from(r) / 255.0, f32::from(g) / 255.0, f32::from(b) / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    if (max - min).abs() < f32::EPSILON {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = d / (1.0 - (2.0 * l - 1.0).abs());
+    let h = if max == r {
+        ((g - b) / d).rem_euclid(6.0)
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    } / 6.0;
+    (h, s, l)
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> u32 {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h * 6.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r, g, b) = match (h * 6.0) as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let channel = |v: f32| ((v + m) * 255.0).round().clamp(0.0, 255.0) as u32;
+    (channel(r) << 16) | (channel(g) << 8) | channel(b)
+}
+
 #[cfg(test)]
 mod color_tests {
     use super::*;
@@ -359,5 +450,15 @@ mod color_tests {
     fn a_blank_picture_has_no_color() {
         assert_eq!(dominant_color_of(&png(&[[255, 255, 255, 255]; 4])), None);
         assert_eq!(dominant_color_of(b"not a picture"), None);
+    }
+
+    #[test]
+    fn the_icon_gradient_turns_the_grey_into_an_accent() {
+        let (base, accent) = gradient_colors_of(&png(&[[221, 223, 224, 255]; 400])).unwrap();
+        assert!(close(Some(base), 0xdddfe0), "base was {base:06x}");
+        // The accent is a saturated green for a light grey icon.
+        let (r, g, b) = ((accent >> 16) & 0xff, (accent >> 8) & 0xff, accent & 0xff);
+        assert!(g > r && g > b, "accent was {accent:06x}");
+        assert!(g - r > 30 && g - b > 30, "accent was {accent:06x}");
     }
 }

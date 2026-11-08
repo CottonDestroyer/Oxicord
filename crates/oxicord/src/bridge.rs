@@ -814,7 +814,28 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         }
         AdminRequest::LoadAudit(guild) => say(AdminEvent::Audit(guild, api.audit_log(guild).await.map_err(text))).await,
         AdminRequest::EditGuild { guild, fields } => check(api.edit_guild(guild, &fields).await, "save the server").await,
-        AdminRequest::AcceptMemberVerification(guild) => check(api.accept_member_verification(guild).await, "accept the rules").await,
+        AdminRequest::LoadMemberVerification(guild) => {
+            let result = async {
+                let (profile, form) = tokio::try_join!(
+                    api.guild_profile(guild),
+                    api.member_verification(guild)
+                )?;
+                Ok(oxicord_model::VerificationInfo { profile, form })
+            }
+            .await
+            .map_err(text);
+            say(AdminEvent::MemberVerification(guild, Box::new(result))).await;
+        }
+        AdminRequest::SubmitMemberVerification { guild, form, agreed } => {
+            match api.submit_member_verification(guild, &form, agreed).await {
+                Ok(()) => say(AdminEvent::Verified(guild, Ok(()))).await,
+                Err(err) => {
+                    let message = describe_request(&err);
+                    notify(events, "agree to the rules", &err).await;
+                    say(AdminEvent::Verified(guild, Err(message))).await;
+                }
+            }
+        }
         AdminRequest::SetServerAvatar { guild, avatar } => check(api.set_server_avatar(guild, avatar.as_deref()).await, "change your server avatar").await,
         AdminRequest::SetServerBanner { guild, banner } => check(api.set_server_banner(guild, banner.as_deref()).await, "change your server banner").await,
         AdminRequest::CreateRole { guild, name } => check(api.create_role(guild, &name).await, "create that role").await,
@@ -1308,7 +1329,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("oxicord-upload-{}.txt", std::process::id()));
         tokio::fs::write(&path, b"hello").await.unwrap();
 
-        let uploads = read_files(&[(path.clone(), false)]).await.unwrap();
+        let uploads = read_files(&[(path.clone(), false, String::new())]).await.unwrap();
         tokio::fs::remove_file(&path).await.unwrap();
 
         assert_eq!(uploads.len(), 1);
@@ -1321,7 +1342,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("oxicord-spoil-{}.txt", std::process::id()));
         tokio::fs::write(&path, b"secret").await.unwrap();
 
-        let uploads = read_files(&[(path.clone(), true)]).await.unwrap();
+        let uploads = read_files(&[(path.clone(), true, String::new())]).await.unwrap();
         tokio::fs::remove_file(&path).await.unwrap();
 
         assert_eq!(uploads.len(), 1);
@@ -1331,7 +1352,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_missing_file_is_reported_by_name() {
-        let err = read_files(&[(PathBuf::from("no-such-dir/ghost.bin"), false)]).await.unwrap_err();
+        let err = read_files(&[(PathBuf::from("no-such-dir/ghost.bin"), false, String::new())]).await.unwrap_err();
         assert!(err.contains("ghost.bin"), "{err}");
     }
 

@@ -13,7 +13,7 @@ use gpui_kit::{
     Focusable as _,
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
     SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
-    list, px, rgb,
+    list, px, rgb, rgba,
     component::input::{Escape, Input, InputEvent, InputState, Textarea, TextareaState},
 };
 use oxicord_markdown::Block;
@@ -36,7 +36,7 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
+    session::{MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenRulesScreening, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -772,8 +772,12 @@ impl ChatView {
         cx.notify();
     }
 
-    /// Whether we may post here. Threads have their own permission.
+    /// Whether we may post here. Threads have their own permission, and a
+    /// server whose screening we haven't passed takes all of them away.
     fn can_send(&self, cx: &App) -> bool {
+        if self.guild(cx).is_some_and(|guild| self.session.read(cx).store.is_pending(guild)) {
+            return false;
+        }
         let in_thread = self
             .channel
             .and_then(|c| self.session.read(cx).store.channel(c))
@@ -1930,6 +1934,63 @@ impl ChatView {
             .into_any_element()
     }
 
+    /// The banner that replaces the composer while the server's membership
+    /// screening is still waiting: the web client's "Complete" call to action.
+    fn render_pending_cta(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild(cx) else { return div().into_any_element() };
+        div()
+            .flex_none()
+            .px(px(8.))
+            .pb(px(8.))
+            .child(
+                div()
+                    .h(px(58.))
+                    .w_full()
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(rgba(0x9696a033))
+                    .bg(rgb(0x000000))
+                    .py(px(12.))
+                    .pl(px(16.))
+                    .pr(px(13.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .line_height(px(20.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child("You must complete a few more steps before you can talk."),
+                    )
+                    .child(
+                        div()
+                            .id("screening-complete")
+                            .w(px(83.))
+                            .h(px(32.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(rgba(0xffffff14))
+                            .bg(rgb(theme::ACCENT))
+                            .cursor_pointer()
+                            .text_size(px(14.))
+                            .line_height(px(20.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(0xffffff))
+                            .hover(|s| s.bg(rgb(0x4752c4)))
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.session.update(cx, |_, cx| cx.emit(OpenRulesScreening { guild }));
+                            }))
+                            .child("Complete"),
+                    ),
+            )
+            .into_any_element()
+    }
+
     /// The notice banner, the reply or edit bar, and the text box.
     fn render_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if self.channel.is_none() {
@@ -2224,7 +2285,14 @@ impl Render for ChatView {
         let picker = self.emoji_for.is_some().then(|| self.emoji.clone());
         let header = self.render_header(cx);
         let body = self.render_body(cx);
-        let composer = self.render_composer(window, cx);
+        let pending = self
+            .guild(cx)
+            .is_some_and(|guild| self.session.read(cx).store.is_pending(guild));
+        let composer = if pending {
+            self.render_pending_cta(cx)
+        } else {
+            self.render_composer(window, cx)
+        };
 
         div()
             .flex_1()

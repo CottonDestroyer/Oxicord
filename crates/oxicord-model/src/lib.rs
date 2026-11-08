@@ -29,6 +29,7 @@ pub mod role;
 pub mod search;
 pub mod snowflake;
 pub mod user;
+pub mod verification;
 pub mod voice;
 
 pub use account::{AccountDetails, AppInfo, AuthorizedApp, ClientInfo, Connection, LoginSession};
@@ -63,4 +64,5 @@ pub use role::Role;
 pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
 pub use user::{AccountMetadata, Badge, Game, GameEntry, LinkedAccount, MutualGuild, Profile, ServerTag, User};
+pub use verification::{FormChoice, FormField, GuildProfile, VerificationForm, VerificationInfo};
 pub use voice::VoiceState;

@@ -29,6 +29,7 @@ use crate::{
     roles_dialog::{CloseRoles, RolesDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
     join_server::{CloseJoin, JoinServerView},
+    rules_screening::{CloseRulesScreening, RulesScreeningDialog},
     friends::FriendsView,
     icons::icon,
     rail::{self, Entry},
@@ -42,7 +43,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -157,6 +158,8 @@ pub struct MainView {
     viewer: Option<String>,
     join: Entity<JoinServerView>,
     join_open: bool,
+    screening: Entity<RulesScreeningDialog>,
+    screening_open: bool,
     forward: Entity<ForwardDialog>,
     forward_open: bool,
     nickname: Entity<NicknameDialog>,
@@ -230,6 +233,10 @@ impl MainView {
         let join = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| JoinServerView::new(session, media, backend, window, cx))
+        };
+        let screening = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| RulesScreeningDialog::new(session, media, backend, cx))
         };
         let status_dialog = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -537,6 +544,14 @@ impl MainView {
                 this.join_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&screening, |this, _, _: &CloseRulesScreening, cx| {
+                this.screening_open = false;
+                this.session.update(cx, |session, cx| session.close_verification(cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenRulesScreening, window, cx| {
+                this.open_screening(open.guild, window, cx);
+            }),
             cx.subscribe(&menu, |this, _, _: &CloseMenu, cx| {
                 this.menu_open = false;
                 cx.notify();
@@ -629,6 +644,8 @@ impl MainView {
             viewer: None,
             join,
             join_open: false,
+            screening,
+            screening_open: false,
             forward,
             forward_open: false,
             nickname,
@@ -707,6 +724,16 @@ impl MainView {
             self.last_channel.insert(guild, channel);
         }
         self.sync_chat(window, cx);
+        cx.notify();
+    }
+
+    /// Opens the membership screening dialog for `guild` and asks for its
+    /// form and card.
+    fn open_screening(&mut self, guild: Snowflake, _: &mut Window, cx: &mut Context<Self>) {
+        self.screening_open = true;
+        self.screening.update(cx, |view, cx| view.opened(guild, cx));
+        let backend = self.backend.clone();
+        self.session.update(cx, |session, cx| session.request_verification(&backend, guild, cx));
         cx.notify();
     }
 
@@ -823,7 +850,11 @@ impl MainView {
             // A text field hands Escape on when it has nothing to close.
             .on_action(cx.listener(|this, _: &Escape, _, cx| {
                 // An open profile card is what Escape closes first.
-                if this.profile.take().is_some() {
+                if this.screening_open {
+                    this.screening_open = false;
+                    this.session.update(cx, |session, cx| session.close_verification(cx));
+                    cx.notify();
+                } else if this.profile.take().is_some() {
                     cx.notify();
                 } else {
                     this.mark_channel_read(cx);
@@ -1045,6 +1076,7 @@ impl MainView {
                 self.show_profile(user, guild, Some(at), false, cx);
             }
             DevCommand::Full(user, guild) => self.show_profile(user, guild, None, true, cx),
+            DevCommand::Rules(guild) => self.open_screening(guild, window, cx),
             DevCommand::Tab(tab) => {
                 self.profile_tab = [profile::Tab::Board, profile::Tab::Activity, profile::Tab::Friends, profile::Tab::Servers]
                     [usize::from(tab).min(3)];
@@ -3776,6 +3808,7 @@ impl Render for MainView {
         let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
         let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
+        let screening = self.screening_open.then(|| self.screening.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
@@ -3868,6 +3901,7 @@ impl Render for MainView {
             .children(timeout_dialog)
             .children(roles_dialog)
             .children(join)
+            .children(screening)
             .children(invite)
             .children(edit_channel)
             .children(create_channel)

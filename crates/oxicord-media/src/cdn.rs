@@ -59,6 +59,12 @@ pub fn guild_icon(guild: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/icons/{guild}/{hash}.png?size={size}")
 }
 
+/// The wide picture at the top of a server's card, as Discord uses for its
+/// discovery splash and the screening dialog.
+pub fn discovery_splash(guild: Snowflake, hash: &str, size: u32) -> String {
+    format!("{CDN}/discovery-splashes/{guild}/{hash}.jpg?size={size}")
+}
+
 pub fn group_icon(channel: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/channel-icons/{channel}/{hash}.png?size={size}")
 }
@@ -109,6 +115,7 @@ mod tests {
     #[test]
     fn icon_urls_carry_their_owner() {
         assert!(guild_icon(Snowflake(9), "h", 96).contains("/icons/9/h.png"));
+        assert!(discovery_splash(Snowflake(9), "h", 512).contains("/discovery-splashes/9/h.jpg"));
         assert!(group_icon(Snowflake(9), "h", 96).contains("/channel-icons/9/h.png"));
         assert!(emoji(Snowflake(9), 48).contains("/emojis/9.png"));
     }

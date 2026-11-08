@@ -430,6 +430,22 @@ fn gaining_a_role_can_reveal_a_channel() {
 }
 
 #[test]
+fn pending_follows_the_member_updates() {
+    let mut store = ready_store();
+    assert!(!store.is_pending(id(GUILD)));
+    store.apply(event(
+        "GUILD_MEMBER_UPDATE",
+        json!({ "guild_id": "100", "user": { "id": "1" }, "roles": [], "pending": true }),
+    ));
+    assert!(store.is_pending(id(GUILD)));
+    store.apply(event(
+        "GUILD_MEMBER_UPDATE",
+        json!({ "guild_id": "100", "user": { "id": "1" }, "roles": [], "pending": false }),
+    ));
+    assert!(!store.is_pending(id(GUILD)));
+}
+
+#[test]
 fn supplemental_members_supply_our_roles_when_ready_had_none() {
     let mut ready = ready_json();
     ready["merged_members"] = json!([]);

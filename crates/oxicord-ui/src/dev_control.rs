@@ -32,6 +32,8 @@ pub enum DevCommand {
     Deafen,
     Profile(Snowflake, Option<Snowflake>),
     Full(Snowflake, Option<Snowflake>),
+    /// The membership screening dialog for a server.
+    Rules(Snowflake),
     /// 0 board, 1 activity, 2 friends, 3 servers.
     Tab(u8),
     Close,
@@ -55,6 +57,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
     match command {
         "profile" => id().map(|user| DevCommand::Profile(user, second())),
         "full" => id().map(|user| DevCommand::Full(user, second())),
+        "rules" => id().map(DevCommand::Rules),
         "tab" => match words.clone().next()? {
             "board" => Some(DevCommand::Tab(0)),
             "activity" => Some(DevCommand::Tab(1)),
@@ -103,6 +106,7 @@ mod tests {
         assert_eq!(parse("profile 5"), Some(DevCommand::Profile(Snowflake(5), None)));
         assert_eq!(parse("full 5 9"), Some(DevCommand::Full(Snowflake(5), Some(Snowflake(9)))));
         assert_eq!(parse("profile me"), Some(DevCommand::Profile(Snowflake(0), None)));
+        assert_eq!(parse("rules 9"), Some(DevCommand::Rules(Snowflake(9))));
         assert_eq!(parse("tab servers"), Some(DevCommand::Tab(3)));
         assert_eq!(parse("tab nowhere"), None);
         assert_eq!(parse("close"), Some(DevCommand::Close));

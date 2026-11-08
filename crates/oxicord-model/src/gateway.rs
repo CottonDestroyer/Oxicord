@@ -436,6 +436,9 @@ pub struct GuildMemberUpdate {
     pub roles: Vec<Snowflake>,
     #[serde(default)]
     pub nick: Option<String>,
+    /// Set while the member still has to pass the server's screening.
+    #[serde(default)]
+    pub pending: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
