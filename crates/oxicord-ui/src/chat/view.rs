@@ -36,7 +36,7 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{MentionUser, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
+    session::{MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -2051,6 +2051,16 @@ impl ChatView {
                     .child(
                         toolbar_button("emoji", "face-slightly-smiling", theme::TEXT_MUTED).on_click(cx.listener(
                             |this, _, window, cx| this.open_emoji(EmojiTarget::Composer, window, cx),
+                        )),
+                    )
+                    .child(
+                        toolbar_button("poll", "poll", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, _, cx| {
+                                if let Some(channel) = this.channel {
+                                    let guild = this.guild(cx);
+                                    this.session.update(cx, |_, cx| cx.emit(OpenCreatePoll { channel, guild }));
+                                }
+                            },
                         )),
                     ),
             )
