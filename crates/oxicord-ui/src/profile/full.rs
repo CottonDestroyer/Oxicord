@@ -116,7 +116,15 @@ pub fn full(
         .border_color(rgb(theme::BORDER))
         // The effect starts at the top of the modal, behind everything.
         .children(card.effect.clone().map(|e| {
-            div().absolute().top(px(0.)).left(px(48.)).w(px(400.)).child(e)
+            let modal_h = (height - 2. * MARGIN).clamp(360., 840.);
+            let modal_w = WIDTH.min(width - 32.);
+            div()
+                .absolute()
+                .top(px(0.))
+                .left(px(0.))
+                .w(px(modal_w))
+                .h(px(modal_h))
+                .child(e)
         }))
         .child(
             div()
