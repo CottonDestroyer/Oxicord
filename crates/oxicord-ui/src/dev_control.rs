@@ -35,6 +35,7 @@ pub enum DevCommand {
     /// 0 board, 1 activity, 2 friends, 3 servers.
     Tab(u8),
     Close,
+    Resize(u32, u32),
 }
 
 pub fn command_path() -> PathBuf {
@@ -62,6 +63,11 @@ pub fn parse(line: &str) -> Option<DevCommand> {
             _ => None,
         },
         "close" => Some(DevCommand::Close),
+        "resize" => {
+            let w: u32 = words.clone().next()?.parse().ok()?;
+            let h: u32 = words.clone().nth(1)?.parse().ok()?;
+            Some(DevCommand::Resize(w, h))
+        }
         "goto" => id().map(DevCommand::Goto),
         "join" => id().map(DevCommand::Join),
         "leave" => Some(DevCommand::Leave),

@@ -1054,6 +1054,9 @@ impl MainView {
                 self.profile = None;
                 cx.notify();
             }
+            DevCommand::Resize(w, h) => {
+                window.resize(gpui_kit::size(gpui_kit::px(w as f32), gpui_kit::px(h as f32)));
+            }
         }
     }
 
