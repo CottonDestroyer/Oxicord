@@ -152,6 +152,13 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// Load the people who voted for `answer` on a poll. The answer arrives
+    /// as [`Event::PollVoters`].
+    LoadPollVoters {
+        channel: Snowflake,
+        message: Snowflake,
+        answer: u32,
+    },
     /// Make an announcement channel's messages arrive in another channel.
     FollowChannel {
         source: Snowflake,
@@ -421,6 +428,11 @@ pub enum Event {
     Profile {
         user: Snowflake,
         result: Result<Profile, String>,
+    },
+    PollVoters {
+        message: Snowflake,
+        answer: u32,
+        users: Vec<User>,
     },
     SavedMessages(Result<Vec<oxicord_model::SavedMessage>, String>),
     ScheduledMessages(Result<Vec<Message>, String>),
