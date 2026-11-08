@@ -73,6 +73,8 @@ pub struct Card {
     pub message_input: Entity<InputState>,
     /// The effect that plays over the card, when they have one.
     pub effect: Option<Entity<EffectView>>,
+    /// The frame drawn around the card, when they have one.
+    pub frame: Option<oxicord_model::ProfileFrame>,
 }
 
 /// A server or a person in common, with a picture and a second line.
@@ -290,8 +292,9 @@ pub(crate) fn tag_chip(tag: &(String, Option<String>), media: &Entity<Media>, cx
         .child(tag.0.clone())
 }
 
-/// The row of badges, drawn as one capsule.
-pub(crate) fn badge_strip(card: &Card, media: &Entity<Media>, cx: &mut App) -> Option<Div> {
+/// The row of badges, drawn as one capsule. At most `max` of them show and
+/// the rest become a `+N`, as the official client does in the small card.
+pub(crate) fn badge_strip(card: &Card, media: &Entity<Media>, max: usize, cx: &mut App) -> Option<Div> {
     if card.badges.is_empty() {
         return None;
     }
@@ -305,8 +308,24 @@ pub(crate) fn badge_strip(card: &Card, media: &Entity<Media>, cx: &mut App) -> O
         .rounded(px(8.))
         .border_1()
         .border_color(rgba(OUTLINE_SOFT));
-    for (_, url) in &card.badges {
+    for (_, url) in card.badges.iter().take(max) {
         strip = strip.child(picture(media, url, 20., 20., 0., cx));
+    }
+    let hidden = card.badges.len().saturating_sub(max);
+    if hidden > 0 {
+        strip = strip.child(
+            div()
+                .w(px(20.))
+                .h(px(20.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(14.))
+                .line_height(px(18.))
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .child(format!("+{hidden}")),
+        );
     }
     Some(strip)
 }

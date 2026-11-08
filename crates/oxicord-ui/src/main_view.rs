@@ -1246,6 +1246,7 @@ impl MainView {
                 note_input: self.note_input.clone(),
                 message_input: self.card_message.clone(),
                 effect: None,
+                frame: profile.and_then(|p| p.frame_art.clone()),
             }
         };
         // With no accent or banner the card takes after the avatar, as the

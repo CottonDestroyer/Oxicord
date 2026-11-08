@@ -140,6 +140,23 @@ impl ApiClient {
         Ok(oxicord_model::ProfileEffect::from_product(product, sku, pick))
     }
 
+    /// What a profile frame looks like, from the shop catalog. Nothing for
+    /// a listing that is not a frame.
+    pub async fn profile_frame(
+        &self,
+        sku: Snowflake,
+    ) -> Result<Option<oxicord_model::ProfileFrame>, ApiError> {
+        let product: serde_json::Value = self
+            .json(
+                Method::GET,
+                &format!("/collectibles-products/{sku}"),
+                "GET /collectibles-products/:sku",
+                None,
+            )
+            .await?;
+        Ok(oxicord_model::ProfileFrame::from_product(product, sku))
+    }
+
     /// Names and covers of games, for the profile's game widgets. Games
     /// Discord doesn't know are left out.
     pub async fn games(
