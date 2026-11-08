@@ -22,6 +22,7 @@ use crate::{
     forward_dialog::{CloseForward, ForwardDialog},
     friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
     ban_dialog::{CloseBan, BanDialog},
+    kick_dialog::{CloseKick, KickDialog},
     timeout_dialog::{CloseTimeout, TimeoutDialog},
     roles_dialog::{CloseRoles, RolesDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
@@ -39,7 +40,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenKickMember, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -162,6 +163,8 @@ pub struct MainView {
     friend_nick_open: bool,
     ban_dialog: Entity<BanDialog>,
     ban_dialog_open: bool,
+    kick_dialog: Entity<KickDialog>,
+    kick_dialog_open: bool,
     timeout_dialog: Entity<TimeoutDialog>,
     timeout_dialog_open: bool,
     roles_dialog: Entity<RolesDialog>,
@@ -239,6 +242,10 @@ impl MainView {
         let ban_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| BanDialog::new(session, backend, window, cx))
+        };
+        let kick_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| KickDialog::new(session, backend, window, cx))
         };
         let timeout_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -407,6 +414,10 @@ impl MainView {
                 this.ban_dialog_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&kick_dialog, |this, _, _: &CloseKick, cx| {
+                this.kick_dialog_open = false;
+                cx.notify();
+            }),
             cx.subscribe(&timeout_dialog, |this, _, _: &CloseTimeout, cx| {
                 this.timeout_dialog_open = false;
                 cx.notify();
@@ -435,6 +446,18 @@ impl MainView {
                     .map(|u| u.display_name().to_owned())
                     .unwrap_or_default();
                 this.ban_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenKickMember, window, cx| {
+                this.kick_dialog_open = true;
+                let name = this
+                    .session
+                    .read(cx)
+                    .store
+                    .user(open.1)
+                    .map(|u| u.display_name().to_owned())
+                    .unwrap_or_default();
+                this.kick_dialog.update(cx, |dialog, cx| dialog.opened(open.0, open.1, name, window, cx));
                 cx.notify();
             }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenTimeoutMember, window, cx| {
@@ -574,6 +597,8 @@ impl MainView {
             friend_nick_open: false,
             ban_dialog,
             ban_dialog_open: false,
+            kick_dialog,
+            kick_dialog_open: false,
             timeout_dialog,
             timeout_dialog_open: false,
             roles_dialog,
@@ -1252,7 +1277,6 @@ impl MainView {
             }
         };
         let session = self.session.downgrade();
-        let backend = self.backend.clone();
         let emit = |label: &'static str, glyph: &'static str, danger: bool, run: profile::Action| profile::CardAction {
             label,
             glyph,
@@ -1260,12 +1284,16 @@ impl MainView {
             run,
         };
         if permissions.contains(oxicord_model::Permissions::KICK_MEMBERS) && can_manage {
-            let backend = backend.clone();
+            let session = session.clone();
             actions.push(emit(
                 "Kick",
                 "log-out",
                 true,
-                Rc::new(move |_: &mut Window, _: &mut App| backend.send(Command::KickMember { guild, user })),
+                Rc::new(move |_: &mut Window, cx: &mut App| {
+                    if let Some(session) = session.upgrade() {
+                        session.update(cx, |_, cx| cx.emit(OpenKickMember(guild, user)));
+                    }
+                }),
             ));
         }
         if permissions.contains(oxicord_model::Permissions::BAN_MEMBERS) && can_manage {
@@ -3622,6 +3650,7 @@ impl Render for MainView {
         let nickname = self.nickname_open.then(|| self.nickname.clone());
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
         let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
+        let kick_dialog = self.kick_dialog_open.then(|| self.kick_dialog.clone());
         let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
         let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
@@ -3710,6 +3739,7 @@ impl Render for MainView {
             .children(nickname)
             .children(friend_nick)
             .children(ban_dialog)
+            .children(kick_dialog)
             .children(timeout_dialog)
             .children(roles_dialog)
             .children(join)

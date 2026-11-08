@@ -165,6 +165,11 @@ pub struct OpenBanMember(pub Snowflake, pub Snowflake);
 
 impl EventEmitter<OpenBanMember> for Session {}
 
+/// Someone wants to kick this member from this server.
+pub struct OpenKickMember(pub Snowflake, pub Snowflake);
+
+impl EventEmitter<OpenKickMember> for Session {}
+
 /// Someone wants to time this member out in this server.
 pub struct OpenTimeoutMember(pub Snowflake, pub Snowflake);
 

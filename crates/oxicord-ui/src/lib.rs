@@ -20,6 +20,7 @@ mod icons;
 mod invite_dialog;
 mod inbox;
 mod join_server;
+mod kick_dialog;
 mod keys;
 mod login;
 mod main_view;
