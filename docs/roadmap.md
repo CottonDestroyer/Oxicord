@@ -40,25 +40,25 @@ Gateway events we ignore today, so things go out of date until a restart.
 ## Phase 4: bots
 
 - [ ] Modals opened by components (`INTERACTION_MODAL_CREATE`) (blocked: interaction framework not implemented)
-- [ ] Slash command option autocomplete (`APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE`)
-- [ ] Thinking and failed states after a click (`INTERACTION_SUCCESS` / `INTERACTION_FAILURE`)
+- [ ] Slash command option autocomplete (`APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE`) (blocked: autocomplete framework needed)
+- [ ] Thinking and failed states after a click (`INTERACTION_SUCCESS` / `INTERACTION_FAILURE`) (blocked: interaction state tracking needed)
 
 ## Phase 5: DMs, inbox, events
 
 - [ ] Message requests and the spam inbox (blocked: inbox rework needed)
 - [x] Saved messages (`/users/@me/saved-messages`): bookmark and remove from the message menu, listed in the inbox with reminders and scheduled messages
-- [ ] Inbox "For You" tab (notification center)
-- [ ] Scheduled events: list, RSVP, live updates (`GUILD_SCHEDULED_EVENT_*`)
+- [ ] Inbox "For You" tab (notification center) (blocked: notification center API/model needed)
+- [ ] Scheduled events: list, RSVP, live updates (`GUILD_SCHEDULED_EVENT_*`) (blocked: scheduled event model/API needed)
 - [x] Create a server (`POST /guilds`): API, bridge and UI dialog wired, sends from the server rail plus button
 - [ ] Announcement channels: publish done, follow (`/followers`) pending (needs channel picker dialog)
 
 ## Phase 6: account and admin
 
-- [ ] Change password, enable and disable 2FA
-- [ ] Log out other devices, add and remove connections
-- [ ] Disable or delete the account
+- [ ] Change password, enable and disable 2FA (blocked: auth flows needed)
+- [ ] Log out other devices, add and remove connections (blocked: session management UI needed)
+- [ ] Disable or delete the account (blocked: account deletion flow needed)
 - [ ] Server admin: channel permission overwrites, AutoMod, webhooks, integrations,
-      welcome screen and onboarding setup, templates, prune
+      welcome screen and onboarding setup, templates, prune (blocked: admin UI breadth)
 
 ## Voice (added 2026-11-07)
 
@@ -67,7 +67,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Live check: joined a real call from the app and heard it connect (audio quality not judged)
 - [x] Call UI matched to the web client: connection block, tiles colored from the avatar, name pills, speaking ring (derived from the audio, so it ends when talking ends), control bar, the page before joining, call clock, text chat beside the call, microphone and speaker choice from the arrows
 - [x] The user card floats across the rail and the list like the official one
-- [ ] Camera, screen share, activities and soundboard (buttons are drawn, they do nothing)
-- [ ] Pop out, Krisp noise suppression, input volume, push to talk, per-user volume
-- [ ] Resume a call after a dropped voice websocket (today it ends and has to be joined again)
-- [ ] Video, screen share and Go Live
+- [ ] Camera, screen share, activities and soundboard (buttons are drawn, they do nothing) (blocked: media capture pipeline needed)
+- [ ] Pop out, Krisp noise suppression, input volume, push to talk, per-user volume (blocked: audio device controls needed)
+- [ ] Resume a call after a dropped voice websocket (today it ends and has to be joined again) (blocked: voice reconnect logic needed)
+- [ ] Video, screen share and Go Live (blocked: video pipeline needed)
