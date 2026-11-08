@@ -691,6 +691,10 @@ impl SettingsView {
                         .enumerate()
                         .map(|(i, ch)| if i == 0 { ch.to_ascii_uppercase() } else { ch })
                         .collect();
+                    let backend = self.backend.clone();
+                    let session = self.session.clone();
+                    let kind_for_remove = c.kind.clone();
+                    let id_for_remove = c.id.clone();
                     div()
                         .flex()
                         .items_center()
@@ -712,6 +716,15 @@ impl SettingsView {
                                 .text_size(px(12.))
                                 .text_color(rgb(theme::ONLINE))
                                 .child("Verified")
+                        }))
+                        .child(button("remove-connection", "Remove", Tone::Danger, move |_, _, cx| {
+                            let backend = backend.clone();
+                            let session = session.clone();
+                            let kind = kind_for_remove.clone();
+                            let id = id_for_remove.clone();
+                            session.update(cx, |s, cx| {
+                                s.request_account(&backend, AccountRequest::RemoveConnection { kind, id }, cx);
+                            });
                         }))
                         .into_any_element()
                 })
