@@ -814,6 +814,7 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         }
         AdminRequest::LoadAudit(guild) => say(AdminEvent::Audit(guild, api.audit_log(guild).await.map_err(text))).await,
         AdminRequest::EditGuild { guild, fields } => check(api.edit_guild(guild, &fields).await, "save the server").await,
+        AdminRequest::AcceptMemberVerification(guild) => check(api.accept_member_verification(guild).await, "accept the rules").await,
         AdminRequest::SetServerAvatar { guild, avatar } => check(api.set_server_avatar(guild, avatar.as_deref()).await, "change your server avatar").await,
         AdminRequest::SetServerBanner { guild, banner } => check(api.set_server_banner(guild, banner.as_deref()).await, "change your server banner").await,
         AdminRequest::CreateRole { guild, name } => check(api.create_role(guild, &name).await, "create that role").await,

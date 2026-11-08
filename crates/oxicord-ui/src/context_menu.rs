@@ -10,6 +10,7 @@ use gpui_kit::{
 use oxicord_model::{Channel, NotifyLevel, Snowflake};
 
 use crate::{
+    admin::AdminRequest,
     backend::{Backend, Command},
     icons::icon,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
@@ -350,6 +351,13 @@ impl Render for ContextMenu {
             menu = menu.child(self.item("edit-server-profile", "Edit Per-server Profile", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
                 if let Some(Target::Guild(guild)) = this.target {
                     this.session.update(cx, |_, cx| cx.emit(OpenServerProfile(guild)));
+                }
+                this.close(cx);
+            }, cx));
+            menu = menu.child(self.item("accept-rules", "Accept Server Rules", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Guild(guild)) = this.target {
+                    let backend = this.backend.clone();
+                    this.session.update(cx, |s, cx| s.request_admin(&backend, AdminRequest::AcceptMemberVerification(guild), cx));
                 }
                 this.close(cx);
             }, cx));
