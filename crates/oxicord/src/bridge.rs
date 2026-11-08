@@ -888,7 +888,7 @@ async fn read_files(files: &[(PathBuf, bool)]) -> Result<Vec<Upload>, String> {
         let data = tokio::fs::read(path)
             .await
             .map_err(|err| format!("Couldn't read {name}: {err}"))?;
-        uploads.push(Upload { filename: name, data: std::sync::Arc::new(data) });
+        uploads.push(Upload { filename: name, data: std::sync::Arc::new(data), description: None });
     }
     Ok(uploads)
 }
