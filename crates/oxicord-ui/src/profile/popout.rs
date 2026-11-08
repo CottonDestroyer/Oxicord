@@ -474,7 +474,17 @@ pub fn popout(
                         .shadow_lg()
                         .overflow_hidden()
                         // The effect sits over the card's fill but under its words.
-                        .children(card.effect.clone())
+                        .children(card.effect.clone().map(|e| {
+                            div()
+                                .absolute()
+                                .top(px(2.))
+                                .left(px(2.))
+                                .right(px(2.))
+                                .bottom(px(2.))
+                                .overflow_hidden()
+                                .rounded(px(8.))
+                                .child(div().absolute().top_0().left_0().size_full().child(e))
+                        }))
                         .child(header)
                         .child(body)
                         .child(div().flex_none().px(px(16.)).pb(px(12.)).child(footer)),
