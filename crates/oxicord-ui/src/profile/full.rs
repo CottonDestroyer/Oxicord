@@ -111,7 +111,6 @@ pub fn full(
         .pr(px(32.))
         .pl(px(48.))
         .rounded(px(16.))
-        .overflow_hidden()
         .bg(rgb(0x000000))
         .border_1()
         .border_color(rgb(theme::BORDER))
@@ -386,18 +385,17 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, effect: 
         .flex()
         .flex_col()
         .rounded_t(px(16.))
-        .overflow_hidden()
         .bg(rgb(theme::BG_PANEL))
-        // The effect covers the whole card, behind the words.
-        .children(effect.clone().map(|e| {
-            div().absolute().top_0().left_0().w(px(400.)).h_full().child(e)
-        }))
         .child(
             div()
                 .relative()
                 .h(px(216.))
                 .flex_none()
                 .child(banner(card, media, 140., 16., cx))
+                // Effect on top of the banner, below the avatar.
+                .children(effect.clone().map(|e| {
+                    div().absolute().top_0().left_0().w(px(400.)).h(px(760.)).child(e)
+                }))
                 .child(
                     div()
                         .absolute()
