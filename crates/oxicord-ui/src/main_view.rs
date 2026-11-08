@@ -1488,7 +1488,8 @@ impl MainView {
         let media = self.media.clone();
         // The small card is 300 wide, the left side of the full one 400.
         let width = if full { 400. } else { 300. };
-        let view = cx.new(|cx| profile::EffectView::new(media, art, width, cx));
+        let rounded_top = if full { 16. } else { 8. };
+        let view = cx.new(|cx| profile::EffectView::new(media, art, width, rounded_top, cx));
         self.profile_effect = Some((user, full, view.clone()));
         Some(view)
     }
