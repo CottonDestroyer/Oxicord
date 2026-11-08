@@ -28,7 +28,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text field plumbed through API and bridge, UI input pending (blocked: needs per-file input state)
 - [x] Syntax highlighting in code blocks
 - [x] Reply ping toggle (`allowed_mentions.replied_user`)
-- [x] Avatar and banner upload (account and server profile) (`PATCH /users/@me`, `PATCH /guilds/:id/members/@me`)
+- [x] Avatar and banner upload (account and server profile) (`PATCH /users/@me`, `PATCH /guilds/:id/members/@me`); visual verification not performed (port screenshot unavailable in this session)
 - [x] Profile cards matched to the web client: the popout beside a name and the full profile (board, activity, mutual friends and servers, connections with each service's logo, note), the server's own bio, banner, avatar and roles, avatar decorations, nameplates in the member list that play on hover, profile effects over both cards, a popout message box that sends, and our own card with the status bubble. Not done: Spotify's listen along and connect buttons, right to left text in bios (gpui has no bidi), logos for services beyond the 22 Discord lists
 - [x] Private user notes (`/users/@me/notes/:id`) and friend nicknames (`PATCH /users/@me/relationships/:id`), both done; `USER_NOTE_UPDATE` and `RELATIONSHIP_UPDATE` from other devices are not handled yet
 
