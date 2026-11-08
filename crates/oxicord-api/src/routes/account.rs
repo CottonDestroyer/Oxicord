@@ -105,6 +105,17 @@ impl ApiClient {
         .await
     }
 
+    /// Notification center items for the "For You" inbox tab.
+    pub async fn notification_center_items(&self) -> Result<Vec<serde_json::Value>, ApiError> {
+        self.json(
+            Method::GET,
+            "/users/@me/notification-center/items",
+            "GET /users/@me/notification-center/items",
+            None,
+        )
+        .await
+    }
+
     pub async fn login_sessions(&self) -> Result<Vec<LoginSession>, ApiError> {
         let response: SessionsResponse = self
             .json(Method::GET, "/auth/sessions", "GET /auth/sessions", None)

@@ -468,6 +468,10 @@ impl Session {
         cx.notify();
     }
 
+    pub fn request_notification_center(&mut self, backend: &Backend, cx: &mut Context<Self>) {
+        self.request_account(backend, AccountRequest::LoadNotificationCenter, cx);
+    }
+
     pub fn apply_mentions(&mut self, result: Result<Vec<Message>, String>, cx: &mut Context<Self>) {
         self.mentions = match result {
             Ok(list) => Load::Ready(list),
@@ -794,6 +798,7 @@ impl Session {
             AccountRequest::LoadApps | AccountRequest::RevokeApp(_) => self.account.apps = Load::Loading,
             AccountRequest::LoadConnections => self.account.connections = Load::Loading,
             AccountRequest::LoadSessions => self.account.sessions = Load::Loading,
+            AccountRequest::LoadNotificationCenter => self.account.notification_center = Load::Loading,
             AccountRequest::SetAvatar(_) | AccountRequest::SetBanner(_) => self.account.details = Load::Loading,
             _ => {}
         }

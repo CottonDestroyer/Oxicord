@@ -42,6 +42,7 @@ pub enum AccountRequest {
     LoadConnections,
     LoadSessions,
     LogoutOtherSessions,
+    LoadNotificationCenter,
     SetDisplayName(String),
     EditProfile { bio: String, pronouns: String },
     SetAvatar(Option<String>),
@@ -56,6 +57,7 @@ pub enum AccountEvent {
     Apps(Result<Vec<AuthorizedApp>, String>),
     Connections(Result<Vec<Connection>, String>),
     Sessions(Result<Vec<LoginSession>, String>),
+    NotificationCenter(Result<Vec<serde_json::Value>, String>),
 }
 
 #[derive(Default)]
@@ -65,6 +67,7 @@ pub struct AccountState {
     pub apps: Load<Vec<AuthorizedApp>>,
     pub connections: Load<Vec<Connection>>,
     pub sessions: Load<Vec<LoginSession>>,
+    pub notification_center: Load<Vec<serde_json::Value>>,
 }
 
 impl AccountState {
@@ -83,6 +86,7 @@ impl AccountState {
             AccountEvent::Apps(r) => self.apps = Load::from_result(r),
             AccountEvent::Connections(r) => self.connections = Load::from_result(r),
             AccountEvent::Sessions(r) => self.sessions = Load::from_result(r),
+            AccountEvent::NotificationCenter(r) => self.notification_center = Load::from_result(r),
         }
     }
 
