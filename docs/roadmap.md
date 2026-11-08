@@ -25,7 +25,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Forward a message
 - [x] Who reacted, tooltip done (`GET /channels/:id/messages/:id/reactions/:emoji`), super reactions
 - [x] Polls: create, voters modal, end early (`/polls/:id/expire`)
-- [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text field plumbed through API and bridge, UI input pending
+- [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text field plumbed through API and bridge, UI input pending (blocked: needs per-file input state)
 - [x] Syntax highlighting in code blocks
 - [x] Reply ping toggle (`allowed_mentions.replied_user`)
 - [x] Avatar and banner upload (account and server profile) (`PATCH /users/@me`, `PATCH /guilds/:id/members/@me`)
@@ -34,23 +34,23 @@ Gateway events we ignore today, so things go out of date until a restart.
 
 ## Phase 3: servers you can't fully use yet
 
-- [ ] Rules screening (`/guilds/:id/member-verification`), onboarding, welcome screen
+- [ ] Rules screening (`/guilds/:id/member-verification`), onboarding, welcome screen (blocked: member-verification payload/live capture not available in this session)
 - [x] Member moderation: kick, ban, timeout, roles, in the three dots menu of the profile cards (not the right click menu), each gated on its own permission. Kick has no confirmation yet and there is no role hierarchy check
 
 ## Phase 4: bots
 
-- [ ] Modals opened by components (`INTERACTION_MODAL_CREATE`)
+- [ ] Modals opened by components (`INTERACTION_MODAL_CREATE`) (blocked: interaction framework not implemented)
 - [ ] Slash command option autocomplete (`APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE`)
 - [ ] Thinking and failed states after a click (`INTERACTION_SUCCESS` / `INTERACTION_FAILURE`)
 
 ## Phase 5: DMs, inbox, events
 
-- [ ] Message requests and the spam inbox
+- [ ] Message requests and the spam inbox (blocked: inbox rework needed)
 - [x] Saved messages (`/users/@me/saved-messages`): bookmark and remove from the message menu, listed in the inbox with reminders and scheduled messages
 - [ ] Inbox "For You" tab (notification center)
 - [ ] Scheduled events: list, RSVP, live updates (`GUILD_SCHEDULED_EVENT_*`)
 - [x] Create a server (`POST /guilds`): API, bridge and UI dialog wired, sends from the server rail plus button
-- [ ] Announcement channels: publish (`/crosspost`), follow (`/followers`)
+- [ ] Announcement channels: publish done, follow (`/followers`) pending (needs channel picker dialog)
 
 ## Phase 6: account and admin
 
