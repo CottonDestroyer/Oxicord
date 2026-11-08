@@ -27,8 +27,6 @@ pub struct EffectView {
     effect: ProfileEffect,
     /// How wide the card is, which the layers are scaled to.
     card_width: f32,
-    /// Rounded top corners applied to the layers so they match the card.
-    rounded_top: f32,
     /// When the effect began. It waits until every layer is ready, so a
     /// layer that plays once is not half over when its pictures arrive.
     started: Option<Instant>,
@@ -38,9 +36,9 @@ pub struct EffectView {
 }
 
 impl EffectView {
-    pub fn new(media: Entity<Media>, effect: ProfileEffect, card_width: f32, rounded_top: f32, cx: &mut Context<Self>) -> Self {
+    pub fn new(media: Entity<Media>, effect: ProfileEffect, card_width: f32, cx: &mut Context<Self>) -> Self {
         let watch = cx.observe(&media, |_, _, cx| cx.notify());
-        Self { media, effect, card_width, rounded_top, started: None, wake: None, _media: watch }
+        Self { media, effect, card_width, started: None, wake: None, _media: watch }
     }
 
     /// Asks for every layer, and says whether all are settled. A layer that
@@ -77,7 +75,7 @@ impl EffectView {
 impl Render for EffectView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let scale = self.card_width / CANVAS_WIDTH;
-        let root = div().absolute().top_0().left_0().size_full();
+        let root = div().absolute().top_0().left_0().size_full().overflow_hidden();
 
         // Anyone who turned motion off gets the one still picture.
         if cx.reduce_motion() {
@@ -87,7 +85,7 @@ impl Render for EffectView {
                 .as_deref()
                 .and_then(|url| self.media.update(cx, |media, _| media.get(url)));
             return root.children(still.map(|image| {
-                img(ImageSource::Image(image)).w(px(self.card_width)).rounded_t(px(self.rounded_top)).object_fit(ObjectFit::Contain)            }));
+                img(ImageSource::Image(image)).w(px(self.card_width)).object_fit(ObjectFit::Contain)            }));
         }
 
         if self.started.is_none() {
@@ -122,7 +120,6 @@ impl Render for EffectView {
                     .top(px(layer.y as f32 * scale))
                     .w(px(width))
                     .h(px(height))
-                    .rounded_t(px(self.rounded_top))
                     .object_fit(ObjectFit::Fill),
             );
         }
