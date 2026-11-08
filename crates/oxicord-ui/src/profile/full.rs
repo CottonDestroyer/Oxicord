@@ -389,7 +389,6 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, effect: 
         .flex()
         .flex_col()
         .rounded_t(px(16.))
-        .overflow_hidden()
         .bg(rgb(theme::BG_PANEL))
         // Effect covers the whole card, clipped to its rounded corners.
         .children(effect.clone().map(|e| {
@@ -417,7 +416,7 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, effect: 
                 .top_0()
                 .left_0()
                 .w(px(400.))
-                .h_full()
+                .h(px(900.))
                 .overflow_hidden()
                 .rounded_t(px(16.))
                 .child(
