@@ -24,7 +24,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Set your own custom status (dialog from the account popout, saved in the settings blob)
 - [x] Forward a message
 - [x] Who reacted, tooltip done (`GET /channels/:id/messages/:id/reactions/:emoji`), super reactions
-- [ ] Polls: create, list voters (`/polls/:id/answers/:id`), end early (`/polls/:id/expire`)
+- [x] Polls: create, list voters API, end early (`/polls/:id/expire`); voters modal UI pending
 - [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text field plumbed through API and bridge, UI input pending
 - [x] Syntax highlighting in code blocks
 - [x] Reply ping toggle (`allowed_mentions.replied_user`)
