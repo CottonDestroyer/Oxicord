@@ -151,6 +151,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
             ping_reply,
             files,
             stickers,
+            poll,
         } => {
             tokio::spawn(async move {
                 let message = SendMessage {
@@ -164,6 +165,19 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     }),
                     sticker_ids: stickers.iter().map(ToString::to_string).collect(),
                     allowed_mentions: (reply_to.is_some() && !ping_reply).then(AllowedMentions::without_reply_ping),
+                    poll: poll.map(|(q, answers, duration, multiselect)| {
+                        oxicord_api::routes::PollCreate {
+                            question: oxicord_api::routes::PollMedia { text: q },
+                            answers: answers
+                                .into_iter()
+                                .map(|t| oxicord_api::routes::PollAnswerCreate {
+                                    poll_media: oxicord_api::routes::PollMedia { text: t },
+                                })
+                                .collect(),
+                            duration,
+                            multiselect,
+                        }
+                    }),
                 };
                 let sent = if files.is_empty() {
                     api.send_message(channel, &message).await

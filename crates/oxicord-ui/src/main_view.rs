@@ -1374,6 +1374,7 @@ impl MainView {
                 ping_reply: true,
                 files: Vec::new(),
                 stickers: Vec::new(),
+                poll: None,
             }),
             None => {
                 self.pending_card_message = Some((user, text));
@@ -1408,6 +1409,7 @@ impl MainView {
             ping_reply: true,
             files: Vec::new(),
             stickers: Vec::new(),
+            poll: None,
         });
         true
     }
