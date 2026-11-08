@@ -1427,20 +1427,47 @@ impl MainView {
             .into_iter()
             .filter(|a| !matches!(a.label, "Add Friend" | "Accept" | "Unblock"))
             .collect();
-        let mut entries: Vec<crate::popup::Entry> = actions
-            .iter()
-            .map(|a| if a.danger { crate::popup::Entry::danger(a.label, a.glyph) } else { crate::popup::Entry::item(a.label, a.glyph) })
-            .collect();
-        if !entries.is_empty() {
+        // View Full Profile goes first, as the official client has it.
+        let view_full_index = 0usize;
+        let mut entries: Vec<crate::popup::Entry> = vec![crate::popup::Entry::item("View Full Profile", "user")];
+        let actions_start = if actions.is_empty() {
+            // No actions: separator then Copy User ID.
             entries.push(crate::popup::Entry::Separator);
-        }
+            None
+        } else {
+            entries.push(crate::popup::Entry::Separator);
+            let start = entries.len();
+            entries.extend(actions.iter().map(|a| {
+                if a.danger {
+                    crate::popup::Entry::danger(a.label, a.glyph)
+                } else {
+                    crate::popup::Entry::item(a.label, a.glyph)
+                }
+            }));
+            entries.push(crate::popup::Entry::Separator);
+            Some(start)
+        };
         let copy = entries.len();
         entries.push(crate::popup::Entry::item("Copy User ID", "hash"));
+        let view = cx.entity().downgrade();
         let pick = Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
+            if index == view_full_index {
+                if let Some(view) = view.upgrade() {
+                    view.update(cx, |this, cx| this.show_profile(user, guild, None, true, cx));
+                }
+                return;
+            }
             if index == copy {
                 cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string()));
-            } else if let Some(action) = actions.get(index) {
-                (action.run)(window, cx);
+                return;
+            }
+            if let Some(start) = actions_start {
+                let ai = index.checked_sub(start);
+                if let Some(ai) = ai {
+                    if ai < actions.len() {
+                        (actions[ai].run)(window, cx);
+                    }
+                }
             }
         });
         self.popup_open = true;

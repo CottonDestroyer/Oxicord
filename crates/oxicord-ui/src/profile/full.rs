@@ -114,6 +114,10 @@ pub fn full(
         .bg(rgb(0x000000))
         .border_1()
         .border_color(rgb(theme::BORDER))
+        // The effect starts at the top of the modal, behind everything.
+        .children(card.effect.clone().map(|e| {
+            div().absolute().top(px(0.)).left(px(48.)).w(px(400.)).child(e)
+        }))
         .child(
             div()
                 .relative()
@@ -388,8 +392,6 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
         .rounded_t(px(16.))
         .overflow_hidden()
         .bg(rgb(theme::BG_PANEL))
-        // The effect sits over the card's fill but under its words.
-        .children(card.effect.clone())
         .child(
             div()
                 .relative()
