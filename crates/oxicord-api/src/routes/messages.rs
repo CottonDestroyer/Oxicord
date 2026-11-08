@@ -233,6 +233,17 @@ impl ApiClient {
         )
         .await
     }
+
+    /// End a poll early, freezing its results.
+    pub async fn expire_poll(&self, channel: Snowflake, message: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            &format!("/channels/{channel}/polls/{message}/expire"),
+            &format!("POST /channels/{channel}/polls/{message}/expire"),
+            None,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]

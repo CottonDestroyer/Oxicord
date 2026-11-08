@@ -349,6 +349,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::EndPoll { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.expire_poll(channel, message).await {
+                    notify(&events, "end that poll", &err).await;
+                }
+            });
+        }
         Command::FollowChannel { source, target } => {
             tokio::spawn(async move {
                 if let Err(err) = api.follow_channel(source, target).await {

@@ -145,6 +145,11 @@ pub enum Command {
         channel: Snowflake,
         message: Snowflake,
     },
+    /// End a poll early.
+    EndPoll {
+        channel: Snowflake,
+        message: Snowflake,
+    },
     /// Make an announcement channel's messages arrive in another channel.
     FollowChannel {
         source: Snowflake,
