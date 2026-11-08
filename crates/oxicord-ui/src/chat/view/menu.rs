@@ -196,13 +196,13 @@ mod tests {
 
     #[test]
     fn your_own_message_can_be_edited_and_deleted() {
-        let list = choices(&allowed(true, true), false);
+        let list = choices(&allowed(true, true), false, false);
         assert!(list.contains(&Choice::Edit) && list.contains(&Choice::Delete));
     }
 
     #[test]
     fn someone_elses_message_offers_neither() {
-        let list = choices(&allowed(false, false), false);
+        let list = choices(&allowed(false, false), false, false);
         assert!(!list.contains(&Choice::Edit) && !list.contains(&Choice::Delete));
         assert!(list.contains(&Choice::MarkUnread) && list.contains(&Choice::CopyId));
     }
@@ -211,6 +211,6 @@ mod tests {
     fn the_pin_entry_reflects_the_current_state() {
         let mut a = allowed(false, false);
         a.pin = Some(true);
-        assert!(choices(&a, false).contains(&Choice::Pin(true)));
+        assert!(choices(&a, false, false).contains(&Choice::Pin(true)));
     }
 }
