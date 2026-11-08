@@ -665,6 +665,14 @@ impl SettingsView {
             .child(title("Devices"))
             .child(blurb("Where your account is signed in. Sign out of other devices from Discord's own settings."))
             .child(group("Sessions", rows))
+            .child(div().mt_3().child(button("logout-others", "Log Out Other Devices", Tone::Danger, cx.listener(
+                |this, _: &ClickEvent, _, cx| {
+                    let backend = this.backend.clone();
+                    this.session.update(cx, |s, cx| {
+                        s.request_account(&backend, AccountRequest::LogoutOtherSessions, cx);
+                    });
+                },
+            ))))
             .into_any_element()
     }
 

@@ -860,6 +860,12 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
         }
         AccountRequest::LoadConnections => say(AccountEvent::Connections(api.connections().await.map_err(text))).await,
         AccountRequest::LoadSessions => say(AccountEvent::Sessions(api.login_sessions().await.map_err(text))).await,
+        AccountRequest::LogoutOtherSessions => {
+            if let Err(err) = api.logout_other_sessions().await {
+                notify(events, "log out other devices", &err).await;
+            }
+            say(AccountEvent::Sessions(api.login_sessions().await.map_err(text))).await;
+        }
         AccountRequest::SetDisplayName(name) => {
             if let Err(err) = api.set_display_name(&name).await {
                 notify(events, "change your display name", &err).await;

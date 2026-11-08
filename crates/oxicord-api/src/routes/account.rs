@@ -111,4 +111,10 @@ impl ApiClient {
             .await?;
         Ok(response.user_sessions)
     }
+
+    /// Logs out every session except the current one.
+    pub async fn logout_other_sessions(&self) -> Result<(), ApiError> {
+        self.empty(Method::POST, "/auth/sessions/logout", "POST /auth/sessions/logout", None)
+            .await
+    }
 }
