@@ -623,12 +623,19 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                             .map_or(0, |t| t.subsec_nanos() as usize);
                         tokio::spawn(async move { api.profile_effect(sku, pick).await.ok().flatten() })
                     });
+                    let frame = profile.frame.map(|sku| {
+                        let api = api.clone();
+                        tokio::spawn(async move { api.profile_frame(sku).await.ok().flatten() })
+                    });
                     if let Ok(note) = api.user_note(user).await {
                         profile.note = note;
                     }
                     profile.games = games.await.unwrap_or_default();
                     if let Some(effect) = effect {
                         profile.effect_art = effect.await.ok().flatten();
+                    }
+                    if let Some(frame) = frame {
+                        profile.frame_art = frame.await.ok().flatten();
                     }
                 }
                 let _ = events.send(Event::Profile { user, result }).await;

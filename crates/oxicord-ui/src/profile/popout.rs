@@ -2,7 +2,7 @@
 
 use gpui_kit::{
     AnyElement, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point,
-    StatefulInteractiveElement as _, Styled as _, Window, anchored, div, point, px, rgb, rgba,
+    StatefulInteractiveElement as _, Styled as _, Window, anchored, div, img, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::component::input::Input;
@@ -91,6 +91,44 @@ pub fn popout(
     let (width, height) = (f32::from(viewport.width), f32::from(viewport.height));
     let (x, y) = place(anchor.map(|p| (f32::from(p.x), f32::from(p.y))), width);
 
+    // The frame's layers, split by depth so the back ones sit behind the card.
+    let (mut frame_back, mut frame_front) = (Vec::new(), Vec::new());
+    if let Some(frame) = &card.frame {
+        let scale = WIDTH / frame.inner_width as f32;
+        let soh = frame.overflow_horizontal as f32 * scale;
+        let sot = frame.overflow_top as f32 * scale;
+        let sob = frame.overflow_bottom as f32 * scale;
+        let frame_width = WIDTH + 2.0 * soh;
+        for layer in &frame.layers {
+            if layer.kind != "staple" {
+                continue;
+            }
+            let url = format!(
+                "https://cdn.discordapp.com/media/v1/collectibles-shop/{}/{}",
+                frame.sku, layer.id
+            );
+            let url = format!("{}/static", url);
+            let Some(image) = media.update(cx, |m, _| m.get(&url)) else {
+                continue;
+            };
+            let mut el = div()
+                .absolute()
+                .left(px(-soh))
+                .w(px(frame_width))
+                .child(img(gpui_kit::ImageSource::Image(image)).w(px(frame_width)));
+            el = match layer.anchor.as_str() {
+                "top" => el.top(px(-sot)),
+                "bottom" => el.bottom(px(-sob)),
+                _ => el.top_0(),
+            };
+            if layer.order == "back" {
+                frame_back.push(el);
+            } else {
+                frame_front.push(el);
+            }
+        }
+    }
+
     let add = card.actions.iter().find(|a| matches!(a.label, "Add Friend" | "Accept")).map(|a| a.run.clone());
     let round_button = |id: &'static str, glyph: &'static str| {
         div()
@@ -151,7 +189,7 @@ pub fn popout(
     if let Some(tag) = &card.tag {
         who = who.child(tag_chip(tag, media, cx));
     }
-    who = who.children(badge_strip(&card, media, cx));
+    who = who.children(badge_strip(&card, media, 6, cx));
 
     let mut body = div()
         .id("popout-body")
@@ -415,23 +453,30 @@ pub fn popout(
         .child(
             anchored().position(point(px(x), px(y))).snap_to_window_with_margin(px(MARGIN)).child(
             div()
-                .id("popout-card")
-                .occlude()
-                .w(px(WIDTH))
-                .max_h(px((height - 2. * MARGIN).max(240.)))
-                .flex()
-                .flex_col()
-                .gap(px(8.))
-                .rounded(px(8.))
-                .bg(rgb(theme::BG_PANEL))
-                .border_1()
-                .border_color(rgba(0xffffff14))
-                .shadow_lg()
-                .overflow_hidden()
-                .child(header)
-                .child(body)
-                .child(div().flex_none().px(px(16.)).pb(px(12.)).child(footer))
-                .children(card.effect.clone()),
+                .relative()
+                .children(frame_back)
+                .child(
+                    div()
+                        .id("popout-card")
+                        .occlude()
+                        .w(px(WIDTH))
+                        .max_h(px((height - 2. * MARGIN).max(240.)))
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .rounded(px(8.))
+                        .bg(rgb(theme::BG_PANEL))
+                        .border_1()
+                        .border_color(rgba(0xffffff14))
+                        .shadow_lg()
+                        .overflow_hidden()
+                        // The effect sits over the card's fill but under its words.
+                        .children(card.effect.clone())
+                        .child(header)
+                        .child(body)
+                        .child(div().flex_none().px(px(16.)).pb(px(12.)).child(footer)),
+                )
+                .children(frame_front),
             ),
         )
         .into_any_element()

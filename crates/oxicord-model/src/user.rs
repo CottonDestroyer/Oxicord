@@ -165,6 +165,10 @@ pub struct Profile {
     pub effect: Option<Snowflake>,
     /// What that effect looks like, filled in after a lookup.
     pub effect_art: Option<crate::ProfileEffect>,
+    /// The shop listing of the frame around their profile.
+    pub frame: Option<Snowflake>,
+    /// What that frame looks like, filled in after a lookup.
+    pub frame_art: Option<crate::ProfileFrame>,
 }
 
 impl Profile {
@@ -284,6 +288,8 @@ struct ProfileFields {
 
 #[derive(Deserialize)]
 struct EquippedEffect {
+    /// The catalog calls it `sku_id`; older responses called it `id`.
+    #[serde(alias = "sku_id")]
     id: Snowflake,
 }
 
@@ -328,6 +334,10 @@ impl From<RawProfile> for Profile {
                 .as_ref()
                 .map(|e| e.id)
                 .or_else(|| s.collectibles.iter().find(|item| item.kind == 1).map(|item| item.sku_id))
+        });
+        // The server's own frame wins, then the one everywhere.
+        let frame = sources.iter().flatten().find_map(|s| {
+            s.collectibles.iter().find(|item| item.kind == 3).map(|item| item.sku_id)
         });
         let first = |field: fn(&ProfileFields) -> Option<&String>| {
             sources
@@ -385,6 +395,8 @@ impl From<RawProfile> for Profile {
             games: Default::default(),
             effect,
             effect_art: None,
+            frame,
+            frame_art: None,
             note: String::new(),
         }
     }
@@ -501,10 +513,28 @@ mod tests {
     }
 
     #[test]
+    fn a_worn_item_map_on_the_user_does_not_lose_the_profile() {
+        // The `user` object lists worn cosmetics as a map, while
+        // `user_profile` lists the same key as a list. Reading the map as a
+        // list used to fail the whole profile and show an empty card.
+        let p: Profile = serde_json::from_str(
+            r#"{"user":{"id":"1","collectibles":{"nameplate":{"sku_id":"8"}}},
+                "user_profile":{"bio":"hello","collectibles":[{"type":1,"sku_id":"9"}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(p.bio, "hello");
+        assert_eq!(p.effect, Some(Snowflake(9)));
+    }
+
+    #[test]
     fn the_effect_is_read_from_either_place_it_is_sent() {
         let named: Profile =
             serde_json::from_str(r#"{"user_profile":{"profile_effect":{"id":"77","expires_at":null}}}"#).unwrap();
         assert_eq!(named.effect, Some(Snowflake(77)));
+
+        let sku: Profile =
+            serde_json::from_str(r#"{"user_profile":{"profile_effect":{"sku_id":"78","expires_at":null}}}"#).unwrap();
+        assert_eq!(sku.effect, Some(Snowflake(78)));
 
         let worn: Profile = serde_json::from_str(
             r#"{"user_profile":{"profile_effect":null,"collectibles":[{"type":3,"sku_id":"5"},{"type":1,"sku_id":"88"}]}}"#,
@@ -522,4 +552,13 @@ mod tests {
         let none: Profile = serde_json::from_str(r#"{"user_profile":{"profile_effect":null,"collectibles":[]}}"#).unwrap();
         assert_eq!(none.effect, None);
     }
+
+#[test]
+fn a_frame_is_read_from_collectibles() {
+    let framed: Profile = serde_json::from_str(
+        r#"{"user_profile":{"collectibles":[{"type":3,"sku_id":"99"}]}}"#,
+    )
+    .unwrap();
+    assert_eq!(framed.frame, Some(Snowflake(99)));
+}
 }

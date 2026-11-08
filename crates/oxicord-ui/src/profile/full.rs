@@ -2,7 +2,7 @@
 
 use gpui_kit::{
     AnyElement, Div, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb, rgba,
+    StatefulInteractiveElement as _, Styled as _, Window, div, img, px, rgb, rgba,
 };
 
 use super::{
@@ -58,6 +58,43 @@ pub fn full(
     let (width, height) = (f32::from(viewport.width), f32::from(viewport.height));
     let tab = visible_tab(&card, tab);
 
+    let (mut frame_back, mut frame_front) = (Vec::new(), Vec::new());
+    if let Some(frame) = &card.frame {
+        let card_width = 400.;
+        let scale = card_width / frame.inner_width as f32;
+        let soh = frame.overflow_horizontal as f32 * scale;
+        let sot = frame.overflow_top as f32 * scale;
+        let sob = frame.overflow_bottom as f32 * scale;
+        let frame_width = card_width + 2.0 * soh;
+        for layer in &frame.layers {
+            if layer.kind != "staple" {
+                continue;
+            }
+            let url = format!(
+                "https://cdn.discordapp.com/media/v1/collectibles-shop/{}/{}",
+                frame.sku, layer.id
+            );
+            let url = format!("{}/static", url);
+            let Some(image) = media.update(cx, |m, _| m.get(&url)) else {
+                continue;
+            };
+            let mut el = div()
+                .absolute()
+                .left(px(-soh))
+                .w(px(frame_width))
+                .child(img(gpui_kit::ImageSource::Image(image)).w(px(frame_width)));
+            el = match layer.anchor.as_str() {
+                "top" => el.top(px(-sot)),
+                "bottom" => el.bottom(px(-sob)),
+                _ => el.top_0(),
+            };
+            if layer.order == "back" {
+                frame_back.push(el);
+            } else {
+                frame_front.push(el);
+            }
+        }
+    }
     let left = left_column(&card, handlers, media, window, cx);
     let right = right_column(&card, handlers, tab, media, cx);
 
@@ -77,7 +114,13 @@ pub fn full(
         .bg(rgb(0x000000))
         .border_1()
         .border_color(rgb(theme::BORDER))
-        .child(left)
+        .child(
+            div()
+                .relative()
+                .children(frame_back)
+                .child(left)
+                .children(frame_front),
+        )
         .child(right)
         .child(
             div()
@@ -259,7 +302,7 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
     if let Some(tag) = &card.tag {
         who = who.child(tag_chip(tag, media, cx));
     }
-    who = who.children(badge_strip(card, media, cx));
+    who = who.children(badge_strip(card, media, 6, cx));
 
     // Our own profile gets Edit Profile, anyone else the friend button, the
     // message button and a menu.
@@ -291,6 +334,8 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
         .flex()
         .flex_col()
         .gap(px(24.))
+        // Opaque so the effect stays in the header behind the banner.
+        .bg(rgb(theme::BG_PANEL))
         .child(div().flex().flex_col().child(display_name(card, 24., 32.)).child(who))
         .child(buttons);
 
@@ -343,6 +388,8 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
         .rounded_t(px(16.))
         .overflow_hidden()
         .bg(rgb(theme::BG_PANEL))
+        // The effect sits over the card's fill but under its words.
+        .children(card.effect.clone())
         .child(
             div()
                 .relative()
@@ -358,7 +405,6 @@ fn left_column(card: &Card, handlers: &Handlers, media: &Entity<Media>, window: 
                 ),
         )
         .child(body)
-        .children(card.effect.clone())
 }
 
 // ---- right: tabs --------------------------------------------------------
