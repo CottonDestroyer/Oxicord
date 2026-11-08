@@ -857,6 +857,21 @@ impl Session {
                     backend.send(Command::LoadPins(channel));
                 }
             }
+            // Our own note about someone changed on another device.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "USER_NOTE_UPDATE" => {
+                #[derive(serde::Deserialize)]
+                struct NoteUpdate {
+                    id: Snowflake,
+                    #[serde(default)]
+                    note: String,
+                }
+                if let Ok(update) = serde_json::from_value::<NoteUpdate>(data.clone()) {
+                    if let Some(profile) = self.profiles.get_mut(&update.id) {
+                        profile.note = update.note;
+                        cx.notify();
+                    }
+                }
+            }
             // The app never answered a click or command.
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, .. }) if name == "INTERACTION_FAILURE" => {
                 self.set_notice(Some("That interaction failed. The app didn't respond.".into()), cx);
