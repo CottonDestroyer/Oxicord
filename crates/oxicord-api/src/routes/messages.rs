@@ -59,6 +59,8 @@ pub struct ReplyTarget {
 pub struct Upload {
     pub filename: String,
     pub data: std::sync::Arc<Vec<u8>>,
+    /// Alt text for the attachment, shown to screen readers.
+    pub description: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -135,7 +137,15 @@ impl ApiClient {
         payload["attachments"] = files
             .iter()
             .enumerate()
-            .map(|(id, f)| json!({ "id": id, "filename": f.filename }))
+            .map(|(id, f)| {
+                let mut entry = json!({ "id": id, "filename": f.filename });
+                if let Some(desc) = &f.description
+                    && !desc.trim().is_empty()
+                {
+                    entry["description"] = json!(desc);
+                }
+                entry
+            })
             .collect();
         let payload = payload.to_string();
 

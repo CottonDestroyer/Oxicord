@@ -25,7 +25,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Forward a message
 - [x] Who reacted, tooltip done (`GET /channels/:id/messages/:id/reactions/:emoji`), super reactions
 - [ ] Polls: create, list voters (`/polls/:id/answers/:id`), end early (`/polls/:id/expire`)
-- [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text still missing
+- [x] Uploads: mark as spoiler (`SPOILER_` filename); alt text field plumbed through API and bridge, UI input pending
 - [x] Syntax highlighting in code blocks
 - [x] Reply ping toggle (`allowed_mentions.replied_user`)
 - [ ] Avatar and banner upload, (server nickname done) (`PATCH /guilds/:id/members/@me`), server profile
@@ -49,7 +49,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Saved messages (`/users/@me/saved-messages`): bookmark and remove from the message menu, listed in the inbox with reminders and scheduled messages
 - [ ] Inbox "For You" tab (notification center)
 - [ ] Scheduled events: list, RSVP, live updates (`GUILD_SCHEDULED_EVENT_*`)
-- [ ] Create a server (`POST /guilds`): API call and bridge command exist, nothing in the UI sends it yet
+- [x] Create a server (`POST /guilds`): API, bridge and UI dialog wired, sends from the server rail plus button
 - [ ] Announcement channels: publish (`/crosspost`), follow (`/followers`)
 
 ## Phase 6: account and admin
