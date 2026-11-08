@@ -115,8 +115,17 @@ pub fn full(
         .pl(px(48.))
         .rounded(px(16.))
         .bg(rgb(0x000000))
-        .border_1()
-        .border_color(rgb(theme::BORDER))
+        .child(
+            // Border behind the frames so it never cuts through the clouds.
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .rounded(px(16.))
+                .border_1()
+                .border_color(rgb(theme::BORDER)),
+        )
         .child(
             div()
                 .relative()
