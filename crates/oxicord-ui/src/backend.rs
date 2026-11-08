@@ -140,6 +140,16 @@ pub enum Command {
         message: Snowflake,
         answers: Vec<u32>,
     },
+    /// Publish an announcement message to every channel following this one.
+    CrosspostMessage {
+        channel: Snowflake,
+        message: Snowflake,
+    },
+    /// Make an announcement channel's messages arrive in another channel.
+    FollowChannel {
+        source: Snowflake,
+        target: Snowflake,
+    },
     /// Change notification settings for a server (see `menus::settings_body`).
     PatchGuildSettings {
         guild: Snowflake,

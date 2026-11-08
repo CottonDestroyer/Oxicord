@@ -342,6 +342,20 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::CrosspostMessage { channel, message } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.crosspost_message(channel, message).await {
+                    notify(&events, "publish that message", &err).await;
+                }
+            });
+        }
+        Command::FollowChannel { source, target } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.follow_channel(source, target).await {
+                    notify(&events, "follow that channel", &err).await;
+                }
+            });
+        }
         Command::PatchGuildSettings { guild, body } => {
             tokio::spawn(async move {
                 if let Err(err) = api.patch_guild_settings(guild, &body).await {
