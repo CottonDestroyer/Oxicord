@@ -218,6 +218,21 @@ impl ApiClient {
         )
         .await
     }
+
+    /// Publish an announcement message to every channel following this one.
+    pub async fn crosspost_message(
+        &self,
+        channel: Snowflake,
+        message: Snowflake,
+    ) -> Result<Message, ApiError> {
+        self.json(
+            Method::POST,
+            &format!("/channels/{channel}/messages/{message}/crosspost"),
+            &format!("POST /channels/{channel}/messages/{message}/crosspost"),
+            None,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]

@@ -14,4 +14,19 @@ impl ApiClient {
         )
         .await
     }
+
+    /// Make an announcement channel's messages arrive in `target`.
+    pub async fn follow_channel(
+        &self,
+        source: Snowflake,
+        target: Snowflake,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            &format!("/channels/{source}/followers"),
+            &format!("POST /channels/{source}/followers"),
+            Some(&serde_json::json!({ "webhook_channel_id": target.to_string() })),
+        )
+        .await
+    }
 }

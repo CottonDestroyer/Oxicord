@@ -22,6 +22,7 @@ pub(super) enum Choice {
     Bookmark(bool),
     Delete,
     CopyId,
+    Publish,
     Separator,
 }
 
@@ -42,13 +43,14 @@ impl Choice {
             Choice::Bookmark(false) => Entry::item("Bookmark Message", "bookmark"),
             Choice::Delete => Entry::danger("Delete Message", "trash"),
             Choice::CopyId => Entry::item("Copy Message ID", "hash"),
+            Choice::Publish => Entry::item("Publish", "megaphone"),
             Choice::Separator => Entry::Separator,
         }
     }
 }
 
 /// What the menu offers for a message, in the order shown.
-pub(super) fn choices(allowed: &Allowed, bookmarked: bool) -> Vec<Choice> {
+pub(super) fn choices(allowed: &Allowed, bookmarked: bool, publish: bool) -> Vec<Choice> {
     let mut out = Vec::new();
     if allowed.react {
         out.push(Choice::React);
@@ -64,6 +66,9 @@ pub(super) fn choices(allowed: &Allowed, bookmarked: bool) -> Vec<Choice> {
         out.push(Choice::Reply);
     }
     out.push(Choice::Forward);
+    if publish {
+        out.push(Choice::Publish);
+    }
     out.push(Choice::MarkUnread);
     if allowed.thread {
         out.push(Choice::Thread);
@@ -87,7 +92,11 @@ impl ChatView {
         allowed: Allowed,
         cx: &mut Context<Self>,
     ) {
-        let list = choices(&allowed, self.session.read(cx).is_bookmarked(message));
+        let publish = self
+            .channel
+            .and_then(|c| self.session.read(cx).store.channel(c))
+            .is_some_and(|c| c.kind == oxicord_model::ChannelType::GuildAnnouncement);
+        let list = choices(&allowed, self.session.read(cx).is_bookmarked(message), publish);
         let entries = list.iter().map(|c| c.entry()).collect();
         let chat = cx.entity().downgrade();
         let pick = Rc::new(move |index: usize, window: &mut Window, cx: &mut gpui_kit::App| {
@@ -118,6 +127,7 @@ impl ChatView {
             Choice::CopyText => self.copy_text(message, cx),
             Choice::Reply => self.start_reply(message, window, cx),
             Choice::Forward => self.forward(message, cx),
+            Choice::Publish => self.backend.send(Command::CrosspostMessage { channel: self.channel.unwrap(), message }),
             Choice::MarkUnread => self.mark_unread(message, cx),
             Choice::Thread => self.start_thread(message, cx),
             Choice::CopyLink => self.copy_link(message, cx),
