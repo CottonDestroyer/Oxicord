@@ -41,7 +41,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreatePoll, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenForward, OpenGift, OpenInbox, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
