@@ -218,12 +218,18 @@ impl AppView {
                 self.session
                     .update(cx, |session, cx| session.apply_profile(user, result, cx));
             }
-            Event::PollVoters { message, answer: _, users } => {
+            Event::PollVoters { message: _, answer: _, users } => {
+                if let Screen::Main(main) = &self.screen {
+                    let users_clone = users.clone();
+                    main.update(cx, |main, _| {
+                        main.poll_voters = users_clone;
+                        main.poll_voters_open = true;
+                    });
+                }
                 self.session.update(cx, |session, cx| {
                     session.store.add_users(users);
                     cx.emit(oxicord_store::Changes::full());
                 });
-                let _ = message;
             }
             Event::DmOpened(result) => {
                 self.session.update(cx, |session, cx| session.apply_dm(result, cx));
