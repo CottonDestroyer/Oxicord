@@ -531,8 +531,14 @@ impl DispatchEvent {
             "PRESENCE_UPDATE" => Self::PresenceUpdate(de(data)?),
             "VOICE_STATE_UPDATE" => Self::VoiceStateUpdate(Box::new(de(data)?)),
             "VOICE_SERVER_UPDATE" => Self::VoiceServerUpdate(de(data)?),
-            "RELATIONSHIP_ADD" => Self::RelationshipAdd(Box::new(de(data)?)),
-            "RELATIONSHIP_REMOVE" => Self::RelationshipRemove(de(data)?),
+            "RELATIONSHIP_ADD" | "RELATIONSHIP_UPDATE" => {
+                let relationship = relationship_from_value(data)?;
+                Self::RelationshipAdd(Box::new(relationship))
+            }
+            "RELATIONSHIP_REMOVE" => {
+                let remove = relationship_remove_from_value(data)?;
+                Self::RelationshipRemove(remove)
+            }
             "USER_GUILD_SETTINGS_UPDATE" => Self::GuildSettingsUpdate(Box::new(de(data)?)),
             "MESSAGE_REACTION_REMOVE_ALL" | "MESSAGE_REACTION_REMOVE_EMOJI" => {
                 Self::ReactionsCleared(de(data)?)
@@ -558,6 +564,27 @@ impl DispatchEvent {
                 data,
             },
         })
+    }
+}
+
+/// Reads a relationship from either the bare object the gateway sometimes
+/// sends or the `{ "relationship": ... }` wrapper the web client normalizes.
+fn relationship_from_value(value: Value) -> Result<Relationship, serde_json::Error> {
+    if let Some(inner) = value.get("relationship") {
+        serde_json::from_value(inner.clone())
+    } else {
+        serde_json::from_value(value)
+    }
+}
+
+/// Like [`relationship_from_value`], but for the remove payload, which only
+/// needs the other person's id.
+fn relationship_remove_from_value(value: Value) -> Result<RelationshipRemove, serde_json::Error> {
+    if let Some(inner) = value.get("relationship") {
+        let id: Snowflake = serde_json::from_value(inner.get("id").cloned().unwrap_or(Value::Null))?;
+        Ok(RelationshipRemove { id })
+    } else {
+        serde_json::from_value(value)
     }
 }
 
