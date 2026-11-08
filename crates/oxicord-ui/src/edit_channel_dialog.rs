@@ -13,7 +13,7 @@ use oxicord_model::Snowflake;
 
 use crate::{
     admin::AdminRequest,
-    backend::Backend,
+    backend::{Backend, Command},
     profile::modal,
     session::Session,
     theme,
@@ -29,6 +29,7 @@ pub struct EditChannelDialog {
     channel: Option<Snowflake>,
     name: Entity<InputState>,
     topic: Entity<InputState>,
+    follow_target: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -36,6 +37,7 @@ impl EditChannelDialog {
     pub fn new(session: Entity<Session>, backend: Backend, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let name = cx.new(|cx| InputState::new(window, cx).placeholder("Channel name"));
         let topic = cx.new(|cx| InputState::new(window, cx).placeholder("Add a topic"));
+        let follow_target = cx.new(|cx| InputState::new(window, cx).placeholder("Target channel ID"));
         let subscriptions = vec![
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.subscribe(&name, |this, _, event: &InputEvent, cx| {
@@ -49,7 +51,7 @@ impl EditChannelDialog {
                 }
             }),
         ];
-        Self { session, backend, channel: None, name, topic, _subscriptions: subscriptions }
+        Self { session, backend, channel: None, name, topic, follow_target, _subscriptions: subscriptions }
     }
 
     /// Opens for `channel`, prefilling the name and topic the store has.
@@ -68,6 +70,9 @@ impl EditChannelDialog {
         });
         self.topic.update(cx, |input, cx| {
             input.set_value(topic, window, cx);
+        });
+        self.follow_target.update(cx, |input, cx| {
+            input.set_value(String::new(), window, cx);
         });
         cx.notify();
     }
@@ -150,6 +155,21 @@ impl Render for EditChannelDialog {
                     .gap(px(8.))
                     .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child("CHANNEL TOPIC"))
                     .child(Input::new(&self.topic)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child("FOLLOW TARGET CHANNEL ID"))
+                    .child(Input::new(&self.follow_target))
+                    .child(button("follow-channel", "Follow", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        let Some(channel) = this.channel else { return };
+                        let text = this.follow_target.read(cx).value().trim().to_owned();
+                        if let Ok(target) = text.parse::<u64>() {
+                            this.backend.send(Command::FollowChannel { source: channel, target: oxicord_model::Snowflake(target) });
+                        }
+                    }))),
             )
             .child(
                 div()

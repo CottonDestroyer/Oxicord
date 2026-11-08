@@ -50,7 +50,7 @@ Gateway events we ignore today, so things go out of date until a restart.
 - [x] Inbox "For You" tab (notification center items) (NOTIF_CENTER_ITEMS)
 - [ ] Scheduled events: list, RSVP, live updates (`GUILD_SCHEDULED_EVENT_*`) (blocked: scheduled event model/API needed)
 - [x] Create a server (`POST /guilds`): API, bridge and UI dialog wired, sends from the server rail plus button
-- [ ] Announcement channels: publish done, follow (`/followers`) pending (needs channel picker dialog)
+- [x] Announcement channels: publish and follow (`/crosspost`, `/followers`) (follow via channel id input)
 
 ## Phase 6: account and admin
 
