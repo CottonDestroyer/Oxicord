@@ -185,12 +185,18 @@ fn card(
 pub fn widget_picker(
     media: &Entity<Media>,
     on_favorite: Option<ClickRun>,
+    on_like: Option<ClickRun>,
     cx: &mut App,
 ) -> AnyElement {
     let mut on_favorite = on_favorite;
+    let mut on_like = on_like;
     let mut cards = Vec::new();
     for option in OPTIONS {
-        let click = if option.label == "Favorite Game" { on_favorite.take() } else { None };
+        let click = match option.label {
+            "Favorite Game" => on_favorite.take(),
+            "Games I Like" => on_like.take(),
+            _ => None,
+        };
         cards.push(card(option, media, click, cx));
     }
     let mut rest = cards.into_iter();

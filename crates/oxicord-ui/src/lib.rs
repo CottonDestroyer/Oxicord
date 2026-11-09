@@ -22,6 +22,7 @@ mod forward_dialog;
 mod gift_dialog;
 mod friend_nick_dialog;
 mod friends;
+mod games_i_like_editor;
 mod icons;
 mod invite_dialog;
 mod inbox;

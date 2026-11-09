@@ -237,7 +237,31 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       sent from the real account. Remaining differences: the card is the
       simple cover/name/comment row, not the live profile widget, and the
       pending card is lost when the modal reopens.
-- [ ] Games I Like widget editor, opened from its card in the picker
+- [x] Games I Like widget editor, opened from its card in the picker. The card
+      is the same 431 wide, radius 16, #17181b, 1 px
+      rgba(151,151,159,0.16) border, 12 16 16 padding, 8 gap. Header row 32
+      high (34 once a game is chosen): "Games I Like" 14 / 18 weight 500
+      #dededf, the "Add up to 20 games" subtitle 12 / 16 #9b9ca3 once games
+      are chosen, and a 32 by 32 Add Game button (radius 8, rgba(151,151,159,
+      0.12), 1 px border, 16 px plus). Empty body 64 high with the two line
+      "Add up to 20 games. This Widget won't show up on your profile until you
+      add at least 1 game." 12 / 16 #9b9ca3. Suggestions keep the 4 top
+      margin, 16 top padding, 8 gap, "Suggested for you" 12 / 16 weight 500
+      #9b9ca3 with an 18 px X, and six 56.16 by 74.89 covers 12 apart (Dark
+      and Darker, Chained Together, Sid Meier's Civilization VI, MapleStory,
+      Left 4 Dead 2, Call of Duty: MWIII). Chosen games form a 16 gap wrap of
+      87.25 by 116.33 covers, four per row, each with a 32 by 32 Remove Game
+      button 4 from its top right that appears on hover. Add Game opens the
+      same 398 by 354 Browse games popover, centred under the button and 8
+      below it (199 from the card's left, 53 from its top), with the 20 game
+      browse order captured live. Up to 20 games; the entry saves as
+      `played_games` through `WidgetsSubmission`. Verified at 1920 x 1080:
+      opening the card shows the empty editor and its suggestions, and
+      choosing Dark and Darker shows its 87.25 by 116.33 tile and the
+      "Add up to 20 games" subtitle. Nothing is sent from the real account.
+      Remaining differences: the Add Game popover keeps the same game list as
+      the empty state rather than dropping chosen games, and the suggestion
+      block does not rotate in new games as it does live.
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.
 - [x] `RELATIONSHIP_UPDATE`: friend nickname changed on another device. The

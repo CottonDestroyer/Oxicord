@@ -19,6 +19,7 @@ use crate::{
     backend::{Backend, Command},
     favorite_game_editor::FavoriteGameEditor,
     favorite_game_editor::SavedFavorite,
+    games_i_like_editor::GamesILikeEditor,
     icons::icon,
     media::{Media, avatar, decoration},
     profile::modal,
@@ -75,6 +76,11 @@ pub struct EditProfileModal {
     favorite_editor: Entity<FavoriteGameEditor>,
     /// The Favorite Game widget the board holds before it is saved.
     pending_favorite: Option<SavedFavorite>,
+    /// The board shows the Games I Like widget editor.
+    games_like_open: bool,
+    games_like_editor: Entity<GamesILikeEditor>,
+    /// The Games I Like widget the board holds before it is saved.
+    pending_like: Vec<(String, Option<String>)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -91,6 +97,10 @@ impl EditProfileModal {
         let favorite_editor = {
             let media = media.clone();
             cx.new(|cx| FavoriteGameEditor::new(media, window, cx))
+        };
+        let games_like_editor = {
+            let media = media.clone();
+            cx.new(|cx| GamesILikeEditor::new(media, window, cx))
         };
         let _subscriptions = vec![cx.observe(&session, |_, _, cx| cx.notify())];
         Self {
@@ -111,6 +121,9 @@ impl EditProfileModal {
             favorite_open: false,
             favorite_editor,
             pending_favorite: None,
+            games_like_open: false,
+            games_like_editor,
+            pending_like: Vec::new(),
             _subscriptions,
         }
     }
@@ -122,7 +135,10 @@ impl EditProfileModal {
         self.widget_picker = false;
         self.favorite_open = false;
         self.pending_favorite = None;
+        self.games_like_open = false;
+        self.pending_like.clear();
         self.favorite_editor.update(cx, |editor, cx| editor.opened(window, cx));
+        self.games_like_editor.update(cx, |editor, cx| editor.opened(window, cx));
         let me = self.session.read(cx).store.me().cloned();
         if let Some(me) = &me
             && !self.session.read(cx).profiles.contains_key(&me.id)
@@ -665,6 +681,10 @@ impl Render for EditProfileModal {
                 if submission.is_some() {
                     this.pending_favorite = this.favorite_editor.read(cx).saved(cx);
                 }
+                let like_submission = this.games_like_editor.read(cx).submission();
+                if like_submission.is_some() {
+                    this.pending_like = this.games_like_editor.read(cx).chosen();
+                }
                 cx.emit(CloseEditProfileModal);
             }))
             .child("Save changes");
@@ -923,6 +943,10 @@ impl Render for EditProfileModal {
                 (saved.name.to_owned(), saved.cover.map(str::to_owned), saved.comment.clone()),
             );
         }
+        for (name, cover) in self.pending_like.iter().rev() {
+            entries.retain(|(title, _, _)| title != name);
+            entries.insert(0, (name.clone(), cover.clone(), String::new()));
+        }
         let empty = entries.is_empty();
         let mut widgets = div().flex().flex_col().gap_3();
         for (title, cover, comment) in entries {
@@ -1012,8 +1036,13 @@ impl Render for EditProfileModal {
                                                     this.pending_favorite =
                                                         this.favorite_editor.read(cx).saved(cx);
                                                 }
+                                                if this.games_like_open {
+                                                    this.pending_like =
+                                                        this.games_like_editor.read(cx).chosen();
+                                                }
                                                 this.widget_picker = false;
                                                 this.favorite_open = false;
+                                                this.games_like_open = false;
                                                 cx.notify();
                                             },
                                         ))
@@ -1023,13 +1052,21 @@ impl Render for EditProfileModal {
                         },
                     )),
             )
-            .child(if (empty || self.widget_picker) && !self.favorite_open {
+            .child(if (empty || self.widget_picker) && !self.favorite_open && !self.games_like_open {
                 crate::widget_picker::widget_picker(
                     &self.media,
                     Some(Box::new(cx.listener(|this, _: &ClickEvent, window, cx| {
                         this.favorite_open = true;
+                        this.games_like_open = false;
                         this.widget_picker = false;
                         this.favorite_editor.update(cx, |editor, cx| editor.opened(window, cx));
+                        cx.notify();
+                    }))),
+                    Some(Box::new(cx.listener(|this, _: &ClickEvent, window, cx| {
+                        this.games_like_open = true;
+                        this.favorite_open = false;
+                        this.widget_picker = false;
+                        this.games_like_editor.update(cx, |editor, cx| editor.opened(window, cx));
                         cx.notify();
                     }))),
                     cx,
@@ -1069,8 +1106,13 @@ impl Render for EditProfileModal {
                                             this.pending_favorite =
                                                 this.favorite_editor.read(cx).saved(cx);
                                         }
+                                        if this.games_like_open {
+                                            this.pending_like =
+                                                this.games_like_editor.read(cx).chosen();
+                                        }
                                         this.widget_picker = true;
                                         this.favorite_open = false;
+                                        this.games_like_open = false;
                                         cx.notify();
                                     }))
                                     .child(icon("plus", 12., theme::TEXT_BRIGHT))
@@ -1079,6 +1121,8 @@ impl Render for EditProfileModal {
                     )
                     .child(if self.favorite_open {
                         self.favorite_editor.clone().into_any_element()
+                    } else if self.games_like_open {
+                        self.games_like_editor.clone().into_any_element()
                     } else {
                         widgets.into_any_element()
                     })
