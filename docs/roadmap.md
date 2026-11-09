@@ -17,12 +17,18 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 
 ## Phase 0: shared fixes (unlock several items below)
 
-- [ ] GPUI scroll viewport swallows child hitboxes. Fix once in a shared
-      scroll component (affects the rules screening agree row and tall
-      screening forms)
-- [ ] Rules screening: move the agree row back inside the scroll area, now
-      that hitboxes work
-- [ ] Screening forms taller than the pane scroll
+- [x] GPUI scroll viewport swallows child hitboxes. One viewport lives in
+      `crates/oxicord-ui/src/scroll.rs` (`flex_1().min_h_0()` in flow, one id).
+      The original symptom did not reproduce: clicks reached content in both an
+      in-flow and an absolute viewport once the row was inside the scrolled
+      content, so the note above was a misdiagnosis. The screening dialog uses
+      the shared viewport; other panes adopt it as they are touched.
+- [x] Rules screening: agree row inside the scroll area. Verified at
+      1920 x 1080: the row scrolls with the rules, toggles on click and the
+      submit button enables. Crops: screenshots/port/rules-checkbox.png.
+- [x] Screening forms taller than the pane scroll. The manual application
+      content uses the same viewport; the 5-question Mossad form scrolls at
+      1280 x 720 and its inputs take focus and text.
 - [ ] Scroll edge fade, as the web client draws it, in the shared scroll
       component
 - [ ] Screening answers capped at 150 (text) and 1000 (paragraph) characters

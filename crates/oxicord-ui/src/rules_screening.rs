@@ -22,6 +22,7 @@ use crate::{
     icons::icon,
     media::{Media, avatar},
     profile::modal,
+    scroll,
     session::Session,
     theme,
 };
@@ -601,7 +602,6 @@ impl RulesScreeningDialog {
         &mut self,
         index: usize,
         field: &FormField,
-        manual: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let title = match field.field_type.as_str() {
@@ -609,13 +609,12 @@ impl RulesScreeningDialog {
             _ => field.label.clone(),
         };
         let body = match field.field_type.as_str() {
-            "TERMS" => {
-                let mut body = div().flex().flex_col().child(self.terms_body(field));
-                if manual {
-                    body = body.child(div().mt(px(16.)).child(self.agreement_row(index, cx)));
-                }
-                body.into_any_element()
-            }
+            "TERMS" => div()
+                .flex()
+                .flex_col()
+                .child(self.terms_body(field))
+                .child(div().mt(px(16.)).child(self.agreement_row(index, cx)))
+                .into_any_element(),
             "TEXT_INPUT" => self.single_line(field, index),
             "PARAGRAPH" => self.paragraph(field, index, cx),
             "MULTIPLE_CHOICE" => self.choices(field, index, cx),
@@ -807,42 +806,13 @@ impl Render for RulesScreeningDialog {
             .form_fields
             .iter()
             .enumerate()
-            .map(|(index, field)| self.render_field(index, field, manual, cx))
+            .map(|(index, field)| self.render_field(index, field, cx))
             .collect();
-        let content = if manual {
-            div()
-                .id("screening-fields")
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .flex_col()
-                .pb(px(12.))
-                .child(heading)
-                .child(subtitle)
-                .children(fields)
-                .into_any_element()
-        } else {
-            div()
-                .flex_1()
-                .min_h_0()
-                .relative()
-                .child(
-                    div()
-                        .id("screening-scroll")
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .size_full()
-                        .overflow_y_scroll()
-                        .flex()
-                        .flex_col()
-                        .pb(px(12.))
-                        .child(heading)
-                        .child(subtitle)
-                        .children(fields),
-                )
-                .into_any_element()
-        };
+        let content = scroll::vertical("screening-scroll")
+            .pb(px(12.))
+            .child(heading)
+            .child(subtitle)
+            .children(fields);
 
         let right = div()
             .flex_1()
@@ -861,7 +831,6 @@ impl Render for RulesScreeningDialog {
                     .pb(px(36.))
                     .px(px(24.))
                     .child(content)
-                    .children((!manual).then(|| self.agreement_row(0, cx)))
                     .child(footer),
             );
 
