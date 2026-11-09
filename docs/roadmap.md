@@ -38,13 +38,11 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       puts the caret back at the end. Verified by typing 160 and 1010
       characters into the Mossad form: the 10 extra letters dropped at each
       limit and the counter stopped at 1000/1000.
-- [ ] Avatar and banner upload: unverified. The live client opens an Edit
-      Profile modal (nameplate, avatar and decoration, banner color, effects)
-      instead of a Profiles settings page, and the port's saved login was
-      missing from the credential manager this session, so its Profile page
-      could not be opened. Live capture: screenshots/reference/
-      avatar_banner.png. The old port capture showed a login screen and was
-      removed. Verify after the Edit Profile modal is ported.
+- [x] Avatar and banner upload. Verified against the live Edit Profile modal
+      (screenshots/reference/edit_profile_modal.png, 2026-11-09): the modal's
+      avatar tile and banner swatch carry the same shapes and sizes as the
+      port's (screenshots/port/edit_profile_modal.png). The upload requests
+      stay unit tested only, per the account writes rule.
 
 ## Phase 1: stop going stale (done)
 
@@ -87,6 +85,9 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       or note line), the decoration, nameplate, effect and frame tiles open
       nothing yet, and the widget cards show real game data only.
 - [ ] Nameplate, avatar decoration, profile effect and frame pickers
+- [ ] Remove the Profiles settings page: the live client edits the profile
+      only in the Edit Profile modal, so the port's extra sidebar entry and
+      page should go once nothing else points at them.
 - [ ] Widgets board editing: add widget, favourite game, games I like
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.
