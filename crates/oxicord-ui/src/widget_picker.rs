@@ -2,9 +2,13 @@
 //! it (captured 2026-11-09, 1920 x 1080, dark theme).
 
 use gpui_kit::{
-    AnyElement, App, Entity, FontWeight, ImageSource, IntoElement, ParentElement as _,
-    Styled as _, StyledImage as _, div, img, prelude::FluentBuilder as _, px, rgb, rgba,
+    AnyElement, App, ClickEvent, Entity, FontWeight, ImageSource, InteractiveElement as _,
+    IntoElement, ParentElement as _, StatefulInteractiveElement as _, Styled as _, StyledImage as _,
+    Window, div, img, prelude::FluentBuilder as _, px, rgb, rgba,
 };
+
+/// A click handler the picker's cards can run.
+pub type ClickRun = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
 use crate::{icons::icon, media::Media, theme};
 
@@ -106,7 +110,12 @@ const OPTIONS: &[WidgetOption] = &[
     },
 ];
 
-fn card(option: &WidgetOption, media: &Entity<Media>, cx: &mut App) -> AnyElement {
+fn card(
+    option: &WidgetOption,
+    media: &Entity<Media>,
+    on_click: Option<ClickRun>,
+    cx: &mut App,
+) -> AnyElement {
     let title = div()
         .h(px(20.))
         .flex()
@@ -142,6 +151,7 @@ fn card(option: &WidgetOption, media: &Entity<Media>, cx: &mut App) -> AnyElemen
         .child(title);
 
     let mut card = div()
+        .id(option.label)
         .w(px(207.5))
         .h(px(100.))
         .flex_none()
@@ -150,7 +160,8 @@ fn card(option: &WidgetOption, media: &Entity<Media>, cx: &mut App) -> AnyElemen
         .cursor_pointer()
         .flex()
         .flex_col()
-        .p(px(8.));
+        .p(px(8.))
+        .when_some(on_click, |d, run| d.on_click(run));
     if option.beta {
         card = card.child(div().h(px(16.)).flex_none().flex().justify_end().child(
             div()
@@ -171,15 +182,32 @@ fn card(option: &WidgetOption, media: &Entity<Media>, cx: &mut App) -> AnyElemen
 }
 
 /// The board's empty state: the widget library, as the live client draws it.
-pub fn widget_picker(media: &Entity<Media>, cx: &mut App) -> AnyElement {
-    let rows = OPTIONS.chunks(2).map(|pair| {
-        let last = pair.len() == 1;
-        div()
+pub fn widget_picker(
+    media: &Entity<Media>,
+    on_favorite: Option<ClickRun>,
+    cx: &mut App,
+) -> AnyElement {
+    let mut on_favorite = on_favorite;
+    let mut cards = Vec::new();
+    for option in OPTIONS {
+        let click = if option.label == "Favorite Game" { on_favorite.take() } else { None };
+        cards.push(card(option, media, click, cx));
+    }
+    let mut rest = cards.into_iter();
+    let mut rows = Vec::new();
+    while let Some(first) = rest.next() {
+        let second = rest.next();
+        let last = second.is_none();
+        let mut row = div()
             .flex()
             .gap(px(16.))
             .when(last, |d| d.justify_center())
-            .children(pair.iter().map(|option| card(option, media, cx)))
-    });
+            .child(first);
+        if let Some(second) = second {
+            row = row.child(second);
+        }
+        rows.push(row);
+    }
 
     div()
         .flex()

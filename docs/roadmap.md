@@ -184,7 +184,23 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Remaining differences: the port draws no placeholder profile card or
       hero cover art inside the cards yet, and the Beta badge takes a flow
       row so the personal card's glyph sits lower than the live card's.
-- [ ] Favorite Game widget editor, opened from its card in the picker
+- [x] Favorite Game widget editor shell, opened from its card in the picker:
+      the 431 wide inline card (radius 16, #17181b, 1 px
+      rgba(151,151,159,0.16) border, 12 16 16 padding), the 14 / 18 weight 500
+      title, the 132.3 high game row with the 87.25 by 116.33 add tile and the
+      293.75 wide two line description, the 1 px divider, and the suggested
+      games block with "Suggested for you" and six 56.2 by 74.9 covers
+      (Lethal Company, Overwatch, Stardew Valley, Destiny 2, Among Us,
+      Escape from Tarkov: Arena). Add Widget opens the picker again and the
+      Board tab returns to the widgets. Values from the live DOM and
+      screenshots/reference/favorite_game_editor.png. Remaining differences:
+      the divider sits about 16 px lower and the card is about 13 px taller
+      than the live one, the board header above the card shows only Add
+      Widget where the live also has Create Your Own, and the add tile and
+      suggested covers are not wired yet.
+- [ ] Favorite Game game picker: Add Game and the suggested covers open a
+      search, choose one game
+- [ ] Favorite Game comment and tag editing, saved with the widget
 - [ ] Games I Like widget editor, opened from its card in the picker
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.

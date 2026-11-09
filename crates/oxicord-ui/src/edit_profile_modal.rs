@@ -68,6 +68,8 @@ pub struct EditProfileModal {
     frame_catalog: FrameCatalog,
     /// The board shows the widget library instead of the widgets themselves.
     widget_picker: bool,
+    /// The board shows the Favorite Game widget editor.
+    favorite_editor: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -97,6 +99,7 @@ impl EditProfileModal {
             effect_catalog: EffectCatalog::bundled(),
             frame_catalog: FrameCatalog::bundled(),
             widget_picker: false,
+            favorite_editor: false,
             _subscriptions,
         }
     }
@@ -106,6 +109,7 @@ impl EditProfileModal {
     pub fn opened(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.filled = false;
         self.widget_picker = false;
+        self.favorite_editor = false;
         let me = self.session.read(cx).store.me().cloned();
         if let Some(me) = &me
             && !self.session.read(cx).profiles.contains_key(&me.id)
@@ -968,6 +972,7 @@ impl Render for EditProfileModal {
                                         d.cursor_pointer().on_click(cx.listener(
                                             |this, _: &ClickEvent, _, cx| {
                                                 this.widget_picker = false;
+                                                this.favorite_editor = false;
                                                 cx.notify();
                                             },
                                         ))
@@ -977,8 +982,16 @@ impl Render for EditProfileModal {
                         },
                     )),
             )
-            .child(if empty || self.widget_picker {
-                crate::widget_picker::widget_picker(&self.media, cx)
+            .child(if (empty || self.widget_picker) && !self.favorite_editor {
+                crate::widget_picker::widget_picker(
+                    &self.media,
+                    Some(Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        this.favorite_editor = true;
+                        this.widget_picker = false;
+                        cx.notify();
+                    }))),
+                    cx,
+                )
             } else {
                 div()
                     .flex()
@@ -1011,13 +1024,18 @@ impl Render for EditProfileModal {
                                     .text_color(rgb(theme::TEXT_BRIGHT))
                                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                                         this.widget_picker = true;
+                                        this.favorite_editor = false;
                                         cx.notify();
                                     }))
                                     .child(icon("plus", 12., theme::TEXT_BRIGHT))
                                     .child("Add Widget"),
                             ),
                     )
-                    .child(widgets)
+                    .child(if self.favorite_editor {
+                        crate::favorite_game_editor::editor(&self.media, cx)
+                    } else {
+                        widgets.into_any_element()
+                    })
                     .into_any_element()
             });
 

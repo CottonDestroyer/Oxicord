@@ -16,6 +16,7 @@ mod decoration_dialog;
 mod edit_channel_dialog;
 mod edit_profile_modal;
 mod effect_dialog;
+mod favorite_game_editor;
 mod frame_dialog;
 mod forward_dialog;
 mod gift_dialog;
