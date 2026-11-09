@@ -24,7 +24,7 @@ pub enum AdminRequest {
     SubmitMemberVerification {
         guild: Snowflake,
         form: oxicord_model::VerificationForm,
-        agreed: bool,
+        answers: Vec<oxicord_model::VerificationResponse>,
     },
     SetServerAvatar { guild: Snowflake, avatar: Option<String> },
     SetServerBanner { guild: Snowflake, banner: Option<String> },

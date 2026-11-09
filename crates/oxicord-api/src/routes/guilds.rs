@@ -129,9 +129,9 @@ impl ApiClient {
         &self,
         guild: Snowflake,
         form: &oxicord_model::VerificationForm,
-        agreed: bool,
+        answers: &[oxicord_model::VerificationResponse],
     ) -> Result<(), ApiError> {
-        let body = form.submission(agreed);
+        let body = form.submission(answers);
         self.empty(
             Method::PUT,
             &format!("/guilds/{guild}/requests/@me"),

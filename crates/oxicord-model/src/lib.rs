@@ -64,5 +64,5 @@ pub use role::Role;
 pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
 pub use user::{AccountMetadata, Badge, Game, GameEntry, LinkedAccount, MutualGuild, Profile, ServerTag, User};
-pub use verification::{FormChoice, FormField, GuildProfile, VerificationForm, VerificationInfo};
+pub use verification::{FormField, GuildProfile, VerificationForm, VerificationInfo, VerificationResponse};
 pub use voice::VoiceState;

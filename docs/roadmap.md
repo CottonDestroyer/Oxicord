@@ -44,8 +44,16 @@ Gateway events we ignore today, so things go out of date until a restart.
       scrolled), the scroll edge fade is not drawn, and Windows subpixel text
       anti-aliasing differs from the web client's grayscale AA. The banner image
       is cropped from the centre with a 13 px offset.
-- [ ] Screening questions other than TERMS: TEXT_INPUT, PARAGRAPH and
-      MULTIPLE_CHOICE fields and the inline invalid-field error.
+- [x] Screening questions other than TERMS: TEXT_INPUT, PARAGRAPH and
+      MULTIPLE_CHOICE fields, the manual header and subtitle, required-field
+      validation, paragraph character count, radio groups and focus borders.
+      The live manual modal cannot be opened for an account already through
+      screening, so its values come from the client modules and CSS and the port
+      was checked against the real Mossad fixture (962385052778512434, five
+      fields); pixel diff not applicable. Remaining differences: written answers
+      are not capped at 150/1000 characters, and a form taller than the right
+      pane does not scroll because GPUI's scroll viewport swallowed the field
+      hitboxes.
 - [ ] Onboarding: prompts, channel and role selection, and the
       `GUILD_ONBOARDING_*` updates.
 - [ ] Welcome screen: the server home with its description and featured
