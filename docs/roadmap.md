@@ -72,17 +72,21 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 - [x] Edit Profile modal shell, as the live client draws it: header with the
       "Main Profile" switcher, the editor column (nameplate, avatar and
       decoration, banner colour, profile effect and frame, Nitro upsell,
-      display name style, bio, pronouns, save) and the preview card with Board,
-      Activity and Wishlist tabs over the widget cards. Opened from the account
-      page's Edit Profile button and from our own profile card's pencil. Values
-      measured from the live desktop capture at 133 percent scale (890x590
-      logical, editor 184, tiles 72, preview 300 with an 110 banner and a 96
-      avatar, 72 percent black scrim): docs/discord-reference.md and
-      screenshots/reference/edit_profile_modal.png. Port crop:
-      screenshots/port/edit_profile_modal.png. Save sends the existing
+      display name style, bio, pronouns, save) and the preview card with the
+      message row, bio, member since, connections and note over the Board,
+      Activity and Wishlist widget tabs. Opened from the account page's Edit
+      Profile button and from the settings header pencil. Measured from the
+      live desktop capture at 1:1 (the capture is CSS pixels: the nameplate
+      dialog's tile measures exactly the 106 by 80 its CSS declares), so the
+      frame is 1200 by 800 with a 240 editor column, 99 tiles, a 400 preview
+      card with a 140 banner and a 120 avatar, and widgets cards 431 wide:
+      docs/discord-reference.md. Captures: screenshots/reference/
+      edit_profile_modal.png, screenshots/reference/edit_profile_modal_dialog.png
+      and screenshots/port/edit_profile_modal.png. Save sends the existing
       EditProfile request; not exercised live (account writes rule). Remaining
-      differences: the preview card stops after Member Since (no connections
-      or note line), the decoration, nameplate, effect and frame tiles open
+      differences: the preview card has no game badge row or mutual guild pill
+      (no data source yet), the connections section only has its Add
+      Connection row, the nameplate, decoration, effect and frame tiles open
       nothing yet, and the widget cards show real game data only.
 - [ ] Nameplate, avatar decoration, profile effect and frame pickers
 - [ ] Remove the Profiles settings page: the live client edits the profile
