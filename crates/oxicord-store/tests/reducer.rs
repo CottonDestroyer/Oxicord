@@ -1218,4 +1218,12 @@ fn message_requests_stay_out_of_the_dm_list() {
 
     // The spam channel is also hidden from the DM list.
     assert!(!dm_ids.contains(&70));
+
+    // An optimistic accept hides the row before the flag update lands,
+    // and stays hidden for a fresh READY.
+    store.accept_request_optimistic(Snowflake(60));
+    assert!(store.message_requests().is_empty());
+    let mut store = Store::new();
+    store.apply(event("READY", serde_json::from_str(ready).unwrap()));
+    assert_eq!(store.message_requests().len(), 1);
 }

@@ -602,8 +602,8 @@ impl MainView {
             cx.new(|cx| FriendsView::new(session, media, backend, window, cx))
         };
         let message_requests = {
-            let (session, media) = (session.clone(), media.clone());
-            cx.new(|cx| MessageRequestsView::new(session, media, cx))
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| MessageRequestsView::new(session, media, backend, cx))
         };
         let forum = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());

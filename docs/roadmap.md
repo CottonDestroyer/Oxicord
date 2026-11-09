@@ -152,7 +152,16 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       message_requests_page.png). Layout unverified against the official
       page: its module (171133 MessageRequestPage) is absent from
       reference/web and the live page cannot be opened with 0 requests.
-- [ ] Message requests: accept and ignore
+- [x] Message requests: accept and ignore. Accept sends
+      `PUT /channels/:id/recipients/@me` with `consent_status: 2` and hides
+      the row at once (an accepted-optimistic set, like the client's);
+      ignore sends `DELETE /channels/:id/recipients/@me` and the server
+      answers with CHANNEL_UPDATE, a message ACK and CHANNEL_DELETE. Built
+      and unit tested per the account writes rule: the requests are never
+      sent from this account (a synthetic channel 404s at best). Buttons
+      checked on the page with a locally injected request:
+      screenshots/port/message_requests_actions.png. Button and page layout
+      unverified against the official page, see above.
 - [ ] Spam inbox tab
 - [ ] Scheduled events fixture from `GET /guilds/:id/scheduled-events`
 - [ ] Scheduled events list and event card

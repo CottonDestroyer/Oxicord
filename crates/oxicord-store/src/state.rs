@@ -53,6 +53,10 @@ pub struct Store {
     /// Our role ids per guild.
     pub(crate) my_roles: HashMap<Snowflake, Vec<Snowflake>>,
     pub(crate) channels: HashMap<Snowflake, Channel>,
+    /// Requests accepted since the last connection open. The row leaves
+    /// the list at once, before the gateway update clears the flag, the
+    /// way the client's accepted-optimistic set works.
+    pub(crate) accepted_requests: HashSet<Snowflake>,
     /// Channel ids per guild, so listing a guild doesn't scan every channel
     /// we know about. Threads are left out, they don't appear in the sidebar.
     pub(crate) guild_channels: HashMap<Snowflake, Vec<Snowflake>>,
@@ -253,12 +257,22 @@ impl Store {
         dms
     }
 
+    /// Accepting a request hides its row at once, before the gateway
+    /// update that clears the flag arrives.
+    pub fn accept_request_optimistic(&mut self, channel: Snowflake) {
+        self.accepted_requests.insert(channel);
+    }
+
     /// Unaccepted message requests, the client's message requests tab:
     /// flagged as a request and not spam, newest activity first. The client
     /// sorts a request by the newer of its last message and the time the
     /// request arrived.
     pub fn message_requests(&self) -> Vec<&Channel> {
-        let mut requests: Vec<_> = self.channels.values().filter(|c| c.is_request()).collect();
+        let mut requests: Vec<_> = self
+            .channels
+            .values()
+            .filter(|c| c.is_request() && !self.accepted_requests.contains(&c.id))
+            .collect();
         requests.sort_by(|a, b| {
             request_activity(b)
                 .cmp(&request_activity(a))

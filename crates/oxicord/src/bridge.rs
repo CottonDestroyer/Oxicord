@@ -387,6 +387,20 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::AcceptMessageRequest { channel } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.accept_message_request(channel).await {
+                    notify(&events, "accept that message request", &err).await;
+                }
+            });
+        }
+        Command::IgnoreMessageRequest { channel } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.ignore_message_request(channel).await {
+                    notify(&events, "ignore that message request", &err).await;
+                }
+            });
+        }
         Command::PatchGuildSettings { guild, body } => {
             tokio::spawn(async move {
                 if let Err(err) = api.patch_guild_settings(guild, &body).await {

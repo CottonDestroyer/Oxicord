@@ -164,6 +164,12 @@ pub enum Command {
         source: Snowflake,
         target: Snowflake,
     },
+    /// Accept a message request. The row hides at once; the gateway
+    /// CHANNEL_UPDATE clears the flag behind it.
+    AcceptMessageRequest { channel: Snowflake },
+    /// Ignore a message request. The server closes the conversation and
+    /// answers with a CHANNEL_DELETE.
+    IgnoreMessageRequest { channel: Snowflake },
     /// Change notification settings for a server (see `menus::settings_body`).
     PatchGuildSettings {
         guild: Snowflake,

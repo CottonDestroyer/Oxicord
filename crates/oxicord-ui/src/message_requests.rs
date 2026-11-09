@@ -7,7 +7,9 @@ use oxicord_model::{Channel, ChannelType, Snowflake};
 use oxicord_store::Store;
 
 use crate::{
+    backend::{Backend, Command},
     chat::format::message_time,
+    icons::icon,
     media::{Media, avatar},
     session::{DmOpened, Session},
     theme,
@@ -19,6 +21,7 @@ use crate::{
 pub struct MessageRequestsView {
     session: Entity<Session>,
     media: Entity<Media>,
+    backend: Backend,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -45,9 +48,14 @@ fn activity(c: &Channel) -> chrono::DateTime<chrono::Utc> {
 }
 
 impl MessageRequestsView {
-    pub fn new(session: Entity<Session>, media: Entity<Media>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        session: Entity<Session>,
+        media: Entity<Media>,
+        backend: Backend,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let _subscriptions = vec![cx.observe(&session, |_, _, cx| cx.notify())];
-        Self { session, media, _subscriptions }
+        Self { session, media, backend, _subscriptions }
     }
 
     fn rows(&self, cx: &gpui_kit::App) -> Vec<RequestRow> {
@@ -123,11 +131,59 @@ impl MessageRequestsView {
                     .child(
                         div()
                             .flex_none()
-                            .text_size(px(12.))
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .child(tag),
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(rgb(theme::TEXT_MUTED))
+                                    .child(tag),
+                            )
+                            .child(self.accept_button(id, cx))
+                            .child(self.ignore_button(id, cx)),
                     ),
             )
+    }
+
+    /// Accepts a request: the row hides at once, the way the client's
+    /// accepted-optimistic set works, and the request goes out behind it.
+    fn accept_button(&mut self, id: Snowflake, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .id(("accept", id.0))
+            .size(px(24.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(theme::RADIUS))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                this.session.update(cx, |s, _| s.store.accept_request_optimistic(id));
+                this.backend.send(Command::AcceptMessageRequest { channel: id });
+                cx.notify();
+            }))
+            .child(icon("check", 14., theme::TEXT_MUTED))
+    }
+
+    /// Ignores a request. The server closes the conversation and answers
+    /// with a CHANNEL_DELETE.
+    fn ignore_button(&mut self, id: Snowflake, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .id(("ignore", id.0))
+            .size(px(24.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(theme::RADIUS))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, _| {
+                this.backend.send(Command::IgnoreMessageRequest { channel: id });
+            }))
+            .child(icon("x", 14., theme::TEXT_MUTED))
     }
 }
 
