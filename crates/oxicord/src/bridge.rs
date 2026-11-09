@@ -330,6 +330,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
             component_type,
             custom_id,
             values,
+            nonce,
         } => {
             tokio::spawn(async move {
                 let click = ComponentClick {
@@ -342,7 +343,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                     component_type,
                     custom_id,
                     values,
-                    nonce: nonce(),
+                    nonce,
                 };
                 if let Err(err) = api.click_component(&click).await {
                     notify(&events, "use that button", &err).await;
@@ -1036,15 +1037,7 @@ async fn notify(events: &Sender<Event>, action: &str, err: &ApiError) {
 /// A snowflake-shaped nonce, like the official client sends. Discord uses it
 /// to drop a send that was repeated.
 fn nonce() -> String {
-    const DISCORD_EPOCH_MS: u128 = 1_420_070_400_000;
-    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis());
-    let elapsed = u64::try_from(now_ms.saturating_sub(DISCORD_EPOCH_MS)).unwrap_or(0);
-    let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) & 0x3F_FFFF;
-    ((elapsed << 22) | sequence).to_string()
+    Snowflake::nonce().to_string()
 }
 
 async fn load_history(

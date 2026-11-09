@@ -134,7 +134,12 @@ impl Store {
             }
             DispatchEvent::TypingStart(t) => self.on_typing(t, &mut changes),
             // The voice server is for the call itself, the store only tracks who is in it.
-            DispatchEvent::Resumed | DispatchEvent::VoiceServerUpdate(_) | DispatchEvent::Unknown { .. } => {}
+            DispatchEvent::Resumed
+            | DispatchEvent::VoiceServerUpdate(_)
+            | DispatchEvent::InteractionCreate(_)
+            | DispatchEvent::InteractionSuccess(_)
+            | DispatchEvent::InteractionFailure(_)
+            | DispatchEvent::Unknown { .. } => {}
         }
         changes
     }

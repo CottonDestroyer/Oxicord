@@ -12,7 +12,7 @@ use crate::{
     backend::Command,
     chat::attachments::{fit, picture, resized},
     icons::icon,
-    session::OpenPollVoters,
+    session::{InteractionState, OpenPollVoters},
     theme,
 };
 
@@ -38,7 +38,44 @@ impl ChatView {
         for component in &message.components {
             column = column.child(self.component(message, component, &mut counter, window, cx));
         }
+        // The message shows that a click is being answered, above the
+        // component's own waiting state.
+        let thinking = self.session.read(cx).interactions.values().any(|entry| {
+            entry.message == message.id && matches!(entry.state, InteractionState::Queued | InteractionState::Created)
+        });
+        if thinking {
+            column = column.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .text_size(px(12.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(icon("ellipsis", 14., theme::TEXT_MUTED))
+                    .child("Thinking..."),
+            );
+        }
         Some(column.into_any_element())
+    }
+
+    /// The pending interaction on one component, if any.
+    fn interaction(
+        &self,
+        message: Snowflake,
+        custom_id: Option<&str>,
+        component_type: u8,
+        cx: &mut Context<Self>,
+    ) -> Option<InteractionState> {
+        self.session
+            .read(cx)
+            .interactions
+            .values()
+            .find(|entry| {
+                entry.message == message
+                    && entry.component_type == component_type
+                    && Some(entry.custom_id.as_str()) == custom_id
+            })
+            .map(|entry| entry.state)
     }
 
     fn component(
@@ -76,6 +113,7 @@ impl ChatView {
                     (None, Some(l)) => l.clone(),
                     (None, None) => String::new(),
                 };
+                let pending = self.interaction(message.id, custom_id.as_deref(), 2, cx);
                 let button = div()
                     .id(key)
                     .h(px(32.))
@@ -87,8 +125,14 @@ impl ChatView {
                     .bg(rgb(fill))
                     .text_size(px(14.))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(theme::TEXT_BRIGHT))
-                    .child(caption);
+                    .text_color(rgb(theme::TEXT_BRIGHT));
+                if matches!(pending, Some(InteractionState::Queued | InteractionState::Created)) {
+                    return button
+                        .opacity(0.7)
+                        .child(icon("ellipsis", 16., theme::TEXT_BRIGHT))
+                        .into_any_element();
+                }
+                let button = button.child(caption);
                 if *disabled {
                     return button.opacity(0.5).into_any_element();
                 }
@@ -552,6 +596,16 @@ impl ChatView {
             return;
         };
         let application: Snowflake = owner(message.application_id, message.author.id);
+        let nonce = Snowflake::nonce().to_string();
+        self.session.update(cx, |session, cx| {
+            session.begin_interaction(
+                nonce.clone(),
+                message.id,
+                custom_id.clone(),
+                component_type,
+                cx,
+            );
+        });
         self.backend.send(Command::ClickComponent {
             guild: self.guild(cx),
             channel: message.channel_id,
@@ -562,6 +616,7 @@ impl ChatView {
             component_type,
             custom_id,
             values,
+            nonce,
         });
     }
 }

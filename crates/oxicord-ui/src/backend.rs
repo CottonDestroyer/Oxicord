@@ -135,6 +135,9 @@ pub enum Command {
         component_type: u8,
         custom_id: String,
         values: Vec<String>,
+        /// Sent with the request; the gateway echoes it in the interaction
+        /// events so the click can be tracked.
+        nonce: String,
     },
     /// Set our votes on a poll to exactly these answers.
     VotePoll {

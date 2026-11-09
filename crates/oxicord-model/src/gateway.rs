@@ -453,6 +453,21 @@ pub struct GuildRoleDelete {
     pub role_id: Snowflake,
 }
 
+/// The fields of an interaction event the client tracks. `INTERACTION_CREATE`,
+/// `INTERACTION_SUCCESS` and `INTERACTION_FAILURE` all carry the nonce the
+/// click was sent with, which is what ties them together.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct InteractionEvent {
+    #[serde(default)]
+    pub id: Option<Snowflake>,
+    #[serde(default)]
+    pub nonce: Option<String>,
+    #[serde(default, rename = "type")]
+    pub kind: u8,
+    #[serde(default)]
+    pub reason_code: Option<u32>,
+}
+
 /// Dispatch events the client reacts to. Anything else is kept as `Unknown`
 /// so new server events never turn into hard errors.
 #[derive(Clone, Debug)]
@@ -500,6 +515,9 @@ pub enum DispatchEvent {
     GuildSettingsUpdate(Box<GuildNotificationSettings>),
     TypingStart(TypingStart),
     GuildMemberListUpdate(Box<MemberListUpdate>),
+    InteractionCreate(InteractionEvent),
+    InteractionSuccess(InteractionEvent),
+    InteractionFailure(InteractionEvent),
     Unknown { name: String, data: Value },
 }
 
@@ -562,6 +580,9 @@ impl DispatchEvent {
             "GUILD_STICKERS_UPDATE" => Self::GuildStickersUpdate(de(data)?),
             "TYPING_START" => Self::TypingStart(de(data)?),
             "GUILD_MEMBER_LIST_UPDATE" => Self::GuildMemberListUpdate(Box::new(de(data)?)),
+            "INTERACTION_CREATE" => Self::InteractionCreate(de(data)?),
+            "INTERACTION_SUCCESS" => Self::InteractionSuccess(de(data)?),
+            "INTERACTION_FAILURE" => Self::InteractionFailure(de(data)?),
             _ => Self::Unknown {
                 name: name.to_owned(),
                 data,
@@ -798,6 +819,34 @@ mod tests {
     fn unknown_event_is_kept_not_rejected() {
         let event = DispatchEvent::parse("SOMETHING_NEW", json!({ "x": 1 })).unwrap();
         assert!(matches!(event, DispatchEvent::Unknown { .. }));
+    }
+
+    #[test]
+    fn interaction_events_carry_the_nonce_that_ties_them_together() {
+        let created = DispatchEvent::parse(
+            "INTERACTION_CREATE",
+            json!({ "id": "11", "nonce": "22", "type": 3 }),
+        )
+        .unwrap();
+        let DispatchEvent::InteractionCreate(created) = created else {
+            panic!("not an interaction create");
+        };
+        assert_eq!(created.id, Some(Snowflake(11)));
+        assert_eq!(created.nonce.as_deref(), Some("22"));
+        assert_eq!(created.kind, 3);
+
+        let failed = DispatchEvent::parse(
+            "INTERACTION_FAILURE",
+            json!({ "id": "11", "nonce": "22", "reason_code": 50035 }),
+        )
+        .unwrap();
+        let DispatchEvent::InteractionFailure(failed) = failed else {
+            panic!("not an interaction failure");
+        };
+        assert_eq!(failed.reason_code, Some(50035));
+
+        let succeeded = DispatchEvent::parse("INTERACTION_SUCCESS", json!({ "nonce": "22" })).unwrap();
+        assert!(matches!(succeeded, DispatchEvent::InteractionSuccess(_)));
     }
 
 }

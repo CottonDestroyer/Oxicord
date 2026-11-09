@@ -352,9 +352,20 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 
 ## Phase 4: bots
 
-- [ ] Interaction state tracking: nonce on `POST /interactions`, handle
-      `INTERACTION_CREATE`, `INTERACTION_SUCCESS`, `INTERACTION_FAILURE`
-- [ ] "Thinking" state on the clicked component and the message
+- [x] Interaction state tracking: nonce on `POST /interactions`, handle
+      `INTERACTION_CREATE`, `INTERACTION_SUCCESS`, `INTERACTION_FAILURE`.
+      Nonce is made by `Snowflake::nonce()` in the UI and sent with the click;
+      the model parses the three events (id, nonce, type, reason_code) into
+      `DispatchEvent::InteractionCreate/Success/Failure`; `Session.interactions`
+      maps the nonce to the message, custom id, component type and state
+      (Queued, Created, removed on success, Failed). Unit test on the three
+      payloads. docs/discord-reference.md.
+- [x] "Thinking" state on the clicked component and the message. The clicked
+      button shows a 16 px ellipsis at 70% opacity instead of its label, and
+      the message shows a 12 px "Thinking..." line with a 14 px ellipsis under
+      the components. Verified by forcing the state on Bloxlink's buttons in
+      SCP #get-roles: screenshots/port/thinking_state.png. Not clicked live:
+      a real click sends an interaction to the bot (write).
 - [ ] "Interaction failed" state and its retry
 - [ ] Modal view from an `INTERACTION_MODAL_CREATE` fixture: title, text inputs
       (short and paragraph), required, min and max length

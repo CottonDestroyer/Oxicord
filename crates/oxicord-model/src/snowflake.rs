@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, sync::atomic::{AtomicU64, Ordering}};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -18,6 +18,20 @@ impl Snowflake {
 
     pub fn datetime(self) -> DateTime<Utc> {
         DateTime::from_timestamp_millis(self.timestamp_ms() as i64).unwrap_or_default()
+    }
+
+    /// A snowflake-shaped nonce for an optimistic send or an interaction.
+    /// Discord uses it to drop a duplicate.
+    pub fn nonce() -> Self {
+        const DISCORD_EPOCH_MS: u128 = 1_420_070_400_000;
+        static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis());
+        let elapsed = u64::try_from(now_ms.saturating_sub(DISCORD_EPOCH_MS)).unwrap_or(0);
+        let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed) & 0x3F_FFFF;
+        Self((elapsed << 22) | sequence)
     }
 }
 
@@ -76,5 +90,13 @@ mod tests {
     fn null_becomes_none_when_optional() {
         let v: Option<Snowflake> = serde_json::from_str("null").unwrap();
         assert_eq!(v, None);
+    }
+
+    #[test]
+    fn nonces_are_unique_and_snowflake_sized() {
+        let (a, b) = (Snowflake::nonce(), Snowflake::nonce());
+        assert_ne!(a, b);
+        assert!(a.timestamp_ms() > DISCORD_EPOCH_MS);
+        assert!(a.0 > 0);
     }
 }

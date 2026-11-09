@@ -11,10 +11,34 @@ use crate::{
     backend::{Backend, Command, VoiceNotice},
 };
 
+/// How a click on a message component is going.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum InteractionState {
+    /// Sent, waiting for `INTERACTION_CREATE`.
+    #[default]
+    Queued,
+    /// The app is working on it.
+    Created,
+    /// The app did not answer.
+    Failed,
+}
+
+/// A component click we sent, kept so the gateway can update it and the
+/// message can show its state. Keyed by the nonce sent with the click.
+#[derive(Clone, Debug)]
+pub struct InteractionEntry {
+    pub message: Snowflake,
+    pub custom_id: String,
+    pub component_type: u8,
+    pub state: InteractionState,
+}
+
 /// The signed in client state. Views observe this entity and listen for the
 /// `Changes` it emits to redraw only what moved.
 pub struct Session {
     pub store: Store,
+    /// Clicks sent to apps that have not succeeded yet.
+    pub interactions: HashMap<String, InteractionEntry>,
     pub connection: ConnectionState,
     /// Channels whose last history request failed, with the reason to show.
     pub history_errors: HashMap<Snowflake, String>,
@@ -331,8 +355,8 @@ impl Session {
             saved_messages: Load::Idle,
             scheduled_messages: Load::Idle,
             bookmarked: HashSet::new(),
-            invite_joined: None,
-            created_invite: Load::Idle,
+            interactions: HashMap::new(),
+            invite_joined: None,            created_invite: Load::Idle,
             previews: HashMap::new(),
             jump_target: None,
             gifs: Load::Idle,
@@ -927,6 +951,28 @@ impl Session {
         cx.notify();
     }
 
+    /// Records a component click under the nonce it was sent with, so the
+    /// gateway can mark it created or failed.
+    pub fn begin_interaction(
+        &mut self,
+        nonce: String,
+        message: Snowflake,
+        custom_id: String,
+        component_type: u8,
+        cx: &mut Context<Self>,
+    ) {
+        self.interactions.insert(
+            nonce,
+            InteractionEntry {
+                message,
+                custom_id,
+                component_type,
+                state: InteractionState::Queued,
+            },
+        );
+        cx.notify();
+    }
+
     pub fn handle(&mut self, backend: &Backend, event: GatewayEvent, cx: &mut Context<Self>) {
         match event {
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data })
@@ -981,9 +1027,24 @@ impl Session {
                     }
                 }
             }
-            // The app never answered a click or command.
-            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, .. }) if name == "INTERACTION_FAILURE" => {
-                self.set_notice(Some("That interaction failed. The app didn't respond.".into()), cx);
+            // The app is working on a click, answered it, or never answered.
+            GatewayEvent::Dispatch(DispatchEvent::InteractionCreate(event)) => {
+                if let Some(entry) = event.nonce.as_ref().and_then(|nonce| self.interactions.get_mut(nonce)) {
+                    entry.state = InteractionState::Created;
+                    cx.notify();
+                }
+            }
+            GatewayEvent::Dispatch(DispatchEvent::InteractionSuccess(event)) => {
+                if let Some(nonce) = event.nonce {
+                    self.interactions.remove(&nonce);
+                    cx.notify();
+                }
+            }
+            GatewayEvent::Dispatch(DispatchEvent::InteractionFailure(event)) => {
+                if let Some(entry) = event.nonce.as_ref().and_then(|nonce| self.interactions.get_mut(nonce)) {
+                    entry.state = InteractionState::Failed;
+                    cx.notify();
+                }
             }
             GatewayEvent::Dispatch(event) => {
                 // People who left the server aren't members any more, but
