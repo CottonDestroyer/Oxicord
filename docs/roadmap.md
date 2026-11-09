@@ -129,8 +129,12 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 - [x] Inbox "For You" tab
 - [x] Create a server from the server rail
 - [x] Announcement channels: publish and follow
-- [ ] Follow an announcement channel with a server and channel picker, as the
-      web client does, instead of typing a channel id
+- [x] Follow an announcement channel with a server and channel picker. The
+      Edit Channel dialog lists servers, then each server's text and
+      announcement channels; Follow sends `POST /channels/:source/followers`.
+      Functional check at 1920 x 1080: picking Velocity then download enabled
+      Follow. No web capture: the live Follow button needs MANAGE_WEBHOOKS,
+      which this account lacks. Port: screenshots/port/announcement_follow.png.
 - [ ] Message requests: list from fixtures (find the flag and endpoints in
       reference/notes/)
 - [ ] Message requests: accept and ignore
