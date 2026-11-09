@@ -202,6 +202,11 @@ impl AppView {
             Event::ScheduledMessages(result) => {
                 self.session.update(cx, |session, cx| session.apply_scheduled_messages(result, cx));
             }
+            Event::WelcomeScreen { guild, result } => {
+                if let Screen::Main(main) = &self.screen {
+                    main.update(cx, |main, cx| main.apply_welcome_screen(guild, result, cx));
+                }
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }

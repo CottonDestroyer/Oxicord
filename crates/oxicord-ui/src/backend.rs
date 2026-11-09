@@ -335,6 +335,11 @@ pub enum Command {
     /// Load our scheduled messages. The answer arrives as
     /// [`Event::ScheduledMessages`].
     LoadScheduledMessages,
+    /// The server's welcome screen. The answer arrives as
+    /// [`Event::WelcomeScreen`].
+    LoadWelcomeScreen {
+        guild: Snowflake,
+    },
     /// Join a voice channel (a private call when `guild` is `None`), or move
     /// to it from another. How it goes is reported as [`Event::Voice`].
     JoinVoice {
@@ -442,6 +447,10 @@ pub enum Event {
     },
     SavedMessages(Result<Vec<oxicord_model::SavedMessage>, String>),
     ScheduledMessages(Result<Vec<Message>, String>),
+    WelcomeScreen {
+        guild: Snowflake,
+        result: Result<oxicord_model::WelcomeScreen, String>,
+    },
     Voice(VoiceNotice),
 }
 

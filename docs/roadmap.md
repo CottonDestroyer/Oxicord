@@ -300,10 +300,18 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       `WelcomeChannel` parse the fixture, and `ApiClient::welcome_screen`
       calls `GET /guilds/:id/welcome-screen`. Unit test against
       fixtures/welcome-screen.json.
-- [ ] Welcome screen view: description and featured channels when no channel
-      is selected. Unverified layout: /channels/<guild> redirects to a real
-      channel for an existing member, so this account cannot open the live
-      welcome screen. Data: fixtures/welcome-screen.json.
+- [x] Welcome screen view: description and featured channels when no channel
+      is selected. The stable 668923 bundle has no view component (only the
+      store, actions and route), and the live client redirects an existing
+      member to a real channel, so the layout is unverified: it is built from
+      the endpoint and theme tokens, and verified only by temporarily clearing
+      the channel. Content is a 480 wide centred column: 64 guild icon,
+      "Welcome to <server>!" 24 / 30, the description 16 / 22, then
+      FEATURED CHANNELS and 480 by 56 rows (radius 8, BG_CARD, hash or unicode
+      emoji, name 16 / 20, description 14 / 18) that select the channel when
+      clicked. Unknown channels are skipped. Data:
+      fixtures/welcome-screen.json; screenshot: screenshots/port/
+      welcome_screen.png. docs/discord-reference.md.
 - [ ] Onboarding fixture from `GET /guilds/:id/onboarding` (confirm)
 - [ ] Onboarding prompts view: questions and options, single and multi select
 - [ ] Onboarding channel and role selection applied, responses sent (confirm

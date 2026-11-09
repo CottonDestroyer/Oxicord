@@ -638,6 +638,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::ScheduledMessages(result)).await;
             });
         }
+        Command::LoadWelcomeScreen { guild } => {
+            tokio::spawn(async move {
+                let result = api.welcome_screen(guild).await.map_err(|err| {
+                    tracing::debug!(?err, "could not load a welcome screen");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::WelcomeScreen { guild, result }).await;
+            });
+        }
         Command::LoadProfile { user, guild } => {
             tokio::spawn(async move {
                 let mut result = api.profile(user, guild).await.map_err(|err| {

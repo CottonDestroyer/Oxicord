@@ -9,7 +9,7 @@ use gpui_kit::{
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
 use oxicord_media::cdn;
-use oxicord_model::{ChannelType, RelationshipKind, Snowflake, Status};
+use oxicord_model::{ChannelType, RelationshipKind, Snowflake, Status, WelcomeScreen};
 use oxicord_store::Unread;
 
 use crate::{
@@ -123,6 +123,11 @@ pub struct MainView {
     /// `None` is the home screen with the direct messages.
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
+    /// The welcome screen of the selected server, when it has none selected.
+    welcome: Option<WelcomeScreen>,
+    /// The server `welcome` belongs to, so a stale answer is ignored.
+    welcome_for: Option<Snowflake>,
+    welcome_failed: bool,
     /// The message requests page instead of the friends page.
     requests_open: bool,
     /// The channel to return to when switching back to a guild.
@@ -735,6 +740,9 @@ impl MainView {
             backend,
             guild: None,
             channel: None,
+            welcome: None,
+            welcome_for: None,
+            welcome_failed: false,
             requests_open: false,
             last_channel: HashMap::new(),
             collapsed: HashSet::new(),
@@ -838,7 +846,49 @@ impl MainView {
                     .map(|c| c.id)
             })
         });
+        if let Some(guild) = guild
+            && self.channel.is_none()
+        {
+            self.ensure_welcome(guild, cx);
+        }
         self.sync_chat(window, cx);
+        cx.notify();
+    }
+
+    /// Asks for the server's welcome screen the first time the server is
+    /// shown without a selected channel.
+    fn ensure_welcome(&mut self, guild: Snowflake, cx: &mut Context<Self>) {
+        if self.welcome_for == Some(guild) {
+            return;
+        }
+        self.welcome_for = Some(guild);
+        self.welcome = None;
+        self.welcome_failed = false;
+        self.backend.send(Command::LoadWelcomeScreen { guild });
+        cx.notify();
+    }
+
+    /// The answer to [`Command::LoadWelcomeScreen`], if it is still the
+    /// server on screen.
+    pub(crate) fn apply_welcome_screen(
+        &mut self,
+        guild: Snowflake,
+        result: Result<WelcomeScreen, String>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.guild != Some(guild) {
+            return;
+        }
+        match result {
+            Ok(screen) => {
+                self.welcome = Some(screen);
+                self.welcome_failed = false;
+            }
+            Err(_) => {
+                self.welcome = None;
+                self.welcome_failed = true;
+            }
+        }
         cx.notify();
     }
 
@@ -1992,6 +2042,192 @@ impl MainView {
             );
         }
         Some(column.into_any_element())
+    }
+
+    /// The server's welcome screen: its icon and name, the description and
+    /// the featured channels. Shown when a server is selected but no channel
+    /// is, which is the state the official client reserves for newcomers.
+    fn render_welcome(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild_id) = self.guild else {
+            return div().into_any_element();
+        };
+        let (name, icon_url) = {
+            let store = &self.session.read(cx).store;
+            match store.guild(guild_id) {
+                Some(guild) => (
+                    guild.name.clone(),
+                    guild.icon.as_deref().map(|hash| cdn::guild_icon(guild_id, hash, 96)),
+                ),
+                None => (String::new(), None),
+            }
+        };
+        let screen = self.welcome.clone();
+        let mut column = div()
+            .w(px(480.))
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(8.))
+            .child(match icon_url {
+                Some(url) => avatar(&self.media, &url, 64., &name, cx).into_any_element(),
+                None => div()
+                    .w(px(64.))
+                    .h(px(64.))
+                    .flex_none()
+                    .rounded_full()
+                    .bg(rgb(theme::BG_ACTIVE))
+                    .into_any_element(),
+            })
+            .child(
+                div()
+                    .mt(px(8.))
+                    .text_size(px(24.))
+                    .line_height(px(30.))
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(format!("Welcome to {name}!")),
+            );
+        if let Some(description) = screen
+            .as_ref()
+            .and_then(|screen| screen.description.as_deref())
+            .filter(|description| !description.is_empty())
+        {
+            column = column.child(
+                div()
+                    .w(px(440.))
+                    .mt(px(4.))
+                    .text_size(px(16.))
+                    .line_height(px(22.))
+                    .text_center()
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(description.to_owned()),
+            );
+        }
+        let channels = screen.map(|screen| screen.welcome_channels).unwrap_or_default();
+        if channels.is_empty() {
+            let note = if self.welcome_failed {
+                "This server has no welcome screen."
+            } else if self.welcome.is_none() {
+                "Loading the welcome screen..."
+            } else {
+                "Pick a channel to get started."
+            };
+            column = column.child(
+                div()
+                    .mt(px(32.))
+                    .text_size(px(14.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(note),
+            );
+        } else {
+            let mut list = div()
+                .w_full()
+                .mt(px(32.))
+                .flex()
+                .flex_col()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .mb(px(4.))
+                        .text_size(px(12.))
+                        .line_height(px(16.))
+                        .font_weight(gpui_kit::FontWeight::BOLD)
+                        .text_color(rgb(theme::TEXT_FAINT))
+                        .child("FEATURED CHANNELS"),
+                );
+            for channel in channels {
+                let id = channel.channel_id;
+                // The official list only names channels we can see, so skip
+                // any the store does not know about.
+                let Some(channel_name) = self
+                    .session
+                    .read(cx)
+                    .store
+                    .channel(id)
+                    .and_then(|c| c.name.clone())
+                else {
+                    continue;
+                };
+                let glyph = channel
+                    .emoji_name
+                    .clone()
+                    .filter(|emoji| !emoji.is_ascii());
+                let card = div()
+                    .id(("welcome-channel", id.0))
+                    .w_full()
+                    .min_h(px(56.))
+                    .px(px(12.))
+                    .py(px(10.))
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgb(theme::BG_CARD))
+                    .border_1()
+                    .border_color(rgb(theme::BORDER))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                        this.select_channel(id, window, cx);
+                    }))
+                    .child(match glyph {
+                        Some(emoji) => div()
+                            .w(px(20.))
+                            .flex_none()
+                            .text_size(px(18.))
+                            .line_height(px(20.))
+                            .text_center()
+                            .child(emoji)
+                            .into_any_element(),
+                        None => div()
+                            .w(px(20.))
+                            .flex_none()
+                            .child(icon("hash", 20., theme::CHANNELS_DEFAULT))
+                            .into_any_element(),
+                    })
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(16.))
+                                    .line_height(px(20.))
+                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                    .text_color(rgb(theme::TEXT_BRIGHT))
+                                    .child(channel_name),
+                            )
+                            .children(
+                                (!channel.description.is_empty()).then(|| {
+                                    div()
+                                        .text_size(px(14.))
+                                        .line_height(px(18.))
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child(channel.description)
+                                }),
+                            ),
+                    );
+                list = list.child(card);
+            }
+            column = column.child(list);
+        }
+        div()
+            .id("welcome-screen")
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .items_center()
+            .pt(px(96.))
+            .pb(px(32.))
+            .bg(rgb(theme::BG_CHAT))
+            .child(column)
+            .into_any_element()
     }
 
     fn sync_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -3919,6 +4155,8 @@ impl Render for MainView {
             self.message_requests.clone().into_any_element()
         } else if self.guild.is_none() && self.channel.is_none() {
             self.friends.clone().into_any_element()
+        } else if self.guild.is_some() && self.channel.is_none() {
+            self.render_welcome(cx)
         } else if self.channel.is_some_and(|c| self.is_forum(c, cx)) {
             self.forum.clone().into_any_element()
         } else {
@@ -3926,6 +4164,7 @@ impl Render for MainView {
         };
         let in_forum = self.channel.is_some_and(|c| self.is_forum(c, cx));
         let members = (self.guild.is_some()
+            && self.channel.is_some()
             && !in_forum
             && !in_call
             && !self.panel_open
@@ -3943,7 +4182,10 @@ impl Render for MainView {
         let panel = self.panel_open.then(|| self.panel.clone());
         // The chat header runs over the column on its right, so the column
         // is laid over the chat and the chat leaves room for it.
-        let over_chat = !(self.guild.is_none() && self.channel.is_none()) && !in_forum && !in_call;
+        let over_chat = !(self.guild.is_none() && self.channel.is_none())
+            && !(self.guild.is_some() && self.channel.is_none())
+            && !in_forum
+            && !in_call;
         let aside_width = if members.is_some() {
             theme::MEMBERS_WIDTH
         } else if dm_column.is_some() {
