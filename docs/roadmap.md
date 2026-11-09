@@ -319,7 +319,17 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       `OnboardingResponse` parse it and `ApiClient::onboarding` calls
       `GET /guilds/:id/onboarding`. Unit test against the fixture. Payload
       shape in docs/discord-reference.md.
-- [ ] Onboarding prompts view: questions and options, single and multi select
+- [x] Onboarding prompts view: questions and options, single and multi select.
+      Opened from the server name dropdown's "Server Guide" item. A 620 by
+      700-at-most dialog: 48 header, 16 body padding, each prompt a radius 12
+      card with title 16/20, type 12, and option rows 12/10 with a 20 px ring
+      (single) or box (multi) that fills with the accent when picked. Required
+      prompts carry an 18 high chip. Selections are local; no answer is sent
+      yet (next item). Unverified live: this account completed onboarding and
+      the reachable @home Server Guide shows the channel list instead. Verified
+      against E.T.T.R.A's four active prompts by forcing the dialog to that
+      server: screenshots/port/onboarding_prompts.png, empty state in
+      screenshots/port/onboarding_empty.png. docs/discord-reference.md.
 - [ ] Onboarding channel and role selection applied, responses sent (confirm
       endpoint)
 - [ ] Onboarding live updates: `GUILD_ONBOARDING_*` events (confirm names)

@@ -340,6 +340,11 @@ pub enum Command {
     LoadWelcomeScreen {
         guild: Snowflake,
     },
+    /// The server's onboarding questions. The answer arrives as
+    /// [`Event::Onboarding`].
+    LoadOnboarding {
+        guild: Snowflake,
+    },
     /// Join a voice channel (a private call when `guild` is `None`), or move
     /// to it from another. How it goes is reported as [`Event::Voice`].
     JoinVoice {
@@ -450,6 +455,10 @@ pub enum Event {
     WelcomeScreen {
         guild: Snowflake,
         result: Result<oxicord_model::WelcomeScreen, String>,
+    },
+    Onboarding {
+        guild: Snowflake,
+        result: Result<oxicord_model::Onboarding, String>,
     },
     Voice(VoiceNotice),
 }

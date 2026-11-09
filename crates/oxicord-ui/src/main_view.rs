@@ -45,11 +45,12 @@ use crate::{
     gift_dialog::{CloseGift, GiftDialog},
     invite_dialog::{CloseInvite, InviteDialog},
     keys::{self, QuickSwitch},
+    onboarding_dialog::{CloseOnboarding, OnboardingDialog},
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -184,6 +185,8 @@ pub struct MainView {
     join_open: bool,
     screening: Entity<RulesScreeningDialog>,
     screening_open: bool,
+    onboarding: Entity<OnboardingDialog>,
+    onboarding_open: bool,
     forward: Entity<ForwardDialog>,
     forward_open: bool,
     nickname: Entity<NicknameDialog>,
@@ -261,6 +264,10 @@ impl MainView {
         let screening = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| RulesScreeningDialog::new(session, media, backend, cx))
+        };
+        let onboarding = {
+            let backend = backend.clone();
+            cx.new(|_| OnboardingDialog::new(backend))
         };
         let status_dialog = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -661,6 +668,15 @@ impl MainView {
                 this.session.update(cx, |session, cx| session.close_verification(cx));
                 cx.notify();
             }),
+            cx.subscribe(&onboarding, |this, _, _: &CloseOnboarding, cx| {
+                this.onboarding_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenServerGuide, cx| {
+                this.onboarding_open = true;
+                this.onboarding.update(cx, |dialog, cx| dialog.opened(open.0, cx));
+                cx.notify();
+            }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenRulesScreening, window, cx| {
                 this.open_screening(open.guild, window, cx);
             }),
@@ -777,6 +793,8 @@ impl MainView {
             join_open: false,
             screening,
             screening_open: false,
+            onboarding,
+            onboarding_open: false,
             forward,
             forward_open: false,
             nickname,
@@ -2228,6 +2246,17 @@ impl MainView {
             .bg(rgb(theme::BG_CHAT))
             .child(column)
             .into_any_element()
+    }
+
+    /// The answer to [`Command::LoadOnboarding`], passed to the guide.
+    pub(crate) fn apply_onboarding(
+        &mut self,
+        guild: Snowflake,
+        result: Result<oxicord_model::Onboarding, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.onboarding
+            .update(cx, |dialog, cx| dialog.apply(guild, result, cx));
     }
 
     fn sync_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4243,6 +4272,7 @@ impl Render for MainView {
         let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
         let join = self.join_open.then(|| self.join.clone());
         let screening = self.screening_open.then(|| self.screening.clone());
+        let onboarding = self.onboarding_open.then(|| self.onboarding.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
@@ -4341,6 +4371,7 @@ impl Render for MainView {
             .children(roles_dialog)
             .children(join)
             .children(screening)
+            .children(onboarding)
             .children(invite)
             .children(edit_channel)
             .children(create_channel)

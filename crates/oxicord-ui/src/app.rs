@@ -207,6 +207,11 @@ impl AppView {
                     main.update(cx, |main, cx| main.apply_welcome_screen(guild, result, cx));
                 }
             }
+            Event::Onboarding { guild, result } => {
+                if let Screen::Main(main) = &self.screen {
+                    main.update(cx, |main, cx| main.apply_onboarding(guild, result, cx));
+                }
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }

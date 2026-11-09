@@ -37,6 +37,7 @@ mod message_requests;
 mod menus;
 mod nickname_dialog;
 mod notify;
+mod onboarding_dialog;
 mod plain;
 mod popup;
 mod member_list;

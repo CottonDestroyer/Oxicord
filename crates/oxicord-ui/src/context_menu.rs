@@ -14,7 +14,7 @@ use crate::{
     icons::icon,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
     server_settings,
-    session::{OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerProfile, OpenServerSettings, Session},
+    session::{OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, Session},
     theme,
 };
 
@@ -216,6 +216,14 @@ impl Render for ContextMenu {
         if let Some(channel) = invite_channel {
             menu = menu.child(self.item("invite", "Invite People", theme::ACCENT, false, move |this, _, _, cx| {
                 this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
+                this.close(cx);
+            }, cx));
+        }
+        if matches!(target, Target::Guild(_)) {
+            menu = menu.child(self.item("server-guide", "Server Guide", theme::TEXT_BRIGHT, false, |this, _, _, cx| {
+                if let Some(Target::Guild(guild)) = this.target {
+                    this.session.update(cx, |_, cx| cx.emit(OpenServerGuide(guild)));
+                }
                 this.close(cx);
             }, cx));
         }

@@ -214,6 +214,11 @@ pub struct OpenServerSettings(pub Snowflake);
 
 impl EventEmitter<OpenServerSettings> for Session {}
 
+/// Opens the Server Guide's onboarding questions for a server.
+pub struct OpenServerGuide(pub Snowflake);
+
+impl EventEmitter<OpenServerGuide> for Session {}
+
 /// Someone wants to edit this channel (name and topic), from its sidebar row.
 pub struct OpenChannelSettings(pub Snowflake);
 
