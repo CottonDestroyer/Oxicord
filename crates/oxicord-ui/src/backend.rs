@@ -345,6 +345,12 @@ pub enum Command {
     LoadOnboarding {
         guild: Snowflake,
     },
+    /// Store the options picked in the Server Guide. The answer arrives as
+    /// [`Event::OnboardingSaved`].
+    SaveOnboarding {
+        guild: Snowflake,
+        submission: oxicord_model::OnboardingSubmission,
+    },
     /// Join a voice channel (a private call when `guild` is `None`), or move
     /// to it from another. How it goes is reported as [`Event::Voice`].
     JoinVoice {
@@ -459,6 +465,10 @@ pub enum Event {
     Onboarding {
         guild: Snowflake,
         result: Result<oxicord_model::Onboarding, String>,
+    },
+    OnboardingSaved {
+        guild: Snowflake,
+        result: Result<oxicord_model::OnboardingUpdate, String>,
     },
     Voice(VoiceNotice),
 }

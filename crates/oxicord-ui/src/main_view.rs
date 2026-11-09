@@ -2259,6 +2259,17 @@ impl MainView {
             .update(cx, |dialog, cx| dialog.apply(guild, result, cx));
     }
 
+    /// The answer to [`Command::SaveOnboarding`], passed to the guide.
+    pub(crate) fn apply_onboarding_saved(
+        &mut self,
+        guild: Snowflake,
+        result: Result<oxicord_model::OnboardingUpdate, String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.onboarding
+            .update(cx, |dialog, cx| dialog.saved(guild, result, cx));
+    }
+
     fn sync_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let channel = self.channel;
         // A forum shows its posts, not a message timeline.

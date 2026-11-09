@@ -656,6 +656,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::Onboarding { guild, result }).await;
             });
         }
+        Command::SaveOnboarding { guild, submission } => {
+            tokio::spawn(async move {
+                let result = api.update_onboarding(guild, &submission).await.map_err(|err| {
+                    tracing::debug!(?err, "could not save onboarding");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::OnboardingSaved { guild, result }).await;
+            });
+        }
         Command::LoadProfile { user, guild } => {
             tokio::spawn(async move {
                 let mut result = api.profile(user, guild).await.map_err(|err| {

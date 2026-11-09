@@ -55,7 +55,8 @@ pub use notification::{
     mute_active,
 };
 pub use onboarding::{
-    Onboarding, OnboardingMode, OnboardingOption, OnboardingPrompt, OnboardingResponse, PromptType,
+    Onboarding, OnboardingMode, OnboardingOption, OnboardingPrompt, OnboardingResponse,
+    OnboardingSubmission, OnboardingUpdate, PromptType,
 };
 pub use message::{
     Message, MessageSnapshot, MessageType, PartialMessage, Reaction, SavedMessage, SavedMessageData,

@@ -1,13 +1,13 @@
-//! The Server Guide's onboarding questions. The view holds the local
-//! selection only; applying the answers is the next roadmap item.
+//! The Server Guide's onboarding questions, opened from the server name
+//! dropdown. Picks are kept locally and sent with Save.
 
 use std::collections::{HashMap, HashSet};
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, ClickEvent, Context, EventEmitter, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Window,
-    div, px, rgb,
+    IntoElement, ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _,
+    Window, div, px, rgb,
 };
 use oxicord_model::{Onboarding, OnboardingPrompt, PromptType, Snowflake};
 
@@ -15,6 +15,7 @@ use crate::{
     backend::{Backend, Command},
     icons::icon,
     profile::modal,
+    scroll,
     theme,
 };
 
@@ -28,8 +29,11 @@ pub struct OnboardingDialog {
     onboarding: Option<Onboarding>,
     /// Picked options per prompt.
     selected: HashMap<Snowflake, HashSet<Snowflake>>,
+    saving: bool,
+    error: Option<String>,
     loading: bool,
     failed: bool,
+    scroll: ScrollHandle,
 }
 
 impl OnboardingDialog {
@@ -39,8 +43,11 @@ impl OnboardingDialog {
             guild: None,
             onboarding: None,
             selected: HashMap::new(),
+            saving: false,
+            error: None,
             loading: false,
             failed: false,
+            scroll: ScrollHandle::new(),
         }
     }
 
@@ -49,8 +56,11 @@ impl OnboardingDialog {
         self.guild = Some(guild);
         self.onboarding = None;
         self.selected.clear();
+        self.saving = false;
+        self.error = None;
         self.loading = true;
         self.failed = false;
+        self.scroll.set_offset(gpui_kit::point(px(0.), px(0.)));
         self.backend.send(Command::LoadOnboarding { guild });
         cx.notify();
     }
@@ -87,6 +97,41 @@ impl OnboardingDialog {
             picked.insert(option);
         } else if !picked.remove(&option) {
             picked.insert(option);
+        }
+        cx.notify();
+    }
+
+    fn save(&mut self, cx: &mut Context<Self>) {
+        let Some(guild) = self.guild else { return };
+        let Some(onboarding) = &self.onboarding else { return };
+        if self.saving {
+            return;
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis() as u64)
+            .unwrap_or(0);
+        let submission = onboarding.submission(&self.selected, now);
+        self.saving = true;
+        self.error = None;
+        self.backend.send(Command::SaveOnboarding { guild, submission });
+        cx.notify();
+    }
+
+    /// The answer to [`Command::SaveOnboarding`].
+    pub fn saved(
+        &mut self,
+        guild: Snowflake,
+        result: Result<oxicord_model::OnboardingUpdate, String>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.guild != Some(guild) {
+            return;
+        }
+        self.saving = false;
+        match result {
+            Ok(_) => cx.emit(CloseOnboarding),
+            Err(error) => self.error = Some(error),
         }
         cx.notify();
     }
@@ -248,17 +293,9 @@ impl Render for OnboardingDialog {
                     .collect()
             })
             .unwrap_or_default();
-        let mut body = div()
-            .id("onboarding-body")
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .gap(px(12.))
-            .p(px(16.));
+        let mut content = div().flex().flex_col().gap(px(12.)).p(px(16.));
         if self.loading {
-            body = body.child(
+            content = content.child(
                 div()
                     .py(px(24.))
                     .text_center()
@@ -267,7 +304,7 @@ impl Render for OnboardingDialog {
                     .child("Loading the server guide..."),
             );
         } else if self.failed {
-            body = body.child(
+            content = content.child(
                 div()
                     .py(px(24.))
                     .text_center()
@@ -276,7 +313,7 @@ impl Render for OnboardingDialog {
                     .child("The server guide could not be loaded."),
             );
         } else if prompts.is_empty() {
-            body = body.child(
+            content = content.child(
                 div()
                     .py(px(24.))
                     .text_center()
@@ -286,14 +323,24 @@ impl Render for OnboardingDialog {
             );
         } else {
             for prompt in &prompts {
-                body = body.child(self.prompt(prompt, cx));
+                content = content.child(self.prompt(prompt, cx));
             }
         }
+        let body = scroll::vertical("onboarding-body", &self.scroll, content);
 
+        let has_prompts = !prompts.is_empty();
+        let label = if self.saving {
+            "Saving..."
+        } else if has_prompts {
+            "Save"
+        } else {
+            "Done"
+        };
         let done = div()
             .id("onboarding-done")
             .h(px(32.))
-            .w(px(60.))
+            .min_w(px(60.))
+            .px(px(12.))
             .flex()
             .items_center()
             .justify_center()
@@ -303,9 +350,25 @@ impl Render for OnboardingDialog {
             .text_size(px(14.))
             .font_weight(FontWeight::MEDIUM)
             .text_color(rgb(0xffff_ffff))
-            .hover(|s| s.bg(rgb(theme::ACCENT_HOVER)))
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.close(cx)))
-            .child("Done");
+            .when(self.saving, |button| button.opacity(0.7))
+            .when(!self.saving, |button| button.hover(|s| s.bg(rgb(theme::ACCENT_HOVER))))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                if has_prompts && !this.saving {
+                    this.save(cx);
+                } else if !has_prompts {
+                    this.close(cx);
+                }
+            }))
+            .child(label);
+        let error = self.error.clone().map(|error| {
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_size(px(12.))
+                .text_color(rgb(theme::DANGER))
+                .child(error)
+        });
 
         let content = div()
             .id("onboarding-dialog")
@@ -365,10 +428,12 @@ impl Render for OnboardingDialog {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .justify_end()
+                    .when(error.is_some(), |footer| footer.justify_between())
+                    .when(error.is_none(), |footer| footer.justify_end())
                     .px(px(16.))
                     .border_t_1()
                     .border_color(rgb(theme::BORDER))
+                    .children(error)
                     .child(done),
             );
 

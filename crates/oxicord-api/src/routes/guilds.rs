@@ -137,6 +137,24 @@ impl ApiClient {
         .await
     }
 
+    /// Sends the options picked in the Server Guide and the time each prompt
+    /// and option was shown. The call is gated by the account-write rule: the
+    /// port builds it but is not exercised against the real account.
+    pub async fn update_onboarding(
+        &self,
+        guild: Snowflake,
+        submission: &oxicord_model::OnboardingSubmission,
+    ) -> Result<oxicord_model::OnboardingUpdate, ApiError> {
+        let body = serde_json::to_value(submission).expect("an onboarding submission serializes");
+        self.json(
+            Method::PUT,
+            &format!("/guilds/{guild}/onboarding-responses"),
+            "PUT /guilds/:id/onboarding-responses",
+            Some(&body),
+        )
+        .await
+    }
+
     /// The card the screening dialog shows beside the form.
     pub async fn guild_profile(
         &self,

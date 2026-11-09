@@ -330,8 +330,18 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       against E.T.T.R.A's four active prompts by forcing the dialog to that
       server: screenshots/port/onboarding_prompts.png, empty state in
       screenshots/port/onboarding_empty.png. docs/discord-reference.md.
-- [ ] Onboarding channel and role selection applied, responses sent (confirm
-      endpoint)
+- [x] Onboarding channel and role selection applied, responses sent. Endpoint
+      confirmed in the web client: `PUT /guilds/:id/onboarding-responses`
+      (POST only during the onboarding flow), body
+      `{ onboarding_responses: [option ids],
+      onboarding_prompts_seen: { prompt id: ms },
+      onboarding_responses_seen: { option id: ms } }`. `Onboarding::submission`
+      builds it from the picked options and `ApiClient::update_onboarding`
+      sends it; the Save button shows "Saving...", closes on success and shows
+      the error on failure. Unit test checks the JSON shape. The Save button
+      was never pressed against the real account (account-write rule); channels
+      and roles are granted by the server and arrive through the gateway, so
+      there is no local application step. docs/discord-reference.md.
 - [ ] Onboarding live updates: `GUILD_ONBOARDING_*` events (confirm names)
 
 ## Phase 4: bots
