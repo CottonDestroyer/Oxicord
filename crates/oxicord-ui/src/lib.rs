@@ -27,6 +27,7 @@ mod keys;
 mod login;
 mod main_view;
 mod media;
+mod message_requests;
 mod menus;
 mod nickname_dialog;
 mod notify;

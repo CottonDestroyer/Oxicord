@@ -32,6 +32,7 @@ use crate::{
     rules_screening::{CloseRulesScreening, RulesScreeningDialog},
     friends::FriendsView,
     icons::icon,
+    message_requests::MessageRequestsView,
     rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
     create_channel_dialog::{CloseCreateChannel, CreateChannelDialog},
@@ -110,12 +111,15 @@ pub struct MainView {
     media: Entity<Media>,
     chat: Entity<ChatView>,
     friends: Entity<FriendsView>,
+    message_requests: Entity<MessageRequestsView>,
     forum: Entity<ForumView>,
     members: Entity<MemberList>,
     backend: Backend,
     /// `None` is the home screen with the direct messages.
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
+    /// The message requests page instead of the friends page.
+    requests_open: bool,
     /// The channel to return to when switching back to a guild.
     last_channel: HashMap<Snowflake, Snowflake>,
     collapsed: HashSet<Snowflake>,
@@ -597,6 +601,10 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| FriendsView::new(session, media, backend, window, cx))
         };
+        let message_requests = {
+            let (session, media) = (session.clone(), media.clone());
+            cx.new(|cx| MessageRequestsView::new(session, media, cx))
+        };
         let forum = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| ForumView::new(session, media, backend, window, cx))
@@ -618,11 +626,13 @@ impl MainView {
             media,
             chat,
             friends,
+            message_requests,
             forum,
             members,
             backend,
             guild: None,
             channel: None,
+            requests_open: false,
             last_channel: HashMap::new(),
             collapsed: HashSet::new(),
             status_menu_open: false,
@@ -703,6 +713,7 @@ impl MainView {
         cx: &mut Context<Self>,
     ) {
         self.guild = guild;
+        self.requests_open = false;
         self.channel = guild.and_then(|g| {
             self.last_channel.get(&g).copied().or_else(|| {
                 let store = &self.session.read(cx).store;
@@ -720,6 +731,7 @@ impl MainView {
 
     fn select_channel(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.channel = Some(channel);
+        self.requests_open = false;
         if let Some(guild) = self.guild {
             self.last_channel.insert(guild, channel);
         }
@@ -743,6 +755,7 @@ impl MainView {
         let name = match (self.guild, self.channel) {
             (Some(guild), _) => store.guild(guild).map(|g| g.name.clone()),
             (None, Some(channel)) => store.channel(channel).map(|c| store.dm_name(c)),
+            (None, None) if self.requests_open => Some("Message Requests".to_owned()),
             (None, None) => Some("Friends".to_owned()),
         };
         name.unwrap_or_default().into()
@@ -1088,6 +1101,23 @@ impl MainView {
             }
             DevCommand::Resize(w, h) => {
                 window.resize(gpui_kit::size(gpui_kit::px(w as f32), gpui_kit::px(h as f32)));
+            }
+            DevCommand::FakeRequest(channel, user) => {
+                let data = serde_json::json!({
+                    "id": channel.0.to_string(), "type": 1,
+                    "recipients": [{ "id": user.0.to_string(), "username": "stranger", "global_name": "Stranger" }],
+                    "last_message_id": channel.0.to_string(),
+                    "is_message_request": true,
+                    "is_message_request_timestamp": "2026-11-09T09:00:00.000+00:00"
+                });
+                let Ok(channel) = serde_json::from_value(data) else { return };
+                self.session.update(cx, |session, cx| {
+                    let changes = session.store.apply(oxicord_model::gateway::DispatchEvent::ChannelCreate(
+                        Box::new(channel),
+                    ));
+                    cx.emit(changes);
+                });
+                cx.notify();
             }
         }
     }
@@ -1738,6 +1768,14 @@ impl MainView {
     /// The home screen without a conversation open.
     fn show_friends(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.channel = None;
+        self.requests_open = false;
+        self.sync_chat(window, cx);
+        cx.notify();
+    }
+
+    fn show_requests(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.channel = None;
+        self.requests_open = true;
         self.sync_chat(window, cx);
         cx.notify();
     }
@@ -2132,6 +2170,9 @@ impl MainView {
             }
             None => {
                 list = list.child(self.render_friends_entry(cx));
+                if let Some(entry) = self.render_requests_entry(cx) {
+                    list = list.child(entry);
+                }
                 // A line between the shortcuts and the conversations.
                 list = list.child(div().mx(px(8.)).my(px(10.)).h(px(1.)).bg(rgb(theme::BORDER)));
                 list = list.child(self.render_dm_heading(cx));
@@ -2522,7 +2563,7 @@ impl MainView {
 
     /// The row above the DM list that opens the friends page.
     fn render_friends_entry(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let selected = self.channel.is_none();
+        let selected = self.channel.is_none() && !self.requests_open;
         let pending = self
             .session
             .read(cx)
@@ -2548,6 +2589,37 @@ impl MainView {
             .child(div().w(px(20.)).flex_none().flex().justify_center().child(icon("friends", 20., color)))
             .child(div().flex_1().child("Friends"))
             .children(mention_badge(u32::try_from(pending).unwrap_or(u32::MAX)))
+    }
+
+    /// The row that opens the message requests page. The official client
+    /// draws it only while there is something to show, and its badge counts
+    /// the plain requests, not the spam ones.
+    fn render_requests_entry(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let store = &self.session.read(cx).store;
+        let count = store.message_requests().len();
+        let spam = store.spam_channels().len();
+        (count > 0 || spam > 0).then(|| {
+            let selected = self.requests_open && self.channel.is_none();
+            let color = if selected { theme::TEXT } else { theme::TEXT_FAINT };
+            div()
+                .id("message-requests")
+                .h(px(38.))
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .px(px(8.))
+                .rounded(px(theme::RADIUS))
+                .cursor_pointer()
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .text_color(rgb(color))
+                .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
+                .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
+                .on_click(cx.listener(|this, _, window, cx| this.show_requests(window, cx)))
+                .child(div().w(px(20.)).flex_none().flex().justify_center().child(icon("message-requests", 20., color)))
+                .child(div().flex_1().child("Message Requests"))
+                .children(mention_badge(u32::try_from(count).unwrap_or(u32::MAX)))
+                .into_any_element()
+        })
     }
 
     /// "Direct Messages" with the button that starts a new conversation.
@@ -3726,6 +3798,8 @@ impl Render for MainView {
         let in_call = self.voice_view_channel(cx).is_some();
         let content = if in_call {
             self.render_voice_area(window, cx)
+        } else if self.guild.is_none() && self.channel.is_none() && self.requests_open {
+            self.message_requests.clone().into_any_element()
         } else if self.guild.is_none() && self.channel.is_none() {
             self.friends.clone().into_any_element()
         } else if self.channel.is_some_and(|c| self.is_forum(c, cx)) {

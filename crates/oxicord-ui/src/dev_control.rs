@@ -36,6 +36,9 @@ pub enum DevCommand {
     Rules(Snowflake),
     /// 0 board, 1 activity, 2 friends, 3 servers.
     Tab(u8),
+    /// A synthetic message request channel, so its row and page can be
+    /// checked without a real stranger writing first.
+    FakeRequest(Snowflake, Snowflake),
     Close,
     Resize(u32, u32),
 }
@@ -73,6 +76,11 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         }
         "goto" => id().map(DevCommand::Goto),
         "join" => id().map(DevCommand::Join),
+        "fake-request" => {
+            let channel = words.clone().next()?.parse().ok().map(Snowflake)?;
+            let user = words.clone().nth(1)?.parse().ok().map(Snowflake)?;
+            Some(DevCommand::FakeRequest(channel, user))
+        }
         "leave" => Some(DevCommand::Leave),
         "mute" => Some(DevCommand::Mute),
         "deafen" => Some(DevCommand::Deafen),

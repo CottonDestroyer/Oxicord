@@ -143,9 +143,15 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       visually: the page module (171133 MessageRequestPage) is absent from
       reference/web and this account has no pending requests, so the live
       page cannot be opened.
-- [ ] Message requests page: sidebar row with the count badge and the list
-      page (rows show the requester, preview and age; layout unverified,
-      see above). Data: fixtures/message-requests.json.
+- [x] Message requests page: sidebar row with the count badge and the list
+      page. Row under Friends, drawn only while a request or spam channel
+      exists, badge counts the plain requests; the page lists requester,
+      arrival time and spam tag, a click opens the conversation. Checked at
+      1920 x 1080 with a locally injected request channel (dev command
+      `fake-request`, screenshots/port/message_requests_row.png and
+      message_requests_page.png). Layout unverified against the official
+      page: its module (171133 MessageRequestPage) is absent from
+      reference/web and the live page cannot be opened with 0 requests.
 - [ ] Message requests: accept and ignore
 - [ ] Spam inbox tab
 - [ ] Scheduled events fixture from `GET /guilds/:id/scheduled-events`

@@ -61,8 +61,8 @@ try {
         $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
         $bmp = New-Object System.Drawing.Bitmap ($r.R - $r.L), ($r.B - $r.T)
         $g = [System.Drawing.Graphics]::FromImage($bmp); $dc = $g.GetHdc()
-        [W]::PrintWindow($h, $dc, 2) | Out-Null; $g.ReleaseHdc($dc)
-        $bmp.Save((Join-Path $Dir "$v.png"))
+        [W]::PrintWindow($h, $dc, 2) | Out-Null; $g.ReleaseHdc($dc); $g.Dispose()
+        $bmp.Save((Join-Path $Dir "$v.png"), [System.Drawing.Imaging.ImageFormat]::Png)
       }
     }
   }
