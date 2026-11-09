@@ -17,6 +17,7 @@ use oxicord_model::{
 
 use crate::{
     backend::{Backend, Command},
+    favorite_game_editor::FavoriteGameEditor,
     icons::icon,
     media::{Media, avatar, decoration},
     profile::modal,
@@ -69,7 +70,8 @@ pub struct EditProfileModal {
     /// The board shows the widget library instead of the widgets themselves.
     widget_picker: bool,
     /// The board shows the Favorite Game widget editor.
-    favorite_editor: bool,
+    favorite_open: bool,
+    favorite_editor: Entity<FavoriteGameEditor>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -83,6 +85,10 @@ impl EditProfileModal {
     ) -> Self {
         let bio = cx.new(|cx| TextareaState::new(window, cx).placeholder("Who are you?"));
         let pronouns = cx.new(|cx| InputState::new(window, cx).placeholder("Add your pronouns"));
+        let favorite_editor = {
+            let media = media.clone();
+            cx.new(|cx| FavoriteGameEditor::new(media, window, cx))
+        };
         let _subscriptions = vec![cx.observe(&session, |_, _, cx| cx.notify())];
         Self {
             session,
@@ -99,7 +105,8 @@ impl EditProfileModal {
             effect_catalog: EffectCatalog::bundled(),
             frame_catalog: FrameCatalog::bundled(),
             widget_picker: false,
-            favorite_editor: false,
+            favorite_open: false,
+            favorite_editor,
             _subscriptions,
         }
     }
@@ -109,7 +116,8 @@ impl EditProfileModal {
     pub fn opened(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.filled = false;
         self.widget_picker = false;
-        self.favorite_editor = false;
+        self.favorite_open = false;
+        self.favorite_editor.update(cx, |editor, cx| editor.opened(cx));
         let me = self.session.read(cx).store.me().cloned();
         if let Some(me) = &me
             && !self.session.read(cx).profiles.contains_key(&me.id)
@@ -972,7 +980,7 @@ impl Render for EditProfileModal {
                                         d.cursor_pointer().on_click(cx.listener(
                                             |this, _: &ClickEvent, _, cx| {
                                                 this.widget_picker = false;
-                                                this.favorite_editor = false;
+                                                this.favorite_open = false;
                                                 cx.notify();
                                             },
                                         ))
@@ -982,12 +990,13 @@ impl Render for EditProfileModal {
                         },
                     )),
             )
-            .child(if (empty || self.widget_picker) && !self.favorite_editor {
+            .child(if (empty || self.widget_picker) && !self.favorite_open {
                 crate::widget_picker::widget_picker(
                     &self.media,
                     Some(Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
-                        this.favorite_editor = true;
+                        this.favorite_open = true;
                         this.widget_picker = false;
+                        this.favorite_editor.update(cx, |editor, cx| editor.opened(cx));
                         cx.notify();
                     }))),
                     cx,
@@ -1024,15 +1033,15 @@ impl Render for EditProfileModal {
                                     .text_color(rgb(theme::TEXT_BRIGHT))
                                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                                         this.widget_picker = true;
-                                        this.favorite_editor = false;
+                                        this.favorite_open = false;
                                         cx.notify();
                                     }))
                                     .child(icon("plus", 12., theme::TEXT_BRIGHT))
                                     .child("Add Widget"),
                             ),
                     )
-                    .child(if self.favorite_editor {
-                        crate::favorite_game_editor::editor(&self.media, cx)
+                    .child(if self.favorite_open {
+                        self.favorite_editor.clone().into_any_element()
                     } else {
                         widgets.into_any_element()
                     })

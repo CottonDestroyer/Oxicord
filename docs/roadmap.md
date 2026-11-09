@@ -198,8 +198,18 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       than the live one, the board header above the card shows only Add
       Widget where the live also has Create Your Own, and the add tile and
       suggested covers are not wired yet.
-- [ ] Favorite Game game picker: Add Game and the suggested covers open a
-      search, choose one game
+- [x] Favorite Game game picker: Add Game opens the 398 by 354 Browse games
+      popover at the add tile's right (8 padding, radius 8, #111214, 1 px
+      rgba(151,151,159,0.2) border, a 40 high search field and a 380 by 288
+      scrolling list of 40 high rows, radius 4, 16 / 20 weight 500 labels and
+      a check on the selected row), and a row selects one game and closes it.
+      The suggested covers select their game directly. The selected game
+      replaces the add tile with its cover and shows its name where the
+      comment fields will go. The 20 game names are bundled from the live
+      list. Remaining differences: the search field is not focused on open so
+      it has no brand focus ring, and the six games without a captured cover
+      show a wash placeholder. Values from the live DOM and
+      screenshots/reference/browse_games.png.
 - [ ] Favorite Game comment and tag editing, saved with the widget
 - [ ] Games I Like widget editor, opened from its card in the picker
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
