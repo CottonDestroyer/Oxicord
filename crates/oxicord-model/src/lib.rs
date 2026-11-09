@@ -9,6 +9,7 @@ pub mod attachment;
 pub mod channel;
 pub mod command;
 pub mod component;
+pub mod collectible;
 pub mod effect;
 pub mod frame;
 pub mod embed;

@@ -24,7 +24,8 @@ use crate::{
     ban_dialog::{CloseBan, BanDialog},
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
-    edit_profile_modal::{CloseEditProfileModal, EditProfileModal},
+    edit_profile_modal::{CloseEditProfileModal, EditProfileModal, OpenNameplate},
+    nameplate_dialog::{CloseNameplateDialog, NameplateDialog},
     kick_dialog::{CloseKick, KickDialog},
     timeout_dialog::{CloseTimeout, TimeoutDialog},
     roles_dialog::{CloseRoles, RolesDialog},
@@ -131,6 +132,8 @@ pub struct MainView {
     status_dialog_open: bool,
     edit_profile: Entity<EditProfileModal>,
     edit_profile_open: bool,
+    nameplate_dialog: Entity<NameplateDialog>,
+    nameplate_open: bool,
     channel_status_modal: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
@@ -252,6 +255,11 @@ impl MainView {
         let edit_profile = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| EditProfileModal::new(session, media, backend, window, cx))
+        };
+        let nameplate_dialog = {
+            let session = session.clone();
+            let media = media.clone();
+            cx.new(|_| NameplateDialog::new(session, media))
         };
         let forward = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -440,6 +448,18 @@ impl MainView {
             }),
             cx.subscribe(&status_dialog, |this, _, _: &CloseStatusDialog, cx| {
                 this.status_dialog_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&nameplate_dialog, |this, _, CloseNameplateDialog(applied): &CloseNameplateDialog, cx| {
+                this.nameplate_open = false;
+                let applied = applied.clone();
+                this.edit_profile.update(cx, |modal, cx| modal.set_applied(applied, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&edit_profile, |this, _, _: &OpenNameplate, cx| {
+                this.nameplate_open = true;
+                let applied = this.edit_profile.read(cx).applied_nameplate();
+                this.nameplate_dialog.update(cx, |dialog, cx| dialog.opened(applied, cx));
                 cx.notify();
             }),
             cx.subscribe(&edit_profile, |this, _, _: &CloseEditProfileModal, cx| {
@@ -658,6 +678,8 @@ impl MainView {
             status_dialog_open: false,
             edit_profile,
             edit_profile_open: false,
+            nameplate_dialog,
+            nameplate_open: false,
             channel_status_modal: false,
             profile: None,
             profile_tab: profile::Tab::Board,
@@ -4000,6 +4022,7 @@ impl Render for MainView {
             .children(profile)
             .children(account)
             .children(edit_profile)
+            .children(self.nameplate_open.then(|| self.nameplate_dialog.clone()))
             .children(status_dialog)
             .children(menu)
             .children(viewer)

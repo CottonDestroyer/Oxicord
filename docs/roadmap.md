@@ -88,7 +88,24 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       (no data source yet), the connections section only has its Add
       Connection row, the nameplate, decoration, effect and frame tiles open
       nothing yet, and the widget cards show real game data only.
-- [ ] Nameplate, avatar decoration, profile effect and frame pickers
+- [x] Nameplate picker dialog, opened from the nameplate row in the Edit
+      Profile modal: 598 by 501 frame with "Change Nameplate" and a close, the
+      left column (Your Nameplates over the None and Shop controls at 106 by
+      80 with a 2px brand ring on the selected one, the owned nameplates, then
+      See What's in Shop over the shop nameplates with padlocks) and the right
+      preview pane (276 wide over a 190 tall card preview with five member
+      rows), over a right aligned Cancel and Apply footer with Apply dimmed
+      until the pick changes. Values from the live capture and the inventory
+      CSS in reference/web/assets/5257 (docs/discord-reference.md). The catalog is
+      oxicord-model's NameplateCatalog, written by hand from the collectibles
+      product shape because the live payload was not captured: the artwork is
+      the palette colour rather than the real gradient. Apply sets the nameplate the
+      editor shows; the endpoint that stores it is unconfirmed so nothing is
+      sent. Captures: screenshots/reference/edit_profile_modal_dialog.png and
+      screenshots/port/nameplate_picker.png. Remaining differences: the Shop
+      control has no storefront glyph yet, and shop rows are dimmed rather
+      than tinted behind their padlock.
+- [ ] Avatar decoration, profile effect and frame pickers
 - [ ] Remove the Profiles settings page: the live client edits the profile
       only in the Edit Profile modal, so the port's extra sidebar entry and
       page should go once nothing else points at them.

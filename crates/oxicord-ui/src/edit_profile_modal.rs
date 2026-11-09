@@ -7,10 +7,13 @@
 use gpui_kit::{
     AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _, IntoElement,
     prelude::FluentBuilder as _, ParentElement as _, PathPromptOptions, Render, StatefulInteractiveElement as _,
-    Styled as _, StyledImage as _, Subscription, Window, div, img, px, rgb,
+    Styled as _, StyledImage as _, Subscription, Window, div, img, px, rgb, rgba,
     component::input::{Input, InputState, Textarea, TextareaState},
 };
-use oxicord_model::User;
+use oxicord_model::{
+    collectible::{Nameplate, NameplateCatalog},
+    User,
+};
 
 use crate::{
     backend::{Backend, Command},
@@ -24,6 +27,12 @@ use crate::{
 /// Emitted when the window asks to go away.
 pub struct CloseEditProfileModal;
 
+/// Emitted when the nameplate tile is clicked; the window opens the Change
+/// Nameplate dialog.
+pub struct OpenNameplate;
+
+impl EventEmitter<OpenNameplate> for EditProfileModal {}
+
 impl EventEmitter<CloseEditProfileModal> for EditProfileModal {}
 
 pub struct EditProfileModal {
@@ -35,6 +44,8 @@ pub struct EditProfileModal {
     /// The bio and pronouns are copied in once per open, so a refresh never
     /// overwrites what is being typed.
     filled: bool,
+    applied: Option<String>,
+    catalog: NameplateCatalog,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -49,7 +60,17 @@ impl EditProfileModal {
         let bio = cx.new(|cx| TextareaState::new(window, cx).placeholder("Who are you?"));
         let pronouns = cx.new(|cx| InputState::new(window, cx).placeholder("Add your pronouns"));
         let _subscriptions = vec![cx.observe(&session, |_, _, cx| cx.notify())];
-        Self { session, media, backend, bio, pronouns, filled: false, _subscriptions }
+        Self {
+            session,
+            media,
+            backend,
+            bio,
+            pronouns,
+            filled: false,
+            applied: None,
+            catalog: NameplateCatalog::bundled(),
+            _subscriptions,
+        }
     }
 
     /// Fills the editors from the own profile the first time the modal is
@@ -63,6 +84,16 @@ impl EditProfileModal {
             self.backend.send(Command::LoadProfile { user: me, guild: None });
         }
         let _ = window;
+    }
+
+    pub fn applied_nameplate(&self) -> Option<String> {
+        self.applied.clone()
+    }
+
+    /// The nameplate the editor shows and the dialog starts from.
+    pub fn set_applied(&mut self, applied: Option<String>, cx: &mut Context<Self>) {
+        self.applied = applied;
+        cx.notify();
     }
 
     fn fill_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -211,6 +242,44 @@ impl EditProfileModal {
     }
 }
 
+pub(crate) fn palette_color(palette: &str) -> u32 {
+    match palette {
+        "purple" => 0x6a4bd6,
+        "violet" => 0x7d3fb0,
+        "blue" => 0x3b6fd4,
+        "silver" => 0x8e94a3,
+        "ember" => 0x8a4a2a,
+        "abyss" => 0x2b3350,
+        _ => theme::BG_ACTIVE,
+    }
+}
+
+/// The row the Change Nameplate dialog and the profile card draw for a
+/// nameplate: the palette behind a small avatar and the name bar.
+pub(crate) fn nameplate_row(
+    item: &Nameplate,
+    avatar_url: &str,
+    media: &Entity<Media>,
+    height: f32,
+    color: &mut gpui_kit::App,
+) -> gpui_kit::AnyElement {
+    let avatar_el = avatar(media, avatar_url, height * 0.4, "", color);
+    div()
+        .w_full()
+        .h(px(height))
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .px(px(8.))
+        .rounded(px(4.))
+        .bg(rgb(palette_color(&item.palette)))
+        .child(avatar_el)
+        .child(div().flex_1().h(px(10.)).rounded_full().bg(rgba(0xffff_ff40)))
+        .when(item.locked, |d| d.child(icon("lock", 10., theme::TEXT_BRIGHT)))
+        .into_any_element()
+}
+
 type ClickRun = Box<dyn Fn(&ClickEvent, &mut Window, &mut gpui_kit::App) + 'static>;
 
 fn mime_for(path: &std::path::Path) -> &'static str {
@@ -233,9 +302,10 @@ impl Render for EditProfileModal {
         let avatar_url = oxicord_media::cdn::user_avatar(me.id, me.avatar.as_deref(), 128);
 
         // Editor column
-        let nameplate = Self::section(
-            "Nameplate",
-            div()
+        let applied_nameplate = self.applied.as_deref().and_then(|sku| self.catalog.find(sku));
+        let nameplate_body = match applied_nameplate {
+            Some(item) => nameplate_row(item, &avatar_url, &self.media, 48., cx),
+            None => div()
                 .h(px(48.))
                 .w_full()
                 .flex()
@@ -253,6 +323,16 @@ impl Render for EditProfileModal {
                         .bg(rgb(theme::BG_HOVER)),
                 )
                 .child(icon("circle-plus", 20., theme::TEXT_MUTED))
+                .into_any_element(),
+        };
+        let nameplate = Self::section(
+            "Nameplate",
+            div()
+                .id("edit-nameplate")
+                .w_full()
+                .cursor_pointer()
+                .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(OpenNameplate)))
+                .child(nameplate_body)
                 .into_any_element(),
         );
 
@@ -751,6 +831,7 @@ impl Render for EditProfileModal {
 
         let content = div()
             .id("edit-profile-modal")
+            .relative()
             .occlude()
             .w(px(1200.))
             .h(px(800.))
