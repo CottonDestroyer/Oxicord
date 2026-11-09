@@ -802,6 +802,31 @@ fn accepting_a_request_moves_it_to_friends_and_removing_drops_it() {
 }
 
 #[test]
+fn a_relationship_update_replaces_the_nickname() {
+    let mut store = ready_store();
+    store.apply(event(
+        "RELATIONSHIP_ADD",
+        json!({ "id": "3", "type": 1, "user": { "id": "3", "username": "bo" } }),
+    ));
+    assert_eq!(store.relationship_nick(id(3)), None);
+
+    let update = store.apply(event(
+        "RELATIONSHIP_UPDATE",
+        json!({ "id": "3", "type": 1,
+                "user": { "id": "3", "username": "bo" },
+                "nickname": "Bobby" }),
+    ));
+    assert!(update.relationships);
+    assert_eq!(store.relationship_nick(id(3)), Some("Bobby".to_owned()));
+
+    store.apply(event(
+        "RELATIONSHIP_UPDATE",
+        json!({ "id": "3", "type": 1, "user": { "id": "3", "username": "bo" } }),
+    ));
+    assert_eq!(store.relationship_nick(id(3)), None);
+}
+
+#[test]
 fn an_open_dm_is_found_by_its_recipient() {
     let mut store = ready_store();
     assert_eq!(store.dm_with(id(ADA)), Some(id(50)));

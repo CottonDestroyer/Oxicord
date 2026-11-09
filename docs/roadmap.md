@@ -73,8 +73,12 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 - [x] Private notes and friend nicknames
 - [ ] Edit Profile modal, as the live client draws it: nameplate, avatar and
       decoration, banner color, profile effect and frame, widgets board
-- [ ] `USER_NOTE_UPDATE`: notes changed on another device
-- [ ] `RELATIONSHIP_UPDATE`: friend nickname changed on another device
+- [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
+      `session.rs`, which updates the cached profile card.
+- [x] `RELATIONSHIP_UPDATE`: friend nickname changed on another device. The
+      gateway parses it with `RELATIONSHIP_ADD` and the store replaces the
+      whole relationship, nickname included. Added a reducer test for a
+      nickname being set and cleared.
 
 ## Phase 3: servers you can't fully use yet
 
@@ -82,9 +86,16 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 - [x] Screening questions: TEXT_INPUT, PARAGRAPH, MULTIPLE_CHOICE (checked
       against the Mossad fixture; live modal unreachable)
 - [x] Member moderation: kick, ban, timeout, roles in the profile card menu
-- [ ] Kick confirmation dialog
-- [ ] Role hierarchy check: hide or disable actions on members above you
-- [ ] Welcome screen fixture from `GET /guilds/:id/welcome-screen`
+- [x] Kick confirmation dialog. Implemented in b442a41 and wired to
+      `DELETE /guilds/:id/members/:user`. Unverified: the account has no
+      `KICK_MEMBERS` in any joined server, so the live client shows no Kick
+      action to open it from.
+- [x] Role hierarchy check: hide or disable actions on members above you.
+      `card_actions` only offers kick, ban, timeout and roles when our highest
+      role sits above theirs, with administrators exempt and the owner never
+      a target. Visual check blocked by the same missing permission.
+- [x] Welcome screen fixture from `GET /guilds/:id/welcome-screen`.
+      fixtures/welcome-screen.json, captured from SCP | Roleplay.
 - [ ] Welcome screen view: description and featured channels when no channel
       is selected
 - [ ] Onboarding fixture from `GET /guilds/:id/onboarding` (confirm)
