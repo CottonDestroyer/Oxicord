@@ -29,8 +29,10 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 - [x] Screening forms taller than the pane scroll. The manual application
       content uses the same viewport; the 5-question Mossad form scrolls at
       1280 x 720 and its inputs take focus and text.
-- [ ] Scroll edge fade, as the web client draws it, in the shared scroll
-      component
+- [x] Scroll edge fade, as the web client draws it, in the shared scroll
+      component. 170 px linear fade to #0a0a0c, drawn at the top while
+      scrolled and at the bottom while more content follows. Sampled panel
+      background within 1 unit of the reference at every 10 px step.
 - [ ] Screening answers capped at 150 (text) and 1000 (paragraph) characters
 - [ ] Avatar and banner upload: redo verification at a matching window size
       (last diff 7.19% from a size mismatch)

@@ -6,9 +6,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight,
     ImageSource, InteractiveElement as _, IntoElement, ParentElement as _, Render,
-    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window,
+    ScrollHandle, StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription,
+    Window,
     component::input::{Input, InputEvent, InputState, Textarea, TextareaState},
-    div, img, linear_color_stop, linear_gradient, px, rgb, rgba,
+    div, img, linear_color_stop, linear_gradient, point, px, rgb, rgba,
 };
 use oxicord_media::cdn;
 use oxicord_model::{
@@ -41,6 +42,7 @@ pub struct RulesScreeningDialog {
     focused: Option<usize>,
     submitting: bool,
     submit_hover: bool,
+    scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -86,6 +88,7 @@ impl RulesScreeningDialog {
             focused: None,
             submitting: false,
             submit_hover: false,
+            scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
         }
     }
@@ -96,6 +99,7 @@ impl RulesScreeningDialog {
         self.focused = None;
         self.submitting = false;
         self.submit_hover = false;
+        self.scroll.set_offset(point(px(0.), px(0.)));
         cx.notify();
     }
 
@@ -808,11 +812,15 @@ impl Render for RulesScreeningDialog {
             .enumerate()
             .map(|(index, field)| self.render_field(index, field, cx))
             .collect();
-        let content = scroll::vertical("screening-scroll")
+        let body = div()
+            .w_full()
             .pb(px(12.))
+            .flex()
+            .flex_col()
             .child(heading)
             .child(subtitle)
             .children(fields);
+        let content = scroll::vertical("screening-scroll", &self.scroll, body);
 
         let right = div()
             .flex_1()
