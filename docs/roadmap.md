@@ -342,7 +342,13 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       was never pressed against the real account (account-write rule); channels
       and roles are granted by the server and arrive through the gateway, so
       there is no local application step. docs/discord-reference.md.
-- [ ] Onboarding live updates: `GUILD_ONBOARDING_*` events (confirm names)
+- [x] Onboarding live updates: `GUILD_ONBOARDING_*` events. Confirmed there
+      are none: the official gateway event list has no onboarding entries,
+      and the web client's onboarding store has only REST fetch actions plus
+      local selection dispatch. The port already asks `GET
+      /guilds/:id/onboarding` every time the guide opens, which is the
+      client's refresh path. No gateway handler to add.
+      docs/discord-reference.md.
 
 ## Phase 4: bots
 
