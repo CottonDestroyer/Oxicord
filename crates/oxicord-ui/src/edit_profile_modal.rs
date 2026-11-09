@@ -5,7 +5,7 @@
 //! Profile button and from our own profile card.
 
 use gpui_kit::{
-    AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _, IntoElement,
+    AppContext as _, ClickEvent, Context, Div, Entity, EventEmitter, FontWeight, InteractiveElement as _, IntoElement,
     prelude::FluentBuilder as _, ParentElement as _, PathPromptOptions, Render, StatefulInteractiveElement as _,
     Styled as _, StyledImage as _, Subscription, Window, div, img, px, rgb, rgba,
     component::input::{Input, InputState, Textarea, TextareaState},
@@ -335,6 +335,224 @@ impl EditProfileModal {
             .child(content)
             .into_any_element()
     }
+
+    #[inline(never)]
+    fn board_header(&self, cx: &mut Context<Self>) -> Div {
+        div()
+            .w(px(431.))
+            .h(px(32.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child("Your Widgets"),
+            )
+            .child(
+                div()
+                    .id("create-widget")
+                    .h(px(32.))
+                    .px(px(12.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .rounded(px(8.))
+                    .bg(rgba(0x97979f1f))
+                    .border_1()
+                    .border_color(rgba(0x97979f29))
+                    .cursor_pointer()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(icon("pencil", 16., theme::TEXT_BRIGHT))
+                    .child("Create Your Own"),
+            )
+            .child(
+                div()
+                    .id("add-widget")
+                    .h(px(32.))
+                    .px(px(12.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .rounded(px(8.))
+                    .bg(rgba(0x97979f1f))
+                    .border_1()
+                    .border_color(rgba(0x97979f29))
+                    .cursor_pointer()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        if this.favorite_open {
+                            this.pending_favorite = this.favorite_editor.read(cx).saved(cx);
+                        }
+                        if this.games_like_open {
+                            this.pending_like = this.games_like_editor.read(cx).chosen();
+                        }
+                        this.widget_picker = true;
+                        this.favorite_open = false;
+                        this.games_like_open = false;
+                        cx.notify();
+                    }))
+                    .child(icon("plus", 16., theme::TEXT_BRIGHT))
+                    .child("Add Widget"),
+            )
+    }
+
+    #[inline(never)]
+    fn board_disclaimer(&self) -> Div {
+        div()
+            .w(px(431.))
+            .h(px(34.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .px(px(8.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgba(0x97979f33))
+            .child(icon("circle-question-mark", 16., theme::TEXT_MUTED))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child("Only your friends will be able to see the content in this tab"),
+            )
+    }
+
+    #[inline(never)]
+    fn save_bar(&self, me_id: Snowflake, cx: &mut Context<Self>) -> impl IntoElement {
+        let save = div()
+            .id("save-edit-profile")
+            .h(px(32.))
+            .w(px(60.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(8.))
+            .bg(rgb(theme::ACCENT))
+            .cursor_pointer()
+            .text_size(px(14.))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(0xffff_ffff))
+            .hover(|s| s.bg(rgb(theme::SUCCESS_HOVER)))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                let bio = this.bio.read(cx).value().trim().to_owned();
+                let pronouns = this.pronouns.read(cx).value().trim().to_owned();
+                let decoration = this.applied_decoration.clone();
+                let effect = this.applied_effect.clone();
+                let frame = this.applied_frame.clone();
+                let current = this
+                    .session
+                    .read(cx)
+                    .store
+                    .me()
+                    .and_then(|m| m.decoration())
+                    .map(|sku| sku.to_string());
+                let changed = current != decoration;
+                let current_effect = this
+                    .session
+                    .read(cx)
+                    .profiles
+                    .get(&me_id)
+                    .and_then(|p| p.effect)
+                    .map(|sku| sku.to_string());
+                let effect_changed = current_effect != effect;
+                let current_frame = this
+                    .session
+                    .read(cx)
+                    .profiles
+                    .get(&me_id)
+                    .and_then(|p| p.frame)
+                    .map(|sku| sku.to_string());
+                let frame_changed = current_frame != frame;
+                let backend = this.backend.clone();
+                this.session.update(cx, |s, cx| {
+                    s.request_account(&backend, AccountRequest::EditProfile { bio, pronouns }, cx);
+                    if changed {
+                        s.request_account(&backend, AccountRequest::SetDecoration(decoration), cx);
+                    }
+                    if effect_changed {
+                        s.request_account(&backend, AccountRequest::SetEffect(effect), cx);
+                    }
+                    if frame_changed {
+                        s.request_account(&backend, AccountRequest::SetFrame(frame), cx);
+                    }
+                });
+                // The real client saves the board with PUT /users/@me/widgets.
+                // Build that request from the editor, but never send it from
+                // the real account; the model test covers the payload shape.
+                let submission = this.favorite_editor.read(cx).submission(cx);
+                if submission.is_some() {
+                    this.pending_favorite = this.favorite_editor.read(cx).saved(cx);
+                }
+                let like_submission = this.games_like_editor.read(cx).submission();
+                if like_submission.is_some() {
+                    this.pending_like = this.games_like_editor.read(cx).chosen();
+                }
+                cx.emit(CloseEditProfileModal);
+            }))
+            .child("Save");
+
+        let reset = div()
+            .id("reset-edit-profile")
+            .h(px(32.))
+            .w(px(60.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(8.))
+            .bg(rgba(0x97979f1f))
+            .border_1()
+            .border_color(rgba(0x97979f29))
+            .cursor_pointer()
+            .text_size(px(14.))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                this.opened(window, cx);
+                cx.notify();
+            }))
+            .child("Reset");
+
+        div()
+            .id("edit-profile-save-bar")
+            .occlude()
+            .mt(px(24.))
+            .ml(px(351.))
+            .w(px(500.))
+            .h(px(50.))
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(8.))
+            .px(px(16.))
+            .rounded(px(8.))
+            .bg(rgb(theme::BG_MENU))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("Don't forget to save your changes!"),
+            )
+            .child(div().flex().items_center().gap(px(8.)).child(reset).child(save))
+    }
 }
 
 pub(crate) fn palette_color(palette: &str) -> u32 {
@@ -624,84 +842,16 @@ impl Render for EditProfileModal {
             div().w_full().child(Input::new(&self.pronouns)).into_any_element(),
         );
 
-        let save = div()
-            .id("save-edit-profile")
-            .h(px(32.))
-            .px_4()
-            .flex()
-            .items_center()
-            .rounded(px(theme::RADIUS))
-            .bg(rgb(theme::ACCENT))
-            .cursor_pointer()
-            .text_size(px(14.))
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(rgb(theme::TEXT_BRIGHT))
-            .hover(|s| s.bg(rgb(theme::SUCCESS_HOVER)))
-            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                let bio = this.bio.read(cx).value().trim().to_owned();
-                let pronouns = this.pronouns.read(cx).value().trim().to_owned();
-                let decoration = this.applied_decoration.clone();
-                let effect = this.applied_effect.clone();
-                let frame = this.applied_frame.clone();
-                let current = this.session.read(cx).store.me().and_then(|m| m.decoration()).map(|sku| sku.to_string());
-                let changed = current != decoration;
-                let current_effect = this
-                    .session
-                    .read(cx)
-                    .profiles
-                    .get(&me.id)
-                    .and_then(|p| p.effect)
-                    .map(|sku| sku.to_string());
-                let effect_changed = current_effect != effect;
-                let current_frame = this
-                    .session
-                    .read(cx)
-                    .profiles
-                    .get(&me.id)
-                    .and_then(|p| p.frame)
-                    .map(|sku| sku.to_string());
-                let frame_changed = current_frame != frame;
-                let backend = this.backend.clone();
-                this.session.update(cx, |s, cx| {
-                    s.request_account(&backend, AccountRequest::EditProfile { bio, pronouns }, cx);
-                    if changed {
-                        s.request_account(&backend, AccountRequest::SetDecoration(decoration), cx);
-                    }
-                    if effect_changed {
-                        s.request_account(&backend, AccountRequest::SetEffect(effect), cx);
-                    }
-                    if frame_changed {
-                        s.request_account(&backend, AccountRequest::SetFrame(frame), cx);
-                    }
-                });
-                // The real client saves the board with PUT /users/@me/widgets.
-                // Build that request from the editor, but never send it from
-                // the real account; the model test covers the payload shape.
-                let submission = this.favorite_editor.read(cx).submission(cx);
-                if submission.is_some() {
-                    this.pending_favorite = this.favorite_editor.read(cx).saved(cx);
-                }
-                let like_submission = this.games_like_editor.read(cx).submission();
-                if like_submission.is_some() {
-                    this.pending_like = this.games_like_editor.read(cx).chosen();
-                }
-                cx.emit(CloseEditProfileModal);
-            }))
-            .child("Save changes");
-
         let editor = div()
             .id("edit-profile-editor")
             .w(px(240.))
-            .flex_none()
-            .h_full()
+            .h(px(756.))
             .overflow_y_scroll()
             .flex()
             .flex_col()
             .gap(px(24.))
             .px(px(16.))
             .py(px(16.))
-            .border_r_1()
-            .border_color(rgb(theme::BORDER))
             .child(nameplate)
             .child(avatar_section)
             .child(banner_section)
@@ -709,8 +859,39 @@ impl Render for EditProfileModal {
             .child(upsell)
             .child(name_style)
             .child(bio_section)
-            .child(pronouns_section)
-            .child(save);
+            .child(pronouns_section);
+
+        let editor_column = div()
+            .w(px(242.))
+            .flex_none()
+            .h_full()
+            .flex()
+            .flex_col()
+            .border_r_1()
+            .border_color(rgb(theme::BORDER))
+            .child(
+                div()
+                    .h(px(40.))
+                    .mt(px(4.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(8.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .text_size(px(16.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child("Main Profile")
+                            .child(icon("chevron-down", 16., theme::TEXT_MUTED)),
+                    )
+                    .child(icon("chevron-right", 20., theme::TEXT_MUTED)),
+            )
+            .child(editor);
 
         // Preview pane
         let preview_banner = match banner.as_deref().and_then(|url| self.media.update(cx, |m, _| m.get(url))) {
@@ -742,11 +923,12 @@ impl Render for EditProfileModal {
         let joined = me.id.datetime().format("%b %-d, %Y").to_string();
         let preview = div()
             .w(px(400.))
+            .h(px(750.))
             .flex_none()
             .self_start()
             .flex()
             .flex_col()
-            .rounded(px(theme::RADIUS))
+            .rounded_t(px(theme::RADIUS))
             .border_1()
             .border_color(rgb(theme::BORDER_MUTED))
             .bg(rgb(theme::BG_MENU))
@@ -994,39 +1176,53 @@ impl Render for EditProfileModal {
         }
         let board = div()
             .id("edit-profile-board")
-            .flex_1()
-            .min_w_0()
-            .h_full()
+            .w(px(487.))
+            .flex_none()
+            .h(px(750.))
+            .ml(px(-4.))
+            .pl(px(36.))
+            .pr(px(20.))
+            .pt(px(40.))
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(16.))
-            .pl(px(4.))
-            .pr(px(52.))
-            .py(px(24.))
             .border_l_1()
             .border_color(rgb(theme::BORDER))
             .child(
                 div()
+                    .w(px(455.))
+                    .h(px(46.))
+                    .ml(px(-4.))
+                    .mt(px(-24.))
+                    .mb(px(12.))
+                    .pl(px(4.))
+                    .pr(px(20.))
+                    .pt(px(4.))
+                    .pb(px(4.))
                     .flex()
-                    .items_center()
-                    .gap_4()
-                    .border_b_1()
-                    .border_color(rgb(theme::BORDER))
-                    .pb(px(8.))
+                    .items_start()
                     .child(["Board", "Activity", "Wishlist"].iter().enumerate().fold(
-                        div().flex().gap_4(),
+                        div()
+                            .w(px(431.))
+                            .h(px(30.))
+                            .flex()
+                            .items_start()
+                            .gap(px(24.))
+                            .border_b_1()
+                            .border_color(rgb(theme::BORDER)),
                         |row, (i, tab)| {
                             let selected = i == 0;
                             row.child(
                                 div()
                                     .id(if i == 0 { "board-tab" } else { "other-tab" })
-                                    .h_full()
+                                    .h(px(30.))
                                     .flex()
-                                    .items_center()
+                                    .items_start()
+                                    .pb(px(16.))
                                     .border_b_2()
                                     .border_color(rgb(if selected { theme::TEXT_BRIGHT } else { 0x0000_0000 }))
                                     .text_size(px(14.))
+                                    .line_height(px(14.))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(rgb(if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
                                     .when(i == 0, |d| {
@@ -1076,49 +1272,8 @@ impl Render for EditProfileModal {
                     .flex()
                     .flex_col()
                     .gap(px(16.))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_size(px(14.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(theme::TEXT_BRIGHT))
-                                    .child("Your Widgets"),
-                            )
-                            .child(
-                                div()
-                                    .id("add-widget")
-                                    .h(px(32.))
-                                    .px_2()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .rounded(px(theme::RADIUS))
-                                    .bg(rgb(theme::BG_ACTIVE))
-                                    .cursor_pointer()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(theme::TEXT_BRIGHT))
-                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                        if this.favorite_open {
-                                            this.pending_favorite =
-                                                this.favorite_editor.read(cx).saved(cx);
-                                        }
-                                        if this.games_like_open {
-                                            this.pending_like =
-                                                this.games_like_editor.read(cx).chosen();
-                                        }
-                                        this.widget_picker = true;
-                                        this.favorite_open = false;
-                                        this.games_like_open = false;
-                                        cx.notify();
-                                    }))
-                                    .child(icon("plus", 12., theme::TEXT_BRIGHT))
-                                    .child("Add Widget"),
-                            ),
-                    )
+                    .child(self.board_header(cx))
+                    .child(self.board_disclaimer())
                     .child(if self.favorite_open {
                         self.favorite_editor.clone().into_any_element()
                     } else if self.games_like_open {
@@ -1129,75 +1284,46 @@ impl Render for EditProfileModal {
                     .into_any_element()
             });
 
-        let content = div()
+        let dialog = div()
             .id("edit-profile-modal")
-            .relative()
             .occlude()
-            .w(px(1200.))
+            .w(px(1202.))
             .h(px(800.))
             .flex_none()
             .flex()
-            .flex_col()
             .overflow_hidden()
             .rounded(px(theme::RADIUS_MD))
             .bg(rgb(theme::BG_PANEL))
             .border_1()
             .border_color(rgb(theme::BORDER))
+            .child(editor_column)
             .child(
                 div()
-                    .h(px(48.))
+                    .w(px(958.))
                     .flex_none()
+                    .h_full()
                     .flex()
-                    .items_center()
-                    .justify_between()
-                    .pl(px(16.))
-                    .pr(px(8.))
-                    .border_b_1()
-                    .border_color(rgb(theme::BORDER))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .text_size(px(16.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child("Main Profile")
-                            .child(icon("chevron-down", 16., theme::TEXT_MUTED)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .child(icon("chevron-right", 20., theme::TEXT_MUTED))
-                            .child(
-                                div()
-                                    .id("edit-profile-close")
-                                    .size(px(32.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded(px(theme::RADIUS))
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                                    .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(CloseEditProfileModal)))
-                                    .child(icon("x", 20., theme::TEXT_MUTED)),
-                            ),
-                    ),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .child(editor)
-                    .child(div().flex_none().pl(px(50.)).mr(px(28.)).child(preview))
+                    .pt(px(49.))
+                    .pl(px(48.))
+                    .pr(px(32.))
+                    .child(preview)
                     .child(board),
             );
 
+        let frame = div()
+            .relative()
+            .top(px(4.))
+            .mt(px(74.))
+            .w(px(1202.))
+            .h(px(874.))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .child(dialog)
+            .child(self.save_bar(me.id, cx));
+
         modal(
-            content.into_any_element(),
+            frame.into_any_element(),
             Box::new(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(CloseEditProfileModal))),
         )
         .into_any_element()

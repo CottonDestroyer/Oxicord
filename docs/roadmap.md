@@ -69,25 +69,36 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Spotify listen along, RTL bios (gpui has no bidi), logos beyond the 22
       Discord lists
 - [x] Private notes and friend nicknames
-- [x] Edit Profile modal shell, as the live client draws it: header with the
-      "Main Profile" switcher, the editor column (nameplate, avatar and
-      decoration, banner colour, profile effect and frame, Nitro upsell,
-      display name style, bio, pronouns, save) and the preview card with the
+- [x] Edit Profile modal shell, as the live client draws it: full-height left
+      panel with the "Main Profile" switcher, the editor sections (nameplate,
+      avatar and decoration, banner colour, profile effect and frame, Nitro
+      upsell, display name style, bio, pronouns) and the preview card with the
       message row, bio, member since, connections and note over the Board,
       Activity and Wishlist widget tabs. Opened from the account page's Edit
       Profile button and from the settings header pencil. Measured from the
-      live desktop capture at 1:1 (the capture is CSS pixels: the nameplate
-      dialog's tile measures exactly the 106 by 80 its CSS declares), so the
-      frame is 1200 by 800 with a 240 editor column, 99 tiles, a 400 preview
-      card with a 140 banner and a 120 avatar, and widgets cards 431 wide:
-      docs/discord-reference.md. Captures: screenshots/reference/
-      edit_profile_modal.png, screenshots/reference/edit_profile_modal_dialog.png
-      and screenshots/port/edit_profile_modal.png. Save sends the existing
-      EditProfile request; not exercised live (account writes rule). Remaining
-      differences: the preview card has no game badge row or mutual guild pill
-      (no data source yet), the connections section only has its Add
-      Connection row, the nameplate, decoration, effect and frame tiles open
-      nothing yet, and the widget cards show real game data only.
+      live capture and the modal CSS at
+      `reference/web/live-667580/8e8eccd890e9820b.css`, the frame is 1202 by
+      800 at (359, 140) with a 242 left panel (240 inner), a 958 right region
+      at 48 left / 49 top / 32 right padding, a 400 by 750 preview card with a
+      140 banner and a 120 avatar, and a 487 by 750 board. The 500 by 50 save
+      bar sits 24 below the dialog (top 824, left 351) in an 874 high wrapper;
+      otherwise its clicks fall through to the scrim. The board header and
+      disclaimer are built in `#[inline(never)]` helpers because the inline
+      builder chain overflowed the main stack on open. Widget cards are 431
+      wide. docs/discord-reference.md. Captures:
+      screenshots/reference/edit_profile_modal_picker.png,
+      screenshots/reference/edit_profile_modal_live.png,
+      screenshots/port/modal_layout5.png and
+      screenshots/port/gi_edit_check.png. Verified at 1920 x 1080: the modal
+      lands at (359, 140) 1202 by 800, the preview at (649, 189) 400 by 750,
+      the board border at 1045, the picker title at (1136, 257) and the first
+      card at (1081, 345); Reset re-fills the editors and stays open. Save
+      sends the existing EditProfile request; not exercised live (account
+      writes rule). Remaining differences: the preview card has no game badge
+      row or mutual guild pill (no data source yet), the connections section
+      only has its Add Connection row, the nameplate, decoration, effect and
+      frame tiles open nothing yet, and the widget cards show real game data
+      only.
 - [x] Nameplate picker dialog, opened from the nameplate row in the Edit
       Profile modal: 598 by 501 frame with "Change Nameplate" and a close, the
       left column (Your Nameplates over the None and Shop controls at 106 by
