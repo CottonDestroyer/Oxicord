@@ -38,8 +38,13 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       puts the caret back at the end. Verified by typing 160 and 1010
       characters into the Mossad form: the 10 extra letters dropped at each
       limit and the counter stopped at 1000/1000.
-- [ ] Avatar and banner upload: redo verification at a matching window size
-      (last diff 7.19% from a size mismatch)
+- [ ] Avatar and banner upload: unverified. The live client opens an Edit
+      Profile modal (nameplate, avatar and decoration, banner color, effects)
+      instead of a Profiles settings page, and the port's saved login was
+      missing from the credential manager this session, so its Profile page
+      could not be opened. Live capture: screenshots/reference/
+      avatar_banner.png. The old port capture showed a login screen and was
+      removed. Verify after the Edit Profile modal is ported.
 
 ## Phase 1: stop going stale (done)
 
@@ -66,6 +71,8 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Spotify listen along, RTL bios (gpui has no bidi), logos beyond the 22
       Discord lists
 - [x] Private notes and friend nicknames
+- [ ] Edit Profile modal, as the live client draws it: nameplate, avatar and
+      decoration, banner color, profile effect and frame, widgets board
 - [ ] `USER_NOTE_UPDATE`: notes changed on another device
 - [ ] `RELATIONSHIP_UPDATE`: friend nickname changed on another device
 
