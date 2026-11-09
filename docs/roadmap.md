@@ -33,7 +33,11 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       component. 170 px linear fade to #0a0a0c, drawn at the top while
       scrolled and at the bottom while more content follows. Sampled panel
       background within 1 unit of the reference at every 10 px step.
-- [ ] Screening answers capped at 150 (text) and 1000 (paragraph) characters
+- [x] Screening answers capped at 150 (text) and 1000 (paragraph)
+      characters. Text rejects keys past 150; paragraph trims on change and
+      puts the caret back at the end. Verified by typing 160 and 1010
+      characters into the Mossad form: the 10 extra letters dropped at each
+      limit and the counter stopped at 1000/1000.
 - [ ] Avatar and banner upload: redo verification at a matching window size
       (last diff 7.19% from a size mismatch)
 

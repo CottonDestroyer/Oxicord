@@ -28,6 +28,11 @@ use crate::{
     theme,
 };
 
+/// `maxLength` on the web client's single-line question.
+const TEXT_LIMIT: usize = 150;
+/// `maxLength` on the web client's paragraph question.
+const PARAGRAPH_LIMIT: usize = 1000;
+
 pub struct CloseRulesScreening;
 
 impl EventEmitter<CloseRulesScreening> for RulesScreeningDialog {}
@@ -42,6 +47,8 @@ pub struct RulesScreeningDialog {
     focused: Option<usize>,
     submitting: bool,
     submit_hover: bool,
+    /// Paragraph answer that went past the limit and waits to be trimmed.
+    clamp: Option<usize>,
     scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -88,6 +95,7 @@ impl RulesScreeningDialog {
             focused: None,
             submitting: false,
             submit_hover: false,
+            clamp: None,
             scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
         }
@@ -99,6 +107,7 @@ impl RulesScreeningDialog {
         self.focused = None;
         self.submitting = false;
         self.submit_hover = false;
+        self.clamp = None;
         self.scroll.set_offset(point(px(0.), px(0.)));
         cx.notify();
     }
@@ -125,7 +134,11 @@ impl RulesScreeningDialog {
             .map(|(index, field)| match field.field_type.as_str() {
                 "TERMS" => Answer::Terms(false),
                 "TEXT_INPUT" => {
-                    let input = cx.new(|cx| InputState::new(window, cx).placeholder("Enter your answer"));
+                    let input = cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .placeholder("Enter your answer")
+                            .validate(|text, _| text.chars().count() <= TEXT_LIMIT)
+                    });
                     let subscription = cx.subscribe(&input, move |this, _, event: &InputEvent, cx| {
                         match event {
                             InputEvent::Focus => this.focused = Some(index),
@@ -143,10 +156,17 @@ impl RulesScreeningDialog {
                             .auto_grow(3, 10)
                             .placeholder("Enter your answer")
                     });
+                    let source = input.clone();
                     let subscription = cx.subscribe(&input, move |this, _, event: &InputEvent, cx| {
                         match event {
                             InputEvent::Focus => this.focused = Some(index),
                             InputEvent::Blur if this.focused == Some(index) => this.focused = None,
+                            InputEvent::Change
+                                if this.clamp.is_none()
+                                    && source.read(cx).value().chars().count() > PARAGRAPH_LIMIT =>
+                            {
+                                this.clamp = Some(index);
+                            }
                             _ => {}
                         }
                         cx.notify();
@@ -199,10 +219,12 @@ impl RulesScreeningDialog {
             .iter()
             .map(|answer| match answer {
                 Answer::Terms(agreed) => VerificationResponse::Terms(*agreed),
-                Answer::Text(input) => VerificationResponse::Text(input.read(cx).value().to_string()),
-                Answer::Paragraph(input) => {
-                    VerificationResponse::Text(input.read(cx).value().to_string())
-                }
+                Answer::Text(input) => VerificationResponse::Text(
+                    input.read(cx).value().chars().take(TEXT_LIMIT).collect(),
+                ),
+                Answer::Paragraph(input) => VerificationResponse::Text(
+                    input.read(cx).value().chars().take(PARAGRAPH_LIMIT).collect(),
+                ),
                 Answer::Choice(choice) => VerificationResponse::Choice(*choice),
                 Answer::Unsupported => VerificationResponse::Text(String::new()),
             })
@@ -519,7 +541,7 @@ impl RulesScreeningDialog {
         let Some(Answer::Paragraph(input)) = self.answers.get(index) else {
             return div().into_any_element();
         };
-        let count = input.read(cx).value().chars().count();
+        let count = input.read(cx).value().chars().count().min(PARAGRAPH_LIMIT);
         div()
             .min_h(px(88.))
             .p(px(10.))
@@ -547,7 +569,7 @@ impl RulesScreeningDialog {
                     .text_size(px(12.))
                     .line_height(px(16.))
                     .text_color(rgb(theme::TEXT_FAINT))
-                    .child(format!("{count}/1000")),
+                    .child(format!("{count}/{PARAGRAPH_LIMIT}")),
             )
             .into_any_element()
     }
@@ -649,6 +671,20 @@ impl Render for RulesScreeningDialog {
         let Some(guild) = self.guild else {
             return div().into_any_element();
         };
+
+        if let Some(index) = self.clamp.take() {
+            cx.defer_in(window, move |this, window, cx| {
+                if let Some(Answer::Paragraph(input)) = this.answers.get(index) {
+                    let text: String =
+                        input.read(cx).value().chars().take(PARAGRAPH_LIMIT).collect();
+                    let end = text.len();
+                    input.update(cx, |state, cx| {
+                        state.set_value(text, window, cx);
+                        state.set_selected_range(end..end, cx);
+                    });
+                }
+            });
+        }
 
         let (info, submit_error) = {
             let session = self.session.read(cx);
