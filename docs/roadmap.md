@@ -106,9 +106,17 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       control has no storefront glyph yet, and shop rows are dimmed rather
       than tinted behind their padlock.
 - [ ] Avatar decoration, profile effect and frame pickers
-- [ ] Remove the Profiles settings page: the live client edits the profile
-      only in the Edit Profile modal, so the port's extra sidebar entry and
-      page should go once nothing else points at them.
+- [x] Remove the Profiles settings page. The sidebar lists My Account,
+      Content & Social, Data & Privacy, Authorized Apps, Devices and
+      Connections, matching the live capture, and the Profile entry, its page,
+      its bio and pronoun editors and the unused helpers behind them are gone.
+      "Edit Profiles" beside the account name and the account popout's Edit
+      Profile both open the Edit Profile modal, as in the live client. That
+      open is deferred one effect cycle with cx.defer_in: opening the modal in
+      the same update that closes settings killed the process in 2 of 3 tries
+      before the defer, and the deferred build survived three tries.
+      Captures: screenshots/port/settings_no_profile.png and
+      screenshots/port/settings_edit_profile.png.
 - [ ] Widgets board editing: add widget, favourite game, games I like
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.

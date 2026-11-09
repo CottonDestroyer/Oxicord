@@ -438,8 +438,11 @@ impl MainView {
             }),
             cx.subscribe_in(&settings_view, window, |this, _, _: &OpenEditProfile, window, cx| {
                 this.settings_open = false;
-                this.edit_profile_open = true;
-                this.edit_profile.update(cx, |modal, cx| modal.opened(window, cx));
+                cx.defer_in(window, |this, window, cx| {
+                    this.edit_profile_open = true;
+                    this.edit_profile.update(cx, |modal, cx| modal.opened(window, cx));
+                    cx.notify();
+                });
                 cx.notify();
             }),
             cx.subscribe(&media, |this, _, shown: &ViewImage, cx| {
@@ -3047,8 +3050,8 @@ impl MainView {
                                         row("account-edit-profile", icon("pencil", 16., theme::TEXT_MUTED).into_any_element(), "Edit Profile".into(), false)
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.close_account_popout(cx);
-                                                this.settings_open = true;
-                                                this.settings_view.update(cx, |view, cx| view.open_profile(cx));
+                                                this.edit_profile_open = true;
+                                                cx.notify();
                                             })),
                                     )
                                     .child(line())

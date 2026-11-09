@@ -9,7 +9,7 @@ use gpui_kit::{
     AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, StatefulInteractiveElement as _,
     Styled as _, Subscription, Window, div, px, rgb,
-    component::input::{Input, InputState, TextareaState},
+    component::input::{Input, InputState},
 };
 use oxicord_model::Snowflake;
 use oxicord_settings::{Key, Value};
@@ -28,7 +28,6 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Account,
-    Profile,
     ContentSocial,
     DataPrivacy,
     Apps,
@@ -47,7 +46,6 @@ impl Page {
             "",
             &[
                 Page::Account,
-                Page::Profile,
                 Page::ContentSocial,
                 Page::DataPrivacy,
                 Page::Apps,
@@ -70,7 +68,6 @@ impl Page {
     fn label(self) -> &'static str {
         match self {
             Page::Account => "My Account",
-            Page::Profile => "Profile",
             Page::ContentSocial => "Content & Social",
             Page::DataPrivacy => "Data & Privacy",
             Page::Apps => "Authorized Apps",
@@ -88,7 +85,6 @@ impl Page {
     fn glyph(self) -> &'static str {
         match self {
             Page::Account => "user",
-            Page::Profile => "square-user",
             Page::ContentSocial => "shield-check",
             Page::DataPrivacy => "shield",
             Page::Apps => "layout-grid",
@@ -106,7 +102,6 @@ impl Page {
     fn keywords(self) -> &'static str {
         match self {
             Page::Account => "email phone password display name username log out two factor 2fa",
-            Page::Profile => "about me bio pronouns",
             Page::ContentSocial => {
                 "explicit media filter spoilers dm spam friend requests everyone mutual activity status game"
             }
@@ -146,8 +141,6 @@ pub struct SettingsView {
     page: Page,
     search: Entity<InputState>,
     display_name: Entity<InputState>,
-    pronouns: Entity<InputState>,
-    bio: Entity<TextareaState>,
     /// Whether the profile inputs have been filled from the server yet, so a
     /// refresh doesn't overwrite what the user is typing.
     filled: bool,
@@ -167,12 +160,6 @@ impl SettingsView {
     ) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
         let display_name = cx.new(|cx| InputState::new(window, cx).placeholder("Display name"));
-        let pronouns = cx.new(|cx| InputState::new(window, cx).placeholder("Add your pronouns"));
-        let bio = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .auto_grow(3, 8)
-                .placeholder("Tell people about yourself")
-        });
         let subscriptions = vec![
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
@@ -185,8 +172,6 @@ impl SettingsView {
             page: Page::Account,
             search,
             display_name,
-            pronouns,
-            bio,
             filled: false,
             reveal_contact: false,
             confirm_revoke: None,
@@ -215,13 +200,6 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// Opens straight on the Profile page, for the account popout.
-    pub fn open_profile(&mut self, cx: &mut Context<Self>) {
-        self.page = Page::Profile;
-        self.opened(cx);
-        cx.notify();
-    }
-
     fn select(&mut self, page: Page, cx: &mut Context<Self>) {
         self.page = page;
         self.confirm_revoke = None;
@@ -237,7 +215,7 @@ impl SettingsView {
             let account = &self.session.read(cx).account;
             let missing = !matches!(account.settings, Load::Ready(_) | Load::Loading);
             let request = match self.page {
-                Page::Account | Page::Profile => Some(AccountRequest::LoadDetails),
+                Page::Account => Some(AccountRequest::LoadDetails),
                 Page::Apps => Some(AccountRequest::LoadApps),
                 Page::Devices => Some(AccountRequest::LoadSessions),
                 Page::Connections => Some(AccountRequest::LoadConnections),
@@ -281,11 +259,7 @@ impl SettingsView {
             return;
         };
         let name = details.global_name.unwrap_or_default();
-        let pronouns = details.pronouns.unwrap_or_default();
-        let bio = details.bio.unwrap_or_default();
         self.display_name.update(cx, |i, cx| i.set_value(name, window, cx));
-        self.pronouns.update(cx, |i, cx| i.set_value(pronouns, window, cx));
-        self.bio.update(cx, |i, cx| i.set_value(bio, window, cx));
         self.filled = true;
     }
 
@@ -331,7 +305,7 @@ impl SettingsView {
                             .text_size(px(14.))
                             .text_color(rgb(theme::TEXT_MUTED))
                             .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
-                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.select(Page::Profile, cx)))
+                            .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(OpenEditProfile)))
                             .child("Edit Profiles")
                             .child(icon("pencil", 12., theme::TEXT_MUTED)),
                     ),
