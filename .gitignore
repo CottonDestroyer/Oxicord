@@ -2,3 +2,5 @@
 .env
 fixtures/
 screenshots/
+docs/discord-reference.md
+docs/protocol-notes.md
