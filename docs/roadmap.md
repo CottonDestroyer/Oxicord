@@ -168,7 +168,24 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       before the defer, and the deferred build survived three tries.
       Captures: screenshots/port/settings_no_profile.png and
       screenshots/port/settings_edit_profile.png.
-- [ ] Widgets board editing: add widget, favourite game, games I like
+- [x] Add Widget picker: the Board tab's empty state, and what Add Widget
+      opens, is the live widget library. "Customize your profile with
+      Widgets" 16 / 20 weight 500 over "Choose from our library of Widgets to
+      share more about yourself and your interests" 14 / 18 in a 320 wide
+      centered block, then a 24 gap and a 431 wide grid of 207.5 by 100
+      cards, two columns 16 apart, radius 8, background
+      rgba(151,151,159,0.12). Each card shows the add glyph or the link glyph
+      for an account that has to be connected first, then a 20 high title row
+      with the game icon and the label 14 / 20 weight 500. Create your own is
+      first with a mic glyph and a Beta badge (16 high, 0 8 padding, full
+      radius, #5865f2, 12 / 16 weight 600 white). Values from the live DOM
+      and screenshots/reference/widget_picker.png. Add Widget sets the
+      picker on and the Board tab sets it off.
+      Remaining differences: the port draws no placeholder profile card or
+      hero cover art inside the cards yet, and the Beta badge takes a flow
+      row so the personal card's glyph sits lower than the live card's.
+- [ ] Favorite Game widget editor, opened from its card in the picker
+- [ ] Games I Like widget editor, opened from its card in the picker
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.
 - [x] `RELATIONSHIP_UPDATE`: friend nickname changed on another device. The

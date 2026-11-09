@@ -66,6 +66,8 @@ pub struct EditProfileModal {
     catalog: NameplateCatalog,
     effect_catalog: EffectCatalog,
     frame_catalog: FrameCatalog,
+    /// The board shows the widget library instead of the widgets themselves.
+    widget_picker: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -94,6 +96,7 @@ impl EditProfileModal {
             catalog: NameplateCatalog::bundled(),
             effect_catalog: EffectCatalog::bundled(),
             frame_catalog: FrameCatalog::bundled(),
+            widget_picker: false,
             _subscriptions,
         }
     }
@@ -102,6 +105,7 @@ impl EditProfileModal {
     /// opened, and makes sure that profile is on its way.
     pub fn opened(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.filled = false;
+        self.widget_picker = false;
         let me = self.session.read(cx).store.me().cloned();
         if let Some(me) = &me
             && !self.session.read(cx).profiles.contains_key(&me.id)
@@ -887,6 +891,7 @@ impl Render for EditProfileModal {
                     .collect()
             })
             .unwrap_or_default();
+        let empty = entries.is_empty();
         let mut widgets = div().flex().flex_col().gap_3();
         for (title, cover) in entries {
             let mut card = div()
@@ -950,6 +955,7 @@ impl Render for EditProfileModal {
                             let selected = i == 0;
                             row.child(
                                 div()
+                                    .id(if i == 0 { "board-tab" } else { "other-tab" })
                                     .h_full()
                                     .flex()
                                     .items_center()
@@ -958,41 +964,62 @@ impl Render for EditProfileModal {
                                     .text_size(px(14.))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(rgb(if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
+                                    .when(i == 0, |d| {
+                                        d.cursor_pointer().on_click(cx.listener(
+                                            |this, _: &ClickEvent, _, cx| {
+                                                this.widget_picker = false;
+                                                cx.notify();
+                                            },
+                                        ))
+                                    })
                                     .child(*tab),
                             )
                         },
                     )),
             )
-            .child(
+            .child(if empty || self.widget_picker {
+                crate::widget_picker::widget_picker(&self.media, cx)
+            } else {
                 div()
                     .flex()
-                    .items_center()
-                    .justify_between()
+                    .flex_col()
+                    .gap(px(16.))
                     .child(
                         div()
-                            .text_size(px(14.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child("Your Widgets"),
-                    )
-                    .child(
-                        div()
-                            .id("add-widget")
-                            .h(px(32.))
-                            .px_2()
                             .flex()
                             .items_center()
-                            .gap_1()
-                            .rounded(px(theme::RADIUS))
-                            .bg(rgb(theme::BG_ACTIVE))
-                            .cursor_pointer()
-                            .text_size(px(13.))
-                            .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child(icon("plus", 12., theme::TEXT_BRIGHT))
-                            .child("Add Widget"),
-                    ),
-            )
-            .child(widgets);
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(theme::TEXT_BRIGHT))
+                                    .child("Your Widgets"),
+                            )
+                            .child(
+                                div()
+                                    .id("add-widget")
+                                    .h(px(32.))
+                                    .px_2()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .rounded(px(theme::RADIUS))
+                                    .bg(rgb(theme::BG_ACTIVE))
+                                    .cursor_pointer()
+                                    .text_size(px(13.))
+                                    .text_color(rgb(theme::TEXT_BRIGHT))
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        this.widget_picker = true;
+                                        cx.notify();
+                                    }))
+                                    .child(icon("plus", 12., theme::TEXT_BRIGHT))
+                                    .child("Add Widget"),
+                            ),
+                    )
+                    .child(widgets)
+                    .into_any_element()
+            });
 
         let content = div()
             .id("edit-profile-modal")

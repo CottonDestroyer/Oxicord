@@ -52,6 +52,7 @@ mod timeout_dialog;
 mod roles_dialog;
 mod settings;
 mod user_menu;
+mod widget_picker;
 mod switcher;
 pub mod theme;
 mod title_bar;
