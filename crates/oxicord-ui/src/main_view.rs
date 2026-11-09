@@ -3167,7 +3167,6 @@ impl MainView {
             ConnectionState::Connected => status_label(chosen),
             other => connection_label(&other),
         };
-        let backend = self.backend.clone();
 
         // Deafening shows the microphone as off too, as the official panel does.
         let (mic_off, deafened) = {
@@ -3316,19 +3315,6 @@ impl MainView {
                         cx.notify();
                     }))
                     .child(icon("settings", 18., theme::TEXT_MUTED)),
-            )
-            .child(
-                div()
-                    .id("log-out")
-                    .size(px(32.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(theme::RADIUS))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                    .on_click(move |_, _, _| backend.send(Command::Logout))
-                    .child(icon("log-out", 18., theme::TEXT_MUTED)),
             ),
             ),
         )
