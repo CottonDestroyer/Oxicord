@@ -12,7 +12,7 @@ use crate::{
     backend::Command,
     chat::attachments::{fit, picture, resized},
     icons::icon,
-    session::{InteractionState, OpenPollVoters},
+    session::{InteractionEntry, InteractionState, OpenPollVoters},
     theme,
 };
 
@@ -55,6 +55,42 @@ impl ChatView {
                     .child("Thinking..."),
             );
         }
+        let failed = self
+            .session
+            .read(cx)
+            .interactions
+            .values()
+            .find(|entry| entry.message == message.id && entry.state == InteractionState::Failed)
+            .cloned();
+        if let Some(entry) = failed {
+            let retry_message = message.clone();
+            let retry_entry = entry.clone();
+            column = column.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .text_size(px(12.))
+                    .text_color(rgb(theme::DANGER))
+                    .child(icon("circle-question-mark", 14., theme::DANGER))
+                    .child("Interaction failed")
+                    .child(
+                        div()
+                            .id(("retry-interaction", message.id.0))
+                            .cursor_pointer()
+                            .text_color(rgb(crate::chat::markdown::LINK_COLOR))
+                            .hover(|s| s.opacity(0.8))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.retry_interaction(
+                                    &retry_message,
+                                    retry_entry.clone(),
+                                    cx,
+                                );
+                            }))
+                            .child("Retry"),
+                    ),
+            );
+        }
         Some(column.into_any_element())
     }
 
@@ -65,7 +101,7 @@ impl ChatView {
         custom_id: Option<&str>,
         component_type: u8,
         cx: &mut Context<Self>,
-    ) -> Option<InteractionState> {
+    ) -> Option<InteractionEntry> {
         self.session
             .read(cx)
             .interactions
@@ -75,7 +111,7 @@ impl ChatView {
                     && entry.component_type == component_type
                     && Some(entry.custom_id.as_str()) == custom_id
             })
-            .map(|entry| entry.state)
+            .cloned()
     }
 
     fn component(
@@ -126,12 +162,18 @@ impl ChatView {
                     .text_size(px(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(theme::TEXT_BRIGHT));
-                if matches!(pending, Some(InteractionState::Queued | InteractionState::Created)) {
+                if matches!(pending.as_ref().map(|entry| entry.state), Some(InteractionState::Queued | InteractionState::Created)) {
                     return button
                         .opacity(0.7)
                         .child(icon("ellipsis", 16., theme::TEXT_BRIGHT))
                         .into_any_element();
                 }
+                let failed = matches!(pending.as_ref().map(|entry| entry.state), Some(InteractionState::Failed));
+                let button = if failed {
+                    button.border_1().border_color(rgb(theme::DANGER))
+                } else {
+                    button
+                };
                 let button = button.child(caption);
                 if *disabled {
                     return button.opacity(0.5).into_any_element();
@@ -583,6 +625,11 @@ impl ChatView {
         menu.into_any_element()
     }
 
+    /// Sends the same click again after the app failed to answer it.
+    fn retry_interaction(&mut self, message: &Message, entry: InteractionEntry, cx: &mut Context<Self>) {
+        self.click_component(message, entry.component_type, entry.custom_id, entry.values, cx);
+    }
+
     /// Sends a click on one of `message`'s components to its bot.
     fn click_component(
         &mut self,
@@ -603,6 +650,7 @@ impl ChatView {
                 message.id,
                 custom_id.clone(),
                 component_type,
+                values.clone(),
                 cx,
             );
         });

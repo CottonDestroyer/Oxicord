@@ -30,6 +30,9 @@ pub struct InteractionEntry {
     pub message: Snowflake,
     pub custom_id: String,
     pub component_type: u8,
+    /// The menu values, empty for a button. Kept so a retry sends the same
+    /// click.
+    pub values: Vec<String>,
     pub state: InteractionState,
 }
 
@@ -959,14 +962,22 @@ impl Session {
         message: Snowflake,
         custom_id: String,
         component_type: u8,
+        values: Vec<String>,
         cx: &mut Context<Self>,
     ) {
+        // One live entry per component: a retry replaces the failed one.
+        self.interactions.retain(|_, entry| {
+            !(entry.message == message
+                && entry.custom_id == custom_id
+                && entry.component_type == component_type)
+        });
         self.interactions.insert(
             nonce,
             InteractionEntry {
                 message,
                 custom_id,
                 component_type,
+                values,
                 state: InteractionState::Queued,
             },
         );

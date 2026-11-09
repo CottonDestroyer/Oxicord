@@ -366,7 +366,15 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       the components. Verified by forcing the state on Bloxlink's buttons in
       SCP #get-roles: screenshots/port/thinking_state.png. Not clicked live:
       a real click sends an interaction to the bot (write).
-- [ ] "Interaction failed" state and its retry
+- [x] "Interaction failed" state and its retry. `INTERACTION_FAILURE` sets the
+      entry to Failed; the clicked button keeps its label with a 1 px DANGER
+      border, and the message shows a 14 px question glyph, "Interaction
+      failed" in DANGER and a Retry link. Retry re-sends the same component
+      type, custom id and values with a fresh nonce; the old failed entry is
+      dropped. Verified by forcing the state on Bloxlink's buttons:
+      screenshots/port/interaction_failed.png. A real failure needs a live
+      click, which is a write, so it is unverified live.
+      docs/discord-reference.md.
 - [ ] Modal view from an `INTERACTION_MODAL_CREATE` fixture: title, text inputs
       (short and paragraph), required, min and max length
 - [ ] Modal submit (interaction type 5) and its success and failure states
