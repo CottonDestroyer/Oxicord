@@ -933,6 +933,12 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             }
             say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
         }
+        AccountRequest::SetDecoration(sku) => {
+            if let Err(err) = api.set_avatar_decoration(sku.as_deref()).await {
+                notify(events, "change your avatar decoration", &err).await;
+            }
+            say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
+        }
     }
 }
 

@@ -48,6 +48,7 @@ pub enum AccountRequest {
     EditProfile { bio: String, pronouns: String },
     SetAvatar(Option<String>),
     SetBanner(Option<String>),
+    SetDecoration(Option<String>),
 }
 
 /// The answers.

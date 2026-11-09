@@ -24,7 +24,8 @@ use crate::{
     ban_dialog::{CloseBan, BanDialog},
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
-    edit_profile_modal::{CloseEditProfileModal, EditProfileModal, OpenNameplate},
+    decoration_dialog::{CloseDecorationDialog, DecorationDialog},
+    edit_profile_modal::{CloseEditProfileModal, EditProfileModal, OpenDecoration, OpenNameplate},
     nameplate_dialog::{CloseNameplateDialog, NameplateDialog},
     kick_dialog::{CloseKick, KickDialog},
     timeout_dialog::{CloseTimeout, TimeoutDialog},
@@ -134,6 +135,8 @@ pub struct MainView {
     edit_profile_open: bool,
     nameplate_dialog: Entity<NameplateDialog>,
     nameplate_open: bool,
+    decoration_dialog: Entity<DecorationDialog>,
+    decoration_open: bool,
     channel_status_modal: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
@@ -260,6 +263,11 @@ impl MainView {
             let session = session.clone();
             let media = media.clone();
             cx.new(|_| NameplateDialog::new(session, media))
+        };
+        let decoration_dialog = {
+            let session = session.clone();
+            let media = media.clone();
+            cx.new(|_| DecorationDialog::new(session, media))
         };
         let forward = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -463,6 +471,21 @@ impl MainView {
                 this.nameplate_open = true;
                 let applied = this.edit_profile.read(cx).applied_nameplate();
                 this.nameplate_dialog.update(cx, |dialog, cx| dialog.opened(applied, cx));
+                cx.notify();
+            }),
+            cx.subscribe(
+                &decoration_dialog,
+                |this, _, CloseDecorationDialog(applied): &CloseDecorationDialog, cx| {
+                    this.decoration_open = false;
+                    let applied = applied.clone();
+                    this.edit_profile.update(cx, |modal, cx| modal.set_applied_decoration(applied, cx));
+                    cx.notify();
+                },
+            ),
+            cx.subscribe(&edit_profile, |this, _, _: &OpenDecoration, cx| {
+                this.decoration_open = true;
+                let applied = this.edit_profile.read(cx).applied_decoration();
+                this.decoration_dialog.update(cx, |dialog, cx| dialog.opened(applied, cx));
                 cx.notify();
             }),
             cx.subscribe(&edit_profile, |this, _, _: &CloseEditProfileModal, cx| {
@@ -683,6 +706,8 @@ impl MainView {
             edit_profile_open: false,
             nameplate_dialog,
             nameplate_open: false,
+            decoration_dialog,
+            decoration_open: false,
             channel_status_modal: false,
             profile: None,
             profile_tab: profile::Tab::Board,
@@ -4026,6 +4051,7 @@ impl Render for MainView {
             .children(account)
             .children(edit_profile)
             .children(self.nameplate_open.then(|| self.nameplate_dialog.clone()))
+            .children(self.decoration_open.then(|| self.decoration_dialog.clone()))
             .children(status_dialog)
             .children(menu)
             .children(viewer)

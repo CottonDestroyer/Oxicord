@@ -12,13 +12,13 @@ use gpui_kit::{
 };
 use oxicord_model::{
     collectible::{Nameplate, NameplateCatalog},
-    User,
+    Snowflake, User,
 };
 
 use crate::{
     backend::{Backend, Command},
     icons::icon,
-    media::{Media, avatar},
+    media::{Media, avatar, decoration},
     profile::modal,
     session::Session,
     theme, AccountRequest,
@@ -31,7 +31,12 @@ pub struct CloseEditProfileModal;
 /// Nameplate dialog.
 pub struct OpenNameplate;
 
+/// Emitted when the decoration tile is clicked; the window opens the Change
+/// Avatar Decoration dialog.
+pub struct OpenDecoration;
+
 impl EventEmitter<OpenNameplate> for EditProfileModal {}
+impl EventEmitter<OpenDecoration> for EditProfileModal {}
 
 impl EventEmitter<CloseEditProfileModal> for EditProfileModal {}
 
@@ -45,6 +50,7 @@ pub struct EditProfileModal {
     /// overwrites what is being typed.
     filled: bool,
     applied: Option<String>,
+    applied_decoration: Option<String>,
     catalog: NameplateCatalog,
     _subscriptions: Vec<Subscription>,
 }
@@ -68,6 +74,7 @@ impl EditProfileModal {
             pronouns,
             filled: false,
             applied: None,
+            applied_decoration: None,
             catalog: NameplateCatalog::bundled(),
             _subscriptions,
         }
@@ -77,12 +84,13 @@ impl EditProfileModal {
     /// opened, and makes sure that profile is on its way.
     pub fn opened(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.filled = false;
-        let me = self.session.read(cx).store.me().map(|m| m.id);
-        if let Some(me) = me
-            && !self.session.read(cx).profiles.contains_key(&me)
+        let me = self.session.read(cx).store.me().cloned();
+        if let Some(me) = &me
+            && !self.session.read(cx).profiles.contains_key(&me.id)
         {
-            self.backend.send(Command::LoadProfile { user: me, guild: None });
+            self.backend.send(Command::LoadProfile { user: me.id, guild: None });
         }
+        self.applied_decoration = me.as_ref().and_then(|m| m.decoration()).map(|sku| sku.to_string());
         let _ = window;
     }
 
@@ -93,6 +101,16 @@ impl EditProfileModal {
     /// The nameplate the editor shows and the dialog starts from.
     pub fn set_applied(&mut self, applied: Option<String>, cx: &mut Context<Self>) {
         self.applied = applied;
+        cx.notify();
+    }
+
+    pub fn applied_decoration(&self) -> Option<String> {
+        self.applied_decoration.clone()
+    }
+
+    /// The decoration the editor shows and the dialog starts from.
+    pub fn set_applied_decoration(&mut self, applied: Option<String>, cx: &mut Context<Self>) {
+        self.applied_decoration = applied;
         cx.notify();
     }
 
@@ -339,8 +357,24 @@ impl Render for EditProfileModal {
         let avatar_click = cx.listener(Self::upload_avatar);
         let avatar_el = avatar(&self.media, &avatar_url, 88., &name, cx);
         let avatar_tile = self.tile("edit-avatar", avatar_el, false, Some(Box::new(avatar_click)));
-        let decoration_tile =
-            self.tile("edit-decoration", icon("sticker", 32., theme::TEXT_MUTED), true, None);
+        let decoration_art = self
+            .applied_decoration
+            .as_deref()
+            .and_then(|sku| sku.parse::<Snowflake>().ok())
+            .and_then(|sku| self.media.update(cx, |media, _| media.get(&oxicord_media::cdn::collectible(sku))))
+            .map(|image| {
+                div()
+                    .size(px(64.))
+                    .child(img(gpui_kit::ImageSource::Image(image)).size_full())
+                    .into_any_element()
+            })
+            .unwrap_or_else(|| div().into_any_element());
+        let decoration_tile = self.tile(
+            "edit-decoration",
+            decoration_art,
+            true,
+            Some(Box::new(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(OpenDecoration)))),
+        );
         let avatar_section = Self::section(
             "Avatar & Decoration",
             div().flex().gap(px(10.)).child(avatar_tile).child(decoration_tile).into_any_element(),
@@ -480,9 +514,15 @@ impl Render for EditProfileModal {
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 let bio = this.bio.read(cx).value().trim().to_owned();
                 let pronouns = this.pronouns.read(cx).value().trim().to_owned();
+                let decoration = this.applied_decoration.clone();
+                let current = this.session.read(cx).store.me().and_then(|m| m.decoration()).map(|sku| sku.to_string());
+                let changed = current != decoration;
                 let backend = this.backend.clone();
                 this.session.update(cx, |s, cx| {
                     s.request_account(&backend, AccountRequest::EditProfile { bio, pronouns }, cx);
+                    if changed {
+                        s.request_account(&backend, AccountRequest::SetDecoration(decoration), cx);
+                    }
                 });
                 cx.emit(CloseEditProfileModal);
             }))
@@ -525,6 +565,19 @@ impl Render for EditProfileModal {
                 .bg(rgb(accent.unwrap_or(theme::ACCENT)))
                 .into_any_element(),
         };
+        let mut preview_avatar = div()
+            .relative()
+            .size(px(120.))
+            .flex_none()
+            .child(avatar(&self.media, &avatar_url, 120., &name, cx));
+        if let Some(frame) = self
+            .applied_decoration
+            .as_deref()
+            .and_then(|sku| sku.parse::<Snowflake>().ok())
+            .and_then(|sku| decoration(&self.media, sku, 120., cx))
+        {
+            preview_avatar = preview_avatar.child(frame);
+        }
         let joined = me.id.datetime().format("%b %-d, %Y").to_string();
         let preview = div()
             .w(px(400.))
@@ -546,8 +599,7 @@ impl Render for EditProfileModal {
                         div()
                             .mt(px(-70.))
                             .ml(px(-16.))
-                            .w(px(120.))
-                            .child(avatar(&self.media, &avatar_url, 120., &name, cx)),
+                            .child(preview_avatar),
                     )
                     .child(
                         div()

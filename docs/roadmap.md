@@ -105,7 +105,23 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       screenshots/port/nameplate_picker.png. Remaining differences: the Shop
       control has no storefront glyph yet, and shop rows are dimmed rather
       than tinted behind their padlock.
-- [ ] Avatar decoration, profile effect and frame pickers
+- [x] Avatar decoration picker, opened from the decoration tile in the Edit
+      Profile modal: 604 by 542 frame, "Change Avatar Decoration", the 3 column
+      tile grid (75.33 by 80, 2 px brand inset ring when selected) split into
+      Your Decorations, Exclusive to Nitro and See What's in Shop, the 280 wide
+      preview with the 120 avatar and the 40/32 repeat column, and a right
+      aligned Cancel and Apply footer with Apply dimmed until the pick changes.
+      Values from the live capture (screenshots/reference/decoration_picker.png)
+      and the picker CSS. The catalog is oxicord-model's DecorationCatalog,
+      copied from the live dialog (3 Nitro, 18 shop). Apply stores the pick in
+      the editor and Save sends PATCH /users/@me with avatar_decoration_data
+      (request built and unit tested only, no live account write). Captures:
+      screenshots/port/decoration_picker.png. Remaining differences: the Shop
+      tile and the locked Nitro and shop tiles open nothing (the live client
+      opens the shop or the Nitro upsell), and the account owns no decoration,
+      so the selected and applied states could not be compared live.
+- [ ] Profile effect picker
+- [ ] Profile frame picker
 - [x] Remove the Profiles settings page. The sidebar lists My Account,
       Content & Social, Data & Privacy, Authorized Apps, Devices and
       Connections, matching the live capture, and the Profile entry, its page,

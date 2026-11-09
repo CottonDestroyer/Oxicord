@@ -54,6 +54,14 @@ pub const CHANNEL_MUTED: u32 = 0x4f505a;
 
 /// background-brand.
 pub const ACCENT: u32 = 0x5865f2;
+/// control-primary-background-hover, the brand button under the pointer.
+pub const ACCENT_HOVER: u32 = 0x4452bb;
+/// control-secondary-background-default over the dialog background.
+pub const SECONDARY: u32 = 0x1b1b1e;
+/// control-secondary-background-hover over the dialog background.
+pub const SECONDARY_HOVER: u32 = 0x262629;
+/// border-subtle over the dialog background, rgba(150,151,159,0.24).
+pub const BORDER_OVERLAY: u32 = 0x2c2c2e;
 /// control-critical-secondary-text-default.
 pub const DANGER: u32 = 0xeb5f5e;
 /// background-feedback-notification.

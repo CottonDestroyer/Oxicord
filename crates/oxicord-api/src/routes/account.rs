@@ -43,6 +43,13 @@ impl ApiClient {
             .await
     }
 
+    /// Put on an avatar decoration by sku, or take it off with `None`.
+    pub async fn set_avatar_decoration(&self, sku: Option<&str>) -> Result<(), ApiError> {
+        let body = decoration_body(sku);
+        self.empty(Method::PATCH, "/users/@me", "PATCH /users/@me", Some(&body))
+            .await
+    }
+
     pub async fn edit_profile(&self, bio: &str, pronouns: &str) -> Result<(), ApiError> {
         let body = json!({ "bio": bio, "pronouns": pronouns });
         self.empty(
@@ -138,5 +145,25 @@ impl ApiClient {
     pub async fn logout_other_sessions(&self) -> Result<(), ApiError> {
         self.empty(Method::POST, "/auth/sessions/logout", "POST /auth/sessions/logout", None)
             .await
+    }
+}
+
+fn decoration_body(sku: Option<&str>) -> serde_json::Value {
+    json!({
+        "avatar_decoration_data": sku.map(|sku| json!({ "sku_id": sku })),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_decoration_is_set_by_sku_and_cleared_with_null() {
+        assert_eq!(
+            decoration_body(Some("7")),
+            json!({ "avatar_decoration_data": { "sku_id": "7" } })
+        );
+        assert_eq!(decoration_body(None), json!({ "avatar_decoration_data": null }));
     }
 }

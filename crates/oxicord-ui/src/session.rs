@@ -868,7 +868,9 @@ impl Session {
             AccountRequest::LoadConnections => self.account.connections = Load::Loading,
             AccountRequest::LoadSessions => self.account.sessions = Load::Loading,
             AccountRequest::LoadNotificationCenter => self.account.notification_center = Load::Loading,
-            AccountRequest::SetAvatar(_) | AccountRequest::SetBanner(_) => self.account.details = Load::Loading,
+            AccountRequest::SetAvatar(_)
+            | AccountRequest::SetBanner(_)
+            | AccountRequest::SetDecoration(_) => self.account.details = Load::Loading,
             _ => {}
         }
         backend.send(Command::Account(request));
