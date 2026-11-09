@@ -57,10 +57,10 @@ impl EditProfileModal {
     pub fn opened(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.filled = false;
         let me = self.session.read(cx).store.me().map(|m| m.id);
-        if let Some(me) = me {
-            if self.session.read(cx).profiles.get(&me).is_none() {
-                self.backend.send(Command::LoadProfile { user: me, guild: None });
-            }
+        if let Some(me) = me
+            && !self.session.read(cx).profiles.contains_key(&me)
+        {
+            self.backend.send(Command::LoadProfile { user: me, guild: None });
         }
         let _ = window;
     }
@@ -163,8 +163,8 @@ impl EditProfileModal {
     ) -> gpui_kit::AnyElement {
         let mut tile = div()
             .id(id)
-            .w(px(72.))
-            .h(px(72.))
+            .w(px(99.))
+            .h(px(99.))
             .flex_none()
             .flex()
             .items_center()
@@ -181,7 +181,7 @@ impl EditProfileModal {
         let plus = div()
             .absolute()
             .when(!plus_centered, |d| d.right(px(4.)).bottom(px(4.)))
-            .size(px(24.))
+            .size(px(32.))
             .flex()
             .items_center()
             .justify_center()
@@ -236,19 +236,19 @@ impl Render for EditProfileModal {
         let nameplate = Self::section(
             "Nameplate",
             div()
-                .h(px(64.))
+                .h(px(48.))
                 .w_full()
                 .flex()
                 .items_center()
                 .gap_2()
                 .rounded(px(theme::RADIUS))
                 .bg(rgb(theme::BG_ACTIVE))
-                .px_2()
+                .px(px(12.))
                 .child(icon("tag-wave", 20., theme::TEXT_MUTED))
                 .child(
                     div()
                         .flex_1()
-                        .h(px(12.))
+                        .h(px(16.))
                         .rounded_full()
                         .bg(rgb(theme::BG_HOVER)),
                 )
@@ -257,13 +257,13 @@ impl Render for EditProfileModal {
         );
 
         let avatar_click = cx.listener(Self::upload_avatar);
-        let avatar_el = avatar(&self.media, &avatar_url, 64., &name, cx);
+        let avatar_el = avatar(&self.media, &avatar_url, 88., &name, cx);
         let avatar_tile = self.tile("edit-avatar", avatar_el, false, Some(Box::new(avatar_click)));
         let decoration_tile =
-            self.tile("edit-decoration", icon("sticker", 28., theme::TEXT_MUTED), true, None);
+            self.tile("edit-decoration", icon("sticker", 32., theme::TEXT_MUTED), true, None);
         let avatar_section = Self::section(
             "Avatar & Decoration",
-            div().flex().gap(px(12.)).child(avatar_tile).child(decoration_tile).into_any_element(),
+            div().flex().gap(px(10.)).child(avatar_tile).child(decoration_tile).into_any_element(),
         );
 
         let banner_tile = match banner.as_deref().and_then(|url| self.media.update(cx, |m, _| m.get(url))) {
@@ -283,8 +283,8 @@ impl Render for EditProfileModal {
             "Banner colour",
             div()
                 .id("edit-banner")
-                .w(px(155.))
-                .h(px(48.))
+                .w(px(208.))
+                .h(px(42.))
                 .flex_none()
                 .rounded(px(4.))
                 .cursor_pointer()
@@ -295,30 +295,30 @@ impl Render for EditProfileModal {
                 .into_any_element(),
         );
 
-        let effect_tile = self.tile("edit-effect", icon("palette", 28., theme::TEXT_MUTED), true, None);
-        let frame_tile = self.tile("edit-frame", icon("circle-user-round", 28., theme::TEXT_MUTED), true, None);
+        let effect_tile = self.tile("edit-effect", icon("palette", 32., theme::TEXT_MUTED), true, None);
+        let frame_tile = self.tile("edit-frame", icon("circle-user-round", 32., theme::TEXT_MUTED), true, None);
         let effect_section = Self::section(
             "Profile Effect & Frame",
-            div().flex().gap(px(12.)).child(effect_tile).child(frame_tile).into_any_element(),
+            div().flex().gap(px(10.)).child(effect_tile).child(frame_tile).into_any_element(),
         );
 
         let upsell = div()
             .relative()
-            .w_full()
+            .w(px(240.))
+            .ml(px(-16.))
             .flex()
             .flex_col()
             .gap_2()
-            .rounded(px(theme::RADIUS))
             .bg(rgb(0x2b_2250))
             .pt(px(20.))
-            .px(px(12.))
+            .px(px(16.))
             .pb(px(12.))
             .child(
                 div()
                     .absolute()
-                    .top(px(-12.))
-                    .left(px(72.))
-                    .size(px(24.))
+                    .top(px(-14.))
+                    .left(px(106.))
+                    .size(px(28.))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -333,12 +333,12 @@ impl Render for EditProfileModal {
                     .text_size(px(14.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(theme::TEXT_BRIGHT))
-                    .child("Level up your look, only with"),
+                    .child("Level up your look, only with Nitro"),
             )
             .child(
                 div()
                     .id("preview-nitro")
-                    .h(px(40.))
+                    .h(px(32.))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -357,8 +357,8 @@ impl Render for EditProfileModal {
         let name_style = Self::section(
             "Display Name Style",
             div()
-                .w(px(160.))
-                .h(px(40.))
+                .w(px(208.))
+                .h(px(44.))
                 .flex_none()
                 .flex()
                 .items_center()
@@ -367,7 +367,7 @@ impl Render for EditProfileModal {
                 .border_1()
                 .border_color(rgb(theme::BORDER))
                 .bg(rgb(theme::BG_INPUT))
-                .text_size(px(16.))
+                .text_size(px(20.))
                 .font_weight(FontWeight::BOLD)
                 .text_color(rgb(theme::ONLINE))
                 .child(name.clone())
@@ -410,13 +410,13 @@ impl Render for EditProfileModal {
 
         let editor = div()
             .id("edit-profile-editor")
-            .w(px(184.))
+            .w(px(240.))
             .flex_none()
             .h_full()
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(16.))
+            .gap(px(24.))
             .px(px(16.))
             .py(px(16.))
             .border_r_1()
@@ -434,20 +434,20 @@ impl Render for EditProfileModal {
         // Preview pane
         let preview_banner = match banner.as_deref().and_then(|url| self.media.update(cx, |m, _| m.get(url))) {
             Some(image) => div()
-                .h(px(110.))
+                .h(px(140.))
                 .rounded_t(px(theme::RADIUS))
                 .overflow_hidden()
                 .child(img(gpui_kit::ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover))
                 .into_any_element(),
             None => div()
-                .h(px(110.))
+                .h(px(140.))
                 .rounded_t(px(theme::RADIUS))
                 .bg(rgb(accent.unwrap_or(theme::ACCENT)))
                 .into_any_element(),
         };
         let joined = me.id.datetime().format("%b %-d, %Y").to_string();
         let preview = div()
-            .w(px(300.))
+            .w(px(400.))
             .flex_none()
             .self_start()
             .flex()
@@ -460,17 +460,18 @@ impl Render for EditProfileModal {
             .child(preview_banner)
             .child(
                 div()
-                    .px(px(16.))
-                    .pb(px(16.))
+                    .px(px(32.))
+                    .pb(px(32.))
                     .child(
                         div()
-                            .mt(px(-44.))
-                            .w(px(96.))
-                            .child(avatar(&self.media, &avatar_url, 96., &name, cx)),
+                            .mt(px(-70.))
+                            .ml(px(-16.))
+                            .w(px(120.))
+                            .child(avatar(&self.media, &avatar_url, 120., &name, cx)),
                     )
                     .child(
                         div()
-                            .mt(px(8.))
+                            .mt(px(44.))
                             .text_size(px(20.))
                             .line_height(px(24.))
                             .font_weight(FontWeight::SEMIBOLD)
@@ -479,10 +480,62 @@ impl Render for EditProfileModal {
                     )
                     .child(
                         div()
+                            .mt(px(8.))
                             .text_size(px(14.))
                             .line_height(px(20.))
                             .text_color(rgb(theme::TEXT_BRIGHT))
                             .child(me.username.clone()),
+                    )
+                    .child(
+                        div()
+                            .mt(px(16.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .id("preview-message")
+                                    .h(px(32.))
+                                    .px(px(12.))
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .rounded(px(theme::RADIUS))
+                                    .bg(rgb(theme::ACCENT))
+                                    .cursor_pointer()
+                                    .text_size(px(14.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(rgb(theme::TEXT_BRIGHT))
+                                    .hover(|s| s.bg(rgb(theme::SUCCESS_HOVER)))
+                                    .child(icon("message-circle", 16., theme::TEXT_BRIGHT))
+                                    .child("Message"),
+                            )
+                            .child(
+                                div()
+                                    .id("preview-add-friend")
+                                    .size(px(32.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(theme::RADIUS))
+                                    .bg(rgb(theme::BG_ACTIVE))
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                    .child(icon("user-plus", 16., theme::TEXT_BRIGHT)),
+                            )
+                            .child(
+                                div()
+                                    .id("preview-more")
+                                    .size(px(32.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(theme::RADIUS))
+                                    .bg(rgb(theme::BG_ACTIVE))
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                                    .child(icon("ellipsis", 16., theme::TEXT_BRIGHT)),
+                            ),
                     )
                     .children((!profile_bio.is_empty()).then(|| {
                         div()
@@ -523,6 +576,49 @@ impl Render for EditProfileModal {
                                     .text_color(rgb(theme::TEXT))
                                     .child(joined),
                             ),
+                    )
+                    .child(
+                        div()
+                            .mt(px(24.))
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .text_color(rgb(theme::TEXT_MUTED))
+                                    .child("Connections"),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_size(px(14.))
+                                    .text_color(rgb(theme::TEXT_MUTED))
+                                    .child(icon("plus", 14., theme::TEXT_MUTED))
+                                    .child("Add Connection"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .mt(px(24.))
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(rgb(theme::TEXT_MUTED))
+                                    .child("Note (only visible to you)"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .italic()
+                                    .text_color(rgb(theme::TEXT_MUTED))
+                                    .child("Click to add a note"),
+                            ),
                     ),
             );
 
@@ -549,24 +645,26 @@ impl Render for EditProfileModal {
         let mut widgets = div().flex().flex_col().gap_3();
         for (title, cover) in entries {
             let mut card = div()
+                .w(px(431.))
+                .flex_none()
                 .flex()
                 .items_center()
-                .gap_2()
+                .gap(px(16.))
                 .rounded(px(theme::RADIUS))
                 .bg(rgb(theme::BG_CARD))
                 .p(px(8.));
             match cover.and_then(|url| self.media.update(cx, |m, _| m.get(&url))) {
                 Some(image) => card = card.child(
                     div()
-                        .w(px(40.))
-                        .h(px(52.))
+                        .w(px(80.))
+                        .h(px(114.))
                         .flex_none()
                         .rounded(px(4.))
                         .overflow_hidden()
                         .child(img(gpui_kit::ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover)),
                 ),
                 None => card = card.child(
-                    div().w(px(40.)).h(px(52.)).flex_none().rounded(px(4.)).bg(rgb(theme::BG_ACTIVE)),
+                    div().w(px(80.)).h(px(114.)).flex_none().rounded(px(4.)).bg(rgb(theme::BG_ACTIVE)),
                 ),
             }
             card = card.child(
@@ -587,9 +685,10 @@ impl Render for EditProfileModal {
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(12.))
-            .px(px(16.))
-            .py(px(16.))
+            .gap(px(16.))
+            .pl(px(4.))
+            .pr(px(52.))
+            .py(px(24.))
             .border_l_1()
             .border_color(rgb(theme::BORDER))
             .child(
@@ -634,7 +733,7 @@ impl Render for EditProfileModal {
                     .child(
                         div()
                             .id("add-widget")
-                            .h(px(28.))
+                            .h(px(32.))
                             .px_2()
                             .flex()
                             .items_center()
@@ -653,8 +752,8 @@ impl Render for EditProfileModal {
         let content = div()
             .id("edit-profile-modal")
             .occlude()
-            .w(px(890.))
-            .h(px(590.))
+            .w(px(1200.))
+            .h(px(800.))
             .flex_none()
             .flex()
             .flex_col()
@@ -665,7 +764,7 @@ impl Render for EditProfileModal {
             .border_color(rgb(theme::BORDER))
             .child(
                 div()
-                    .h(px(44.))
+                    .h(px(48.))
                     .flex_none()
                     .flex()
                     .items_center()
@@ -712,7 +811,7 @@ impl Render for EditProfileModal {
                     .min_h_0()
                     .flex()
                     .child(editor)
-                    .child(div().flex_none().pl(px(32.)).py(px(16.)).child(preview))
+                    .child(div().flex_none().pl(px(50.)).mr(px(28.)).child(preview))
                     .child(board),
             );
 
