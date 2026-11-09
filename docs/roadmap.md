@@ -312,7 +312,13 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       clicked. Unknown channels are skipped. Data:
       fixtures/welcome-screen.json; screenshot: screenshots/port/
       welcome_screen.png. docs/discord-reference.md.
-- [ ] Onboarding fixture from `GET /guilds/:id/onboarding` (confirm)
+- [x] Onboarding fixture from `GET /guilds/:id/onboarding`, confirmed and
+      captured for SCP | Site Roleplay Community in fixtures/onboarding.json:
+      one optional single-select prompt with one option, 19 default channels.
+      `Onboarding`, `OnboardingPrompt`, `OnboardingOption` and
+      `OnboardingResponse` parse it and `ApiClient::onboarding` calls
+      `GET /guilds/:id/onboarding`. Unit test against the fixture. Payload
+      shape in docs/discord-reference.md.
 - [ ] Onboarding prompts view: questions and options, single and multi select
 - [ ] Onboarding channel and role selection applied, responses sent (confirm
       endpoint)

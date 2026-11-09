@@ -20,6 +20,7 @@ pub mod guild;
 pub mod invite;
 pub mod member;
 pub mod notification;
+pub mod onboarding;
 pub mod message;
 pub mod permissions;
 pub mod poll;
@@ -52,6 +53,9 @@ pub use member::{Member, MemberList};
 pub use notification::{
     ChannelOverride, GuildNotificationSettings, MuteConfig, NotificationSettingsList, NotifyLevel,
     mute_active,
+};
+pub use onboarding::{
+    Onboarding, OnboardingMode, OnboardingOption, OnboardingPrompt, OnboardingResponse, PromptType,
 };
 pub use message::{
     Message, MessageSnapshot, MessageType, PartialMessage, Reaction, SavedMessage, SavedMessageData,

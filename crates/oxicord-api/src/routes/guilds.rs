@@ -123,6 +123,20 @@ impl ApiClient {
         .await
     }
 
+    /// The server's onboarding questions, channels and roles.
+    pub async fn onboarding(
+        &self,
+        guild: Snowflake,
+    ) -> Result<oxicord_model::Onboarding, ApiError> {
+        self.json(
+            Method::GET,
+            &format!("/guilds/{guild}/onboarding"),
+            "GET /guilds/:id/onboarding",
+            None,
+        )
+        .await
+    }
+
     /// The card the screening dialog shows beside the form.
     pub async fn guild_profile(
         &self,
