@@ -945,6 +945,12 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             }
             say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
         }
+        AccountRequest::SetFrame(sku) => {
+            if let Err(err) = api.set_profile_frame(sku.as_deref()).await {
+                notify(events, "change your profile frame", &err).await;
+            }
+            say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
+        }
     }
 }
 

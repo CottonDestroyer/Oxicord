@@ -50,6 +50,7 @@ pub enum AccountRequest {
     SetBanner(Option<String>),
     SetDecoration(Option<String>),
     SetEffect(Option<String>),
+    SetFrame(Option<String>),
 }
 
 /// The answers.

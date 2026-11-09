@@ -396,9 +396,304 @@ impl EffectCatalog {
     }
 }
 
+/// What the Change Profile Frame dialog lists. The live account has no owned
+/// frames, so `owned` starts empty and the current one is added by the dialog
+/// when the profile carries a sku.
+#[derive(Clone, Debug, Default)]
+pub struct FrameCatalog {
+    pub owned: Vec<FramePreset>,
+    pub shop: Vec<FramePreset>,
+    /// The preset portrait drawn inside every frame tile.
+    pub sample: String,
+}
+
+/// One profile frame. The live tile draws a preset portrait inside a preview
+/// container whose padding comes from the frame's overflow, then overlays the
+/// frame's top and bottom pictures.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FramePreset {
+    pub sku_id: String,
+    pub name: String,
+    pub locked: bool,
+    pub pad_top: f32,
+    pub pad_x: f32,
+    pub pad_bottom: f32,
+    pub top: Option<FrameArtwork>,
+    pub bottom: Option<FrameArtwork>,
+}
+
+/// One frame picture and the size it was authored at, used to keep its ratio.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FrameArtwork {
+    pub url: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl FrameCatalog {
+    /// The catalog captured from the live Change Profile Frame dialog on
+    /// 2026-11-09 (1920 x 1080, dark theme).
+    pub fn bundled() -> Self {
+        let art = |sku: &str, layer: &str, width: u32, height: u32| FrameArtwork {
+            url: format!("https://cdn.discordapp.com/media/v1/collectibles-shop/{sku}/{layer}/static"),
+            width,
+            height,
+        };
+        let frame = |sku: &str,
+                     name: &str,
+                     pads: (f32, f32, f32),
+                     top: Option<(&str, u32, u32)>,
+                     bottom: Option<(&str, u32, u32)>| FramePreset {
+            sku_id: sku.to_owned(),
+            name: name.to_owned(),
+            locked: true,
+            pad_top: pads.0,
+            pad_x: pads.1,
+            pad_bottom: pads.2,
+            top: top.map(|(layer, width, height)| art(sku, layer, width, height)),
+            bottom: bottom.map(|(layer, width, height)| art(sku, layer, width, height)),
+        };
+        Self {
+            owned: Vec::new(),
+            sample: "https://cdn.discordapp.com/assets/content/a859611882903f1102a796c08c68278917821af3e87eb9191df74bf78426971d.png".to_owned(),
+            shop: vec![
+                frame(
+                    "1556809649808736266",
+                    "Crows perch on branches with a full moon behind them.",
+                    (14.0156, 2.4375, 9.7656),
+                    Some(("1556809813197983765", 1306, 716)),
+                    Some(("1556809825642614794", 1306, 424)),
+                ),
+                frame(
+                    "1564421748202410054",
+                    "Deadpool lounges on his side along the top edge, above a soft blue glow.",
+                    (14.0156, 2.57812, 0.0),
+                    Some(("1567643983323340861", 1312, 716)),
+                    None,
+                ),
+                frame(
+                    "1551750280960286770",
+                    "Glowing eyes and white smiling teeth peer out from above and below the profile.",
+                    (13.875, 2.48438, 9.71875),
+                    Some(("1551750347515633674", 1305, 708)),
+                    Some(("1551750351496159263", 1305, 414)),
+                ),
+                frame(
+                    "1491907428344795276",
+                    "A soft white cartoon cat face peeks over the top edge with rounded pink ears and rosy cheeks, its paws resting along the upper corners",
+                    (13.875, 2.48438, 6.76562),
+                    Some(("1522378688971411657", 1307, 713)),
+                    Some(("1522378692112809994", 1307, 359)),
+                ),
+                frame(
+                    "1536493354450288680",
+                    "Jagged black symbiote tendrils line the top and bottom edges of the profile",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1536493443591708682", 1312, 716)),
+                    Some(("1536493448750825562", 1312, 424)),
+                ),
+                frame(
+                    "1517303399799062668",
+                    "A glowing white border with delicate butterfly wings and sparkling light trails on top of the profile",
+                    (13.7344, 2.57812, 4.92188),
+                    Some(("1524824219844739122", 1312, 710)),
+                    Some(("1524824224559268011", 1312, 319)),
+                ),
+                frame(
+                    "1531413285243719880",
+                    "A dark eclipse with dramatic clouds crowns the top of the profile, with glowing fiery light trailing down both sides",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1533986938368036915", 1312, 716)),
+                    Some(("1533986943057137715", 1312, 424)),
+                ),
+                frame(
+                    "1538992680552636548",
+                    "Pale white roses and curling vines with a soft lavender glow surround the profile",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1538992839197720769", 1312, 716)),
+                    Some(("1538992843312464012", 1312, 424)),
+                ),
+                frame(
+                    "1524191647854891039",
+                    "A pastel border adorned with a purple ribbon bow, small white bunnies, stars, and crescent moons frames the profile",
+                    (5.79688, 2.57812, 5.34375),
+                    Some(("1524192390502551724", 1312, 538)),
+                    Some(("1524192394801713222", 1312, 328)),
+                ),
+                frame(
+                    "1545538607811534988",
+                    "A black cat peeks out from a pile of leaves at the top with more autumn leaves along the bottom.",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1549900374805184522", 1312, 716)),
+                    Some(("1549900379196624936", 1312, 424)),
+                ),
+                frame(
+                    "1545193750261923880",
+                    "Sparkling snow leopard print fur borders the profile, with a spotted tail curling along the bottom.",
+                    (6.07812, 2.57812, 9.76562),
+                    Some(("1545193824370954351", 1312, 544)),
+                    Some(("1545193829689200710", 1312, 424)),
+                ),
+                frame(
+                    "1524193380492509345",
+                    "Soft white planets and dreamy cosmic clouds float above the profile against a pale sky",
+                    (14.0156, 2.57812, 0.0),
+                    Some(("1526660358712852691", 1312, 716)),
+                    None,
+                ),
+                frame(
+                    "1526697977513509007",
+                    "Three white bunnies peeking over the top holding strawberries surrounded by more strawberries and white flowers",
+                    (14.0156, 2.57812, 6.45312),
+                    Some(("1526698280728133723", 1312, 716)),
+                    Some(("1526698286248099932", 1312, 352)),
+                ),
+                frame(
+                    "1564422684522188830",
+                    "Weathered red border styled like Deadpool's suit, with his mask eyes peering down from the top.",
+                    (10.7344, 2.57812, 2.53125),
+                    Some(("1564422782006337607", 1312, 645)),
+                    Some(("1564422786892566568", 1312, 267)),
+                ),
+                frame(
+                    "1564422476820258846",
+                    "Weathered yellow border styled like Wolverine's suit, with his pointed mask peering down from the top.",
+                    (13.8281, 2.57812, 2.53125),
+                    Some(("1564422584391565332", 1312, 712)),
+                    Some(("1564422590662049932", 1312, 267)),
+                ),
+                frame(
+                    "1564422284972654632",
+                    "Wolverine leans over the top edge with his claws out, above a soft blue glow.",
+                    (14.0156, 2.57812, 0.0),
+                    Some(("1564422391415836784", 1312, 716)),
+                    None,
+                ),
+                frame(
+                    "1556803891289526392",
+                    "Jagged, claw-like blades with glowing orange embers border the top and bottom of the profile.",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1556804055202795591", 1307, 716)),
+                    Some(("1556804059498029207", 1312, 424)),
+                ),
+                frame(
+                    "1561806070656270466",
+                    "An iridescent quetzal wraps around the top and bottom of the profile, its tail feathers trailing into leaves.",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1561806203603132476", 1312, 716)),
+                    Some(("1561806207197642893", 1312, 424)),
+                ),
+                frame(
+                    "1545193867710562406",
+                    "A raccoon peeks over the top of the profile, with a striped tail along the bottom.",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1545565659092623491", 1312, 716)),
+                    Some(("1545565664134037606", 1312, 424)),
+                ),
+                frame(
+                    "1551647831360671905",
+                    "Tilcayo cat lying down with paws stretched forward.",
+                    (14.0156, 2.57812, 0.0),
+                    Some(("1551648251701100665", 1312, 716)),
+                    None,
+                ),
+                frame(
+                    "1545538988813844600",
+                    "Sunflowers grow along the top with gourds lining the bottom.",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1549900243699503185", 1312, 716)),
+                    Some(("1549900247415787601", 1312, 424)),
+                ),
+                frame(
+                    "1544103549892300830",
+                    "Iridescent pearls line the top and bottom of the profile.",
+                    (8.75, 2.57812, 7.32812),
+                    Some(("1547368619091042364", 1312, 602)),
+                    Some(("1547368622840746045", 1312, 371)),
+                ),
+                frame(
+                    "1541464541966114826",
+                    "Bare, gnarled tree branches form a border around the proflie",
+                    (9.90625, 2.57812, 6.125),
+                    Some(("1541464621884510258", 1312, 627)),
+                    Some(("1541464626057711706", 1312, 345)),
+                ),
+                frame(
+                    "1541464049919983667",
+                    "Pale moonflowers and vines form a border around the profile",
+                    (13.9688, 2.53125, 9.76562),
+                    Some(("1541464161576423504", 1310, 715)),
+                    Some(("1541464165909012671", 1310, 424)),
+                ),
+                frame(
+                    "1541462746032381982",
+                    "Dark thorny branches form a spiked border around the profile",
+                    (12.4375, 2.57812, 0.0),
+                    Some(("1541463501657215026", 1312, 682)),
+                    None,
+                ),
+                frame(
+                    "1533925498961264871",
+                    "A row of grey skulls crowns the top of the profile with blue flames erupting from them",
+                    (14.0156, 2.57812, 6.8125),
+                    Some(("1533925847021518939", 1311, 716)),
+                    Some(("1533925855338827867", 1311, 360)),
+                ),
+                frame(
+                    "1533925887098224730",
+                    "A row of grey skulls crowns the top of the profile with red flames erupting from them",
+                    (14.0156, 2.57812, 6.8125),
+                    Some(("1534992785206411324", 1311, 716)),
+                    Some(("1534992807885017249", 1311, 360)),
+                ),
+                frame(
+                    "1531413463623139328",
+                    "An ornate gold frame with celestial elements and dangling sun charm pendants",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1532536724981547221", 1312, 716)),
+                    Some(("1532536729821511811", 1312, 424)),
+                ),
+                frame(
+                    "1524190883036266636",
+                    "A deep navy and gold border with crescent moons, stars, and diamond accents frames the profile with an ornate celestial crest at the top",
+                    (14.0156, 2.57812, 5.84375),
+                    Some(("1524191337790836907", 1312, 716)),
+                    Some(("1524191342538915931", 1312, 339)),
+                ),
+                frame(
+                    "1526698360080306276",
+                    "Bright blue illustrated water crests over the top and pools along the bottom of the profile",
+                    (14.0156, 2.57812, 9.76562),
+                    Some(("1526698477919146044", 1312, 716)),
+                    Some(("1526698483346706442", 1312, 424)),
+                ),
+            ],
+        }
+    }
+
+    /// The item with `sku`, looking in owned and the shop.
+    pub fn find(&self, sku: &str) -> Option<&FramePreset> {
+        self.owned.iter().chain(&self.shop).find(|f| f.sku_id == sku)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_frame_catalog_matches_the_live_picker() {
+        let catalog = FrameCatalog::bundled();
+        assert!(catalog.owned.is_empty());
+        assert_eq!(catalog.shop.len(), 30);
+        assert!(catalog.shop.iter().all(|f| f.locked));
+        assert!(!catalog.sample.is_empty());
+        let first = catalog.find("1556809649808736266").unwrap();
+        assert_eq!(first.name, "Crows perch on branches with a full moon behind them.");
+        assert!(first.top.as_ref().unwrap().url.contains("/1556809649808736266/"));
+        assert_eq!(first.top.as_ref().unwrap().width, 1306);
+        assert!(catalog.find("nope").is_none());
+    }
 
     #[test]
     fn the_effect_catalog_matches_the_live_picker() {

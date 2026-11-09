@@ -137,7 +137,26 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       shop tiles open nothing (the live client opens the shop or the Nitro
       upsell). The account owns no effect, so the selected and applied states
       could not be compared live.
-- [ ] Profile frame picker
+- [x] Profile frame picker, opened from the Profile Frame tile in the Edit
+      Profile modal: 663 by 802 frame, "Change Profile Frame", the 3 column
+      83.33 by 80 tile grid (2 px outer brand ring when selected) split into
+      Your Frames and See What's in Shop, the 300 wide preview card (105
+      banner, 80 avatar, name, username and tag row, bio and the Example
+      Button), and a right aligned Cancel and Apply footer with Apply dimmed
+      until the pick changes. Values from the live capture
+      (screenshots/reference/frame_picker.png) and the picker DOM. A frame
+      tile is a 55.33 by 68 preview with padding from the frame's overflow,
+      the 1.95 ratio sample portrait drawn top aligned inside, and the top and
+      bottom pictures absolutely placed around it so they spill past the
+      portrait. The catalog is oxicord-model's FrameCatalog, copied from the
+      live dialog (30 shop frames, none owned). Apply stores the pick in the
+      editor and Save sends PATCH /users/@me with profile_frame_sku_id
+      (request built and unit tested only, no live account write). Captures:
+      screenshots/port/frame_picker.png. Remaining differences: the preview
+      banner uses the port's accent fallback instead of the stored banner
+      colour, and the Shop and locked frame tiles open nothing (the live
+      client opens the shop). The account owns no frame, so the selected and
+      applied states could not be compared live.
 - [x] Remove the Profiles settings page. The sidebar lists My Account,
       Content & Social, Data & Privacy, Authorized Apps, Devices and
       Connections, matching the live capture, and the Profile entry, its page,

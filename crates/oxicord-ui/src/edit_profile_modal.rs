@@ -11,7 +11,7 @@ use gpui_kit::{
     component::input::{Input, InputState, Textarea, TextareaState},
 };
 use oxicord_model::{
-    collectible::{EffectCatalog, Nameplate, NameplateCatalog},
+    collectible::{EffectCatalog, FrameCatalog, Nameplate, NameplateCatalog},
     Snowflake, User,
 };
 
@@ -39,9 +39,14 @@ pub struct OpenDecoration;
 /// Change Profile Effect dialog.
 pub struct OpenEffect;
 
+/// Emitted when the profile frame tile is clicked; the window opens the
+/// Change Profile Frame dialog.
+pub struct OpenFrame;
+
 impl EventEmitter<OpenNameplate> for EditProfileModal {}
 impl EventEmitter<OpenDecoration> for EditProfileModal {}
 impl EventEmitter<OpenEffect> for EditProfileModal {}
+impl EventEmitter<OpenFrame> for EditProfileModal {}
 
 impl EventEmitter<CloseEditProfileModal> for EditProfileModal {}
 
@@ -57,8 +62,10 @@ pub struct EditProfileModal {
     applied: Option<String>,
     applied_decoration: Option<String>,
     applied_effect: Option<String>,
+    applied_frame: Option<String>,
     catalog: NameplateCatalog,
     effect_catalog: EffectCatalog,
+    frame_catalog: FrameCatalog,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -83,8 +90,10 @@ impl EditProfileModal {
             applied: None,
             applied_decoration: None,
             applied_effect: None,
+            applied_frame: None,
             catalog: NameplateCatalog::bundled(),
             effect_catalog: EffectCatalog::bundled(),
+            frame_catalog: FrameCatalog::bundled(),
             _subscriptions,
         }
     }
@@ -133,6 +142,16 @@ impl EditProfileModal {
         cx.notify();
     }
 
+    pub fn applied_frame(&self) -> Option<String> {
+        self.applied_frame.clone()
+    }
+
+    /// The frame the editor shows and the dialog starts from.
+    pub fn set_applied_frame(&mut self, applied: Option<String>, cx: &mut Context<Self>) {
+        self.applied_frame = applied;
+        cx.notify();
+    }
+
     fn fill_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.filled {
             return;
@@ -145,6 +164,7 @@ impl EditProfileModal {
         };
         let (bio, pronouns) = (profile.bio.clone(), profile.pronouns.clone());
         self.applied_effect = profile.effect.map(|sku| sku.to_string());
+        self.applied_frame = profile.frame.map(|sku| sku.to_string());
         self.bio.update(cx, |i, cx| i.set_value(bio, window, cx));
         self.pronouns.update(cx, |i, cx| i.set_value(pronouns, window, cx));
         self.filled = true;
@@ -455,7 +475,31 @@ impl Render for EditProfileModal {
             true,
             Some(Box::new(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(OpenEffect)))),
         );
-        let frame_tile = self.tile("edit-frame", icon("circle-user-round", 32., theme::TEXT_MUTED), true, None);
+        let frame_tile = self.tile(
+            "edit-frame",
+            match self.applied_frame.as_deref().and_then(|sku| self.frame_catalog.find(sku)) {
+                Some(item) => match item
+                    .top
+                    .as_ref()
+                    .and_then(|art| self.media.update(cx, |media, _| media.get(&art.url)))
+                {
+                    Some(image) => div()
+                        .size(px(64.))
+                        .rounded(px(4.))
+                        .overflow_hidden()
+                        .child(
+                            img(gpui_kit::ImageSource::Image(image))
+                                .size_full()
+                                .object_fit(gpui_kit::ObjectFit::Contain),
+                        )
+                        .into_any_element(),
+                    None => icon("circle-user-round", 32., theme::TEXT_MUTED).into_any_element(),
+                },
+                None => icon("circle-user-round", 32., theme::TEXT_MUTED).into_any_element(),
+            },
+            true,
+            Some(Box::new(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(OpenFrame)))),
+        );
         let effect_section = Self::section(
             "Profile Effect & Frame",
             div().flex().gap(px(10.)).child(effect_tile).child(frame_tile).into_any_element(),
@@ -561,6 +605,7 @@ impl Render for EditProfileModal {
                 let pronouns = this.pronouns.read(cx).value().trim().to_owned();
                 let decoration = this.applied_decoration.clone();
                 let effect = this.applied_effect.clone();
+                let frame = this.applied_frame.clone();
                 let current = this.session.read(cx).store.me().and_then(|m| m.decoration()).map(|sku| sku.to_string());
                 let changed = current != decoration;
                 let current_effect = this
@@ -571,6 +616,14 @@ impl Render for EditProfileModal {
                     .and_then(|p| p.effect)
                     .map(|sku| sku.to_string());
                 let effect_changed = current_effect != effect;
+                let current_frame = this
+                    .session
+                    .read(cx)
+                    .profiles
+                    .get(&me.id)
+                    .and_then(|p| p.frame)
+                    .map(|sku| sku.to_string());
+                let frame_changed = current_frame != frame;
                 let backend = this.backend.clone();
                 this.session.update(cx, |s, cx| {
                     s.request_account(&backend, AccountRequest::EditProfile { bio, pronouns }, cx);
@@ -579,6 +632,9 @@ impl Render for EditProfileModal {
                     }
                     if effect_changed {
                         s.request_account(&backend, AccountRequest::SetEffect(effect), cx);
+                    }
+                    if frame_changed {
+                        s.request_account(&backend, AccountRequest::SetFrame(frame), cx);
                     }
                 });
                 cx.emit(CloseEditProfileModal);

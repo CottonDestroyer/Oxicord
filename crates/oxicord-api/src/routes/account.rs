@@ -59,6 +59,15 @@ impl ApiClient {
             .await
     }
 
+    /// Put on a profile frame by sku, or take it off with `None`. The field
+    /// name is the client's `profile_frame_sku_id`; never sent from the real
+    /// account, so the shape is unit tested only.
+    pub async fn set_profile_frame(&self, sku: Option<&str>) -> Result<(), ApiError> {
+        let body = profile_frame_body(sku);
+        self.empty(Method::PATCH, "/users/@me", "PATCH /users/@me", Some(&body))
+            .await
+    }
+
     pub async fn edit_profile(&self, bio: &str, pronouns: &str) -> Result<(), ApiError> {
         let body = json!({ "bio": bio, "pronouns": pronouns });
         self.empty(
@@ -167,6 +176,10 @@ fn profile_effect_body(sku: Option<&str>) -> serde_json::Value {
     json!({ "profile_effect_sku_id": sku })
 }
 
+fn profile_frame_body(sku: Option<&str>) -> serde_json::Value {
+    json!({ "profile_frame_sku_id": sku })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +191,15 @@ mod tests {
             json!({ "profile_effect_sku_id": "1139323098370424932" })
         );
         assert_eq!(profile_effect_body(None), json!({ "profile_effect_sku_id": null }));
+    }
+
+    #[test]
+    fn a_frame_is_set_by_sku_and_cleared_with_null() {
+        assert_eq!(
+            profile_frame_body(Some("1556809649808736266")),
+            json!({ "profile_frame_sku_id": "1556809649808736266" })
+        );
+        assert_eq!(profile_frame_body(None), json!({ "profile_frame_sku_id": null }));
     }
 
     #[test]
