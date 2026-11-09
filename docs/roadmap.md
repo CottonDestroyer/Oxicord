@@ -210,7 +210,24 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       it has no brand focus ring, and the six games without a captured cover
       show a wash placeholder. Values from the live DOM and
       screenshots/reference/browse_games.png.
-- [ ] Favorite Game comment and tag editing, saved with the widget
+- [x] Favorite Game comment and tag editing: a chosen game shows its 87.25
+      by 116.33 cover and, to its right, the name, a 300.75 wide comment
+      field ("Let everyone know why this is your favorite", 14 / 18, max 200)
+      and a 20 high tag row. Tag chips are 20 high, radius 8, 1 px
+      rgba(151,151,159,0.2) border, padding 3 8 3 6, with a 12 px tag-award
+      icon, a 10 / 12 weight 500 label and a 12 px X. "+ Tags" is a 42.4 by
+      20 dashed chip opening a 172.7 by 400 menu, 8 to its right: 36 high
+      rows with a 20 px radio, grouped Skill level, Rating and Looking for,
+      one value per group, and the menu stays open while picking. Remove Game
+      is a 32 by 32 button 8 from the top right. The selected card is 188.3
+      high and drops the divider and suggestions. Values from the live DOM and
+      screenshots/reference/favorite_game_selected.png. Remaining differences:
+      clicking outside the tag menu does not close it, the tag values are
+      lowercased labels where the wire values are unverified, and the card's
+      remove button uses a new local trash icon copied from the live SVG.
+- [ ] Favorite Game widget save: turn the chosen game, comment and tags into
+      the `PUT /users/@me/widgets` payload and add the widget to the board.
+      Nothing is sent from the real account until the request is unit tested.
 - [ ] Games I Like widget editor, opened from its card in the picker
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.

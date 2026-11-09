@@ -14,6 +14,9 @@ use crate::{icons::icon, media::Media, theme};
 /// The faint wash the add tile and the empty covers use.
 const WASH: u32 = 0x97979f1f;
 
+/// The border colour the cards, chips and menus share.
+const LINE: u32 = 0x97979f33;
+
 struct Game {
     name: &'static str,
     cover: Option<&'static str>,
@@ -64,35 +67,86 @@ const GAMES: &[Game] = &[
 /// The suggested covers, which are the first six games.
 const SUGGESTED: usize = 6;
 
+/// The tag menu's groups and their values, in the live order.
+const TAG_GROUPS: &[(&str, &[&str])] = &[
+    (
+        "Skill level",
+        &["None", "Casual", "Intermediate", "Expert", "Better than you"],
+    ),
+    (
+        "Rating",
+        &["Obsessed", "Love it", "Kind of love it", "Kind of hate it", "Rage quitting"],
+    ),
+    (
+        "Looking for",
+        &[
+            "Looking for group",
+            "Open to play",
+            "Looking for tips",
+            "Open to teach",
+            "Looking to discuss",
+        ],
+    ),
+];
+
 pub struct FavoriteGameEditor {
     media: Entity<Media>,
     search: Entity<InputState>,
+    comment: Entity<InputState>,
     browse_open: bool,
+    tags_open: bool,
     selected: Option<usize>,
+    /// One tag per group, as the group and the chosen value.
+    tags: Vec<(usize, usize)>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl FavoriteGameEditor {
     pub fn new(media: Entity<Media>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
-        let subscriptions = vec![cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
-        })];
-        Self { media, search, browse_open: false, selected: None, _subscriptions: subscriptions }
+        let comment = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Let everyone know why this is your favorite")
+        });
+        let subscriptions = vec![
+            cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            }),
+            cx.subscribe(&comment, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            }),
+        ];
+        Self {
+            media,
+            search,
+            comment,
+            browse_open: false,
+            tags_open: false,
+            selected: None,
+            tags: Vec::new(),
+            _subscriptions: subscriptions,
+        }
     }
 
     /// A fresh editor, as the live client shows it when the card is picked.
-    pub fn opened(&mut self, cx: &mut Context<Self>) {
+    pub fn opened(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.browse_open = false;
+        self.tags_open = false;
         self.selected = None;
+        self.tags.clear();
+        self.comment.update(cx, |state, cx| state.set_value("", window, cx));
         cx.notify();
     }
 
-    fn pick(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn pick(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = Some(index);
         self.browse_open = false;
+        self.tags_open = false;
+        self.tags.clear();
+        self.comment.update(cx, |state, cx| state.set_value("", window, cx));
         cx.notify();
     }
 
@@ -103,6 +157,7 @@ impl FavoriteGameEditor {
                     .w(px(87.25))
                     .h(px(116.33))
                     .flex_none()
+                    .rounded(px(8.))
                     .object_fit(gpui_kit::ObjectFit::Cover)
                     .into_any_element(),
                 None => div().w(px(87.25)).h(px(116.33)).flex_none().bg(rgba(WASH)).into_any_element(),
@@ -152,7 +207,9 @@ impl FavoriteGameEditor {
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(0xe4e5e7))
                     .hover(|d| d.bg(rgba(WASH)))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.pick(index, cx)))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                        this.pick(index, window, cx)
+                    }))
                     .child(game.name)
                     .when(picked, |d| d.child(icon("check", 24., theme::TEXT_BRIGHT)))
                     .into_any_element(),
@@ -168,7 +225,7 @@ impl FavoriteGameEditor {
             .flex_col()
             .rounded(px(8.))
             .border_1()
-            .border_color(rgba(0x97979f33))
+            .border_color(rgba(LINE))
             .bg(rgb(theme::BG_MENU))
             .p(px(8.))
             .child(
@@ -195,45 +252,233 @@ impl FavoriteGameEditor {
             )
             .into_any_element()
     }
+
+    /// One chosen tag, as the live chip row draws it.
+    fn chip(&self, group: usize, value: usize, cx: &mut Context<Self>) -> AnyElement {
+        let label = TAG_GROUPS[group].1[value];
+        div()
+            .id(gpui_kit::ElementId::Name(format!("tag-{group}-{value}").into()))
+            .h(px(20.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgba(0x97979f33))
+            .pl(px(6.))
+            .pr(px(8.))
+            .py(px(3.))
+            .child(icon("tag-award", 12., theme::TEXT_MUTED))
+            .child(
+                div()
+                    .text_size(px(10.))
+                    .line_height(px(12.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(label),
+            )
+            .child(
+                div()
+                    .id(gpui_kit::ElementId::Name(format!("untag-{group}-{value}").into()))
+                    .flex_none()
+                    .p(px(3.))
+                    .ml(px(-1.))
+                    .mr(px(-3.))
+                    .my(px(-3.))
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .hover(|d| d.bg(rgba(WASH)))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.tags.retain(|&(g, v)| !(g == group && v == value));
+                        cx.notify();
+                    }))
+                    .child(icon("x", 12., theme::TEXT_MUTED)),
+            )
+            .into_any_element()
+    }
+
+    /// The tags menu, anchored to the right of the add tag chip.
+    fn tags_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut groups = div().flex().flex_col().w_full().gap(px(17.));
+        for (group, (label, values)) in TAG_GROUPS.iter().enumerate() {
+            let mut block = div().flex().flex_col().child(
+                div()
+                    .h(px(36.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .px(px(8.))
+                    .text_size(px(14.))
+                    .line_height(px(20.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(*label),
+            );
+            for (value, name) in values.iter().enumerate() {
+                let chosen = self.tags.contains(&(group, value));
+                let radio = div()
+                    .size(px(20.))
+                    .flex_none()
+                    .rounded_full()
+                    .when(chosen, |d| d.bg(rgb(theme::ACCENT)).child(
+                        div().size(px(8.)).rounded_full().bg(rgb(0xffff_ffff)),
+                    ))
+                    .when(!chosen, |d| {
+                        d.bg(rgba(0x00000014)).border_1().border_color(rgba(0x97979fa3))
+                    })
+                    .flex()
+                    .items_center()
+                    .justify_center();
+                block = block.child(
+                    div()
+                        .id(gpui_kit::ElementId::Name(
+                            format!("tag-option-{group}-{value}").into(),
+                        ))
+                        .h(px(36.))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .px(px(8.))
+                        .rounded(px(2.))
+                        .cursor_pointer()
+                        .text_size(px(14.))
+                        .line_height(px(18.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(theme::TEXT_BRIGHT))
+                        .hover(|d| d.bg(rgba(WASH)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            match this.tags.iter().position(|&(g, _)| g == group) {
+                                Some(index) => {
+                                    if this.tags[index].1 == value {
+                                        this.tags.remove(index);
+                                    } else {
+                                        this.tags[index].1 = value;
+                                    }
+                                }
+                                None => this.tags.push((group, value)),
+                            }
+                            cx.notify();
+                        }))
+                        .child(*name)
+                        .child(radio),
+                );
+            }
+            groups = groups.child(block);
+        }
+
+        div()
+            .id("tags-menu")
+            .absolute()
+            .left(px(50.4))
+            .top_0()
+            .w(px(172.7))
+            .h(px(400.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgba(LINE))
+            .bg(rgb(theme::BG_CARD))
+            .overflow_y_scroll()
+            .child(div().flex().flex_col().p(px(8.)).child(groups))
+            .into_any_element()
+    }
+
+    /// The comment field and tag chips under the chosen game.
+    fn details(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut tags = div().mt(px(4.)).h(px(20.)).flex_none().flex().items_center().gap(px(4.));
+        for &(group, value) in &self.tags {
+            tags = tags.child(self.chip(group, value, cx));
+        }
+        tags = tags.child(
+            div()
+                .relative()
+                .h(px(20.))
+                .w(px(42.4))
+                .flex_none()
+                .child(
+                    div()
+                        .id("add-tags")
+                        .h(px(20.))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_dashed()
+                        .border_color(rgba(0x97979f33))
+                        .pl(px(6.))
+                        .pr(px(8.))
+                        .py(px(3.))
+                        .cursor_pointer()
+                        .text_size(px(10.))
+                        .line_height(px(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                            this.tags_open = !this.tags_open;
+                            cx.notify();
+                        }))
+                        .child("+ Tags"),
+                )
+                .when(self.tags_open, |d| d.child(self.tags_menu(cx))),
+        );
+
+        div()
+            .w(px(293.75))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .justify_center()
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(GAMES[self.selected.unwrap_or(0)].name),
+            )
+            .child(
+                div()
+                    .ml(px(-7.))
+                    .pl(px(7.))
+                    .w(px(300.75))
+                    .flex_none()
+                    .child(Input::new(&self.comment).appearance(false).bordered(false)),
+            )
+            .child(tags)
+            .into_any_element()
+    }
 }
 
 impl Render for FavoriteGameEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut covers = div().flex().gap(px(12.));
-        for (index, game) in GAMES.iter().enumerate().take(SUGGESTED) {
-            let mut tile = div()
-                .id(game.name)
-                .w(px(56.2))
-                .h(px(74.9))
-                .flex_none()
-                .rounded(px(8.))
-                .overflow_hidden()
-                .bg(rgba(WASH))
-                .cursor_pointer()
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.pick(index, cx)));
-            if let Some(url) = game.cover
-                && let Some(image) = self.media.update(cx, |m, _| m.get(url))
-            {
-                tile = tile.child(
-                    img(ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover),
-                );
-            }
-            covers = covers.child(tile);
-        }
+        let selected = self.selected.is_some();
 
-        let details = match self.selected {
-            Some(index) => div()
-                .text_size(px(14.))
-                .line_height(px(20.))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(rgb(theme::TEXT_BRIGHT))
-                .child(GAMES[index].name),
-            None => div()
-                .text_size(px(12.))
-                .line_height(px(16.))
-                .text_color(rgb(theme::TEXT_MUTED))
-                .child("Add one game. This Widget won't show up on your profile until you add a game."),
-        };
+        let header = div()
+            .h(px(if selected { 34. } else { 18. }))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .justify_center()
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("Favorite Game"),
+            )
+            .when(selected, |d| {
+                d.child(
+                    div()
+                        .text_size(px(12.))
+                        .line_height(px(16.))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .child("Choose 1 game"),
+                )
+            });
 
         let mut card = div()
             .relative()
@@ -248,55 +493,123 @@ impl Render for FavoriteGameEditor {
             .border_color(rgba(0x97979f29))
             .p(px(16.))
             .pt(px(12.))
-            .child(
+            .child(header);
+
+        if selected {
+            card = card.child(
                 div()
-                    .text_size(px(14.))
-                    .line_height(px(18.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(theme::TEXT_BRIGHT))
-                    .child("Favorite Game"),
-            )
-            .child(
-                div()
-                    .h(px(132.3))
+                    .relative()
+                    .h(px(116.33))
                     .flex_none()
                     .flex()
-                    .items_center()
                     .gap(px(16.))
-                    .py(px(8.))
                     .child(self.game_tile(cx))
-                    .child(div().w(px(293.75)).flex_none().child(details)),
-            )
-            .child(div().h(px(1.)).flex_none().bg(rgba(0x97979f29)))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(8.))
-                    .mt(px(4.))
-                    .pt(px(16.))
+                    .child(self.details(cx))
                     .child(
                         div()
+                            .id("remove-game")
+                            .absolute()
+                            .top(px(8.))
+                            .right(px(8.))
+                            .size(px(32.))
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(rgba(0x97979f29))
+                            .bg(rgba(0x0000008f))
                             .flex()
                             .items_center()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .line_height(px(16.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(rgb(theme::TEXT_MUTED))
-                                    .child("Suggested for you"),
-                            )
-                            .child(
-                                div()
-                                    .id("dismiss-suggestions")
-                                    .cursor_pointer()
-                                    .child(icon("x", 18., theme::TEXT_MUTED)),
-                            ),
-                    )
-                    .child(covers),
+                            .justify_center()
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.selected = None;
+                                this.tags_open = false;
+                                this.tags.clear();
+                                this.comment
+                                    .update(cx, |state, cx| state.set_value("", window, cx));
+                                cx.notify();
+                            }))
+                            .child(icon("trash", 16., 0xffff_ffff)),
+                    ),
             );
+        } else {
+            let mut covers = div().flex().gap(px(12.));
+            for (index, game) in GAMES.iter().enumerate().take(SUGGESTED) {
+                let mut tile = div()
+                    .id(game.name)
+                    .w(px(56.2))
+                    .h(px(74.9))
+                    .flex_none()
+                    .rounded(px(8.))
+                    .overflow_hidden()
+                    .bg(rgba(WASH))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                        this.pick(index, window, cx)
+                    }));
+                if let Some(url) = game.cover
+                    && let Some(image) = self.media.update(cx, |m, _| m.get(url))
+                {
+                    tile = tile.child(
+                        img(ImageSource::Image(image))
+                            .size_full()
+                            .object_fit(gpui_kit::ObjectFit::Cover),
+                    );
+                }
+                covers = covers.child(tile);
+            }
+
+            card = card
+                .child(
+                    div()
+                        .h(px(132.3))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .gap(px(16.))
+                        .py(px(8.))
+                        .child(self.game_tile(cx))
+                        .child(
+                            div()
+                                .w(px(293.75))
+                                .flex_none()
+                                .text_size(px(12.))
+                                .line_height(px(16.))
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child("Add one game. This Widget won't show up on your profile until you add a game."),
+                        ),
+                )
+                .child(div().h(px(1.)).flex_none().bg(rgba(0x97979f29)))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .mt(px(4.))
+                        .pt(px(16.))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .line_height(px(16.))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(rgb(theme::TEXT_MUTED))
+                                        .child("Suggested for you"),
+                                )
+                                .child(
+                                    div()
+                                        .id("dismiss-suggestions")
+                                        .cursor_pointer()
+                                        .child(icon("x", 18., theme::TEXT_MUTED)),
+                                ),
+                        )
+                        .child(covers),
+                );
+        }
+
         if self.browse_open {
             card = card.child(self.popover(cx));
         }

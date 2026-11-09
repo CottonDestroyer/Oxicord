@@ -117,7 +117,7 @@ impl EditProfileModal {
         self.filled = false;
         self.widget_picker = false;
         self.favorite_open = false;
-        self.favorite_editor.update(cx, |editor, cx| editor.opened(cx));
+        self.favorite_editor.update(cx, |editor, cx| editor.opened(window, cx));
         let me = self.session.read(cx).store.me().cloned();
         if let Some(me) = &me
             && !self.session.read(cx).profiles.contains_key(&me.id)
@@ -993,10 +993,10 @@ impl Render for EditProfileModal {
             .child(if (empty || self.widget_picker) && !self.favorite_open {
                 crate::widget_picker::widget_picker(
                     &self.media,
-                    Some(Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
+                    Some(Box::new(cx.listener(|this, _: &ClickEvent, window, cx| {
                         this.favorite_open = true;
                         this.widget_picker = false;
-                        this.favorite_editor.update(cx, |editor, cx| editor.opened(cx));
+                        this.favorite_editor.update(cx, |editor, cx| editor.opened(window, cx));
                         cx.notify();
                     }))),
                     cx,
