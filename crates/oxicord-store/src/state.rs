@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
 use oxicord_model::{
     Activity, Channel, ChannelType, Guild, GuildNotificationSettings, Member, Permissions, ReadState,
     Relationship, RelationshipKind, Role, Snowflake, Status, User, VoiceState,
@@ -10,6 +11,22 @@ use crate::{
     perms::{self, DM_PERMISSIONS},
     timeline::Timeline,
 };
+
+/// The moment a request channel last saw activity: the newer of its last
+/// message and the time the request arrived.
+fn request_activity(channel: &Channel) -> DateTime<Utc> {
+    let message = channel
+        .last_message_id
+        .map(|id| id.datetime())
+        .unwrap_or_default();
+    let requested = channel
+        .is_message_request_timestamp
+        .as_deref()
+        .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+        .map(|t| t.with_timezone(&Utc))
+        .unwrap_or_default();
+    requested.max(message)
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Unread {
@@ -220,15 +237,49 @@ impl Store {
         groups
     }
 
-    /// Open DMs and group DMs, most recently active first.
+    /// Open DMs and group DMs, most recently active first. Message requests
+    /// stay out until accepted; the client lists them on their own page.
     pub fn dm_channels(&self) -> Vec<&Channel> {
-        let mut dms: Vec<_> = self.channels.values().filter(|c| c.kind.is_dm()).collect();
+        let mut dms: Vec<_> = self
+            .channels
+            .values()
+            .filter(|c| c.kind.is_dm() && !c.is_request() && !c.is_spam)
+            .collect();
         dms.sort_by(|a, b| {
             b.last_message_id
                 .cmp(&a.last_message_id)
                 .then_with(|| b.id.cmp(&a.id))
         });
         dms
+    }
+
+    /// Unaccepted message requests, the client's message requests tab:
+    /// flagged as a request and not spam, newest activity first. The client
+    /// sorts a request by the newer of its last message and the time the
+    /// request arrived.
+    pub fn message_requests(&self) -> Vec<&Channel> {
+        let mut requests: Vec<_> = self.channels.values().filter(|c| c.is_request()).collect();
+        requests.sort_by(|a, b| {
+            request_activity(b)
+                .cmp(&request_activity(a))
+                .then_with(|| b.id.cmp(&a.id))
+        });
+        requests
+    }
+
+    /// Message requests Discord sorted into the spam tab.
+    pub fn spam_channels(&self) -> Vec<&Channel> {
+        let mut spam: Vec<_> = self
+            .channels
+            .values()
+            .filter(|c| c.kind.is_dm() && c.is_spam)
+            .collect();
+        spam.sort_by(|a, b| {
+            request_activity(b)
+                .cmp(&request_activity(a))
+                .then_with(|| b.id.cmp(&a.id))
+        });
+        spam
     }
 
     /// The one-to-one conversation with `user`, if it is already open.

@@ -1193,3 +1193,29 @@ fn a_guild_payload_seeds_the_voice_lists() {
     store.apply(event("READY", data));
     assert_eq!(store.voice_in(id(13)).len(), 1);
 }
+
+/// The client's MessageRequestStore: a request is `is_message_request &&
+/// !is_spam`, and request channels stay out of the DM list.
+#[test]
+fn message_requests_stay_out_of_the_dm_list() {
+    let ready = include_str!("../../../fixtures/message-requests.json");
+    let mut store = Store::new();
+    store.apply(event("READY", serde_json::from_str(ready).unwrap()));
+
+    let dm_ids: Vec<u64> = store.dm_channels().iter().map(|c| c.id.0).collect();
+    assert_eq!(dm_ids, vec![50], "only the accepted DM is listed");
+
+    let requests = store.message_requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].id, Snowflake(60));
+    assert_eq!(requests[0].recipient_ids, vec![Snowflake(3)]);
+    assert!(requests[0].is_request());
+
+    let spam = store.spam_channels();
+    assert_eq!(spam.len(), 1);
+    assert_eq!(spam[0].id, Snowflake(70));
+    assert!(!spam[0].is_request(), "spam is not a plain request");
+
+    // The spam channel is also hidden from the DM list.
+    assert!(!dm_ids.contains(&70));
+}

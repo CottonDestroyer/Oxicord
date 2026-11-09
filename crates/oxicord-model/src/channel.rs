@@ -93,6 +93,17 @@ pub struct Channel {
     pub recipients: Vec<User>,
     #[serde(default)]
     pub recipient_ids: Vec<Snowflake>,
+    /// A DM from someone we have not accepted a conversation with yet. The
+    /// client keeps these out of the DM list until they are accepted.
+    #[serde(default)]
+    pub is_message_request: bool,
+    /// When the request arrived. The request list sorts by the newer of this
+    /// and `last_message_id`.
+    #[serde(default)]
+    pub is_message_request_timestamp: Option<String>,
+    /// A message request Discord sorted into the spam tab.
+    #[serde(default)]
+    pub is_spam: bool,
     #[serde(default)]
     pub nsfw: bool,
     #[serde(default)]
@@ -153,6 +164,12 @@ pub struct ForumTag {
 pub const FLAG_PINNED: u64 = 1 << 1;
 
 impl Channel {
+    /// The client's rule for the requests list: flagged as a message request
+    /// and not sorted into spam.
+    pub fn is_request(&self) -> bool {
+        self.is_message_request && !self.is_spam
+    }
+
     pub fn archived(&self) -> bool {
         self.thread_metadata.as_ref().is_some_and(|m| m.archived)
     }

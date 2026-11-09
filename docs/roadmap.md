@@ -135,8 +135,17 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Functional check at 1920 x 1080: picking Velocity then download enabled
       Follow. No web capture: the live Follow button needs MANAGE_WEBHOOKS,
       which this account lacks. Port: screenshots/port/announcement_follow.png.
-- [ ] Message requests: list from fixtures (find the flag and endpoints in
-      reference/notes/)
+- [x] Message requests: channel flags, fixture and store lists. `Channel`
+      parses `is_message_request`, `is_message_request_timestamp` and
+      `is_spam`; the DM list hides request and spam channels;
+      `message_requests()` and `spam_channels()` list them newest first.
+      Reducer test against fixtures/message-requests.json. Unverified
+      visually: the page module (171133 MessageRequestPage) is absent from
+      reference/web and this account has no pending requests, so the live
+      page cannot be opened.
+- [ ] Message requests page: sidebar row with the count badge and the list
+      page (rows show the requester, preview and age; layout unverified,
+      see above). Data: fixtures/message-requests.json.
 - [ ] Message requests: accept and ignore
 - [ ] Spam inbox tab
 - [ ] Scheduled events fixture from `GET /guilds/:id/scheduled-events`
