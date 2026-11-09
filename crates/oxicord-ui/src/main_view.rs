@@ -24,6 +24,7 @@ use crate::{
     ban_dialog::{CloseBan, BanDialog},
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
+    edit_profile_modal::{CloseEditProfileModal, EditProfileModal},
     kick_dialog::{CloseKick, KickDialog},
     timeout_dialog::{CloseTimeout, TimeoutDialog},
     roles_dialog::{CloseRoles, RolesDialog},
@@ -45,7 +46,7 @@ use crate::{
     popup::{ClosePopup, PopupMenu},
     profile,
     session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
-    settings_view::{CloseSettings, SettingsView},
+    settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
     status_dialog::{CloseStatusDialog, StatusDialog},
@@ -128,6 +129,8 @@ pub struct MainView {
     status_submenu_open: bool,
     status_dialog: Entity<StatusDialog>,
     status_dialog_open: bool,
+    edit_profile: Entity<EditProfileModal>,
+    edit_profile_open: bool,
     channel_status_modal: bool,
     /// The profile card on screen, if any.
     profile: Option<ShowProfile>,
@@ -245,6 +248,10 @@ impl MainView {
         let status_dialog = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| StatusDialog::new(session, media, backend, window, cx))
+        };
+        let edit_profile = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| EditProfileModal::new(session, media, backend, window, cx))
         };
         let forward = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
@@ -421,12 +428,22 @@ impl MainView {
                 this.settings_open = false;
                 cx.notify();
             }),
+            cx.subscribe_in(&settings_view, window, |this, _, _: &OpenEditProfile, window, cx| {
+                this.settings_open = false;
+                this.edit_profile_open = true;
+                this.edit_profile.update(cx, |modal, cx| modal.opened(window, cx));
+                cx.notify();
+            }),
             cx.subscribe(&media, |this, _, shown: &ViewImage, cx| {
                 this.viewer = Some(shown.0.clone());
                 cx.notify();
             }),
             cx.subscribe(&status_dialog, |this, _, _: &CloseStatusDialog, cx| {
                 this.status_dialog_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&edit_profile, |this, _, _: &CloseEditProfileModal, cx| {
+                this.edit_profile_open = false;
                 cx.notify();
             }),
             cx.subscribe(&nickname, |this, _, _: &CloseNickname, cx| {
@@ -639,6 +656,8 @@ impl MainView {
             status_submenu_open: false,
             status_dialog,
             status_dialog_open: false,
+            edit_profile,
+            edit_profile_open: false,
             channel_status_modal: false,
             profile: None,
             profile_tab: profile::Tab::Board,
@@ -1639,10 +1658,10 @@ impl MainView {
                 this.profile = None;
                 cx.notify();
             }),
-            edit: act(|this, _, _, _, cx| {
+            edit: act(|this, _, _, window, cx| {
                 this.profile = None;
-                this.settings_open = true;
-                this.settings_view.update(cx, |view, cx| view.open_profile(cx));
+                this.edit_profile_open = true;
+                this.edit_profile.update(cx, |modal, cx| modal.opened(window, cx));
                 cx.notify();
             }),
             status: act(|this, _, _, window, cx| {
@@ -3869,6 +3888,7 @@ impl Render for MainView {
         let viewer = self.render_viewer(cx);
         let account = self.render_account_popout(cx);
         let status_dialog = self.status_dialog_open.then(|| self.status_dialog.clone());
+        let edit_profile = self.edit_profile_open.then(|| self.edit_profile.clone());
         let forward = self.forward_open.then(|| self.forward.clone());
         let nickname = self.nickname_open.then(|| self.nickname.clone());
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
@@ -3979,6 +3999,7 @@ impl Render for MainView {
             .child(user_card)
             .children(profile)
             .children(account)
+            .children(edit_profile)
             .children(status_dialog)
             .children(menu)
             .children(viewer)

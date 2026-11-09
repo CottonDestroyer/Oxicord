@@ -14,6 +14,7 @@ mod create_channel_dialog;
 mod create_poll_dialog;
 mod create_server_dialog;
 mod edit_channel_dialog;
+mod edit_profile_modal;
 mod forward_dialog;
 mod gift_dialog;
 mod friend_nick_dialog;

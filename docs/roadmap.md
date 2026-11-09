@@ -71,8 +71,23 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Spotify listen along, RTL bios (gpui has no bidi), logos beyond the 22
       Discord lists
 - [x] Private notes and friend nicknames
-- [ ] Edit Profile modal, as the live client draws it: nameplate, avatar and
-      decoration, banner color, profile effect and frame, widgets board
+- [x] Edit Profile modal shell, as the live client draws it: header with the
+      "Main Profile" switcher, the editor column (nameplate, avatar and
+      decoration, banner colour, profile effect and frame, Nitro upsell,
+      display name style, bio, pronouns, save) and the preview card with Board,
+      Activity and Wishlist tabs over the widget cards. Opened from the account
+      page's Edit Profile button and from our own profile card's pencil. Values
+      measured from the live desktop capture at 133 percent scale (890x590
+      logical, editor 184, tiles 72, preview 300 with an 110 banner and a 96
+      avatar, 72 percent black scrim): docs/discord-reference.md and
+      screenshots/reference/edit_profile_modal.png. Port crop:
+      screenshots/port/edit_profile_modal.png. Save sends the existing
+      EditProfile request; not exercised live (account writes rule). Remaining
+      differences: the preview card stops after Member Since (no connections
+      or note line), the decoration, nameplate, effect and frame tiles open
+      nothing yet, and the widget cards show real game data only.
+- [ ] Nameplate, avatar decoration, profile effect and frame pickers
+- [ ] Widgets board editing: add widget, favourite game, games I like
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.
 - [x] `RELATIONSHIP_UPDATE`: friend nickname changed on another device. The

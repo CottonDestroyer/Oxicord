@@ -134,6 +134,11 @@ pub struct CloseSettings;
 
 impl EventEmitter<CloseSettings> for SettingsView {}
 
+/// The account page asked to open the Edit Profile modal.
+pub struct OpenEditProfile;
+
+impl EventEmitter<OpenEditProfile> for SettingsView {}
+
 pub struct SettingsView {
     session: Entity<Session>,
     media: Entity<Media>,

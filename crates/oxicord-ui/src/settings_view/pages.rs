@@ -1,5 +1,5 @@
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, IntoElement, ParentElement as _, PathPromptOptions, StyledImage as _,
+    AnyElement, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _, PathPromptOptions, StyledImage as _,
     Styled as _, div, px, rgb,
     component::input::{Input, Textarea},
 };
@@ -16,6 +16,7 @@ use crate::{
     AccountRequest, Settings,
     account::Load,
     backend::Command,
+    icons::icon,
     media::avatar,
     theme,
 };
@@ -182,6 +183,25 @@ impl SettingsView {
                             .child(name),
                     )
                     .child(div().text_color(rgb(theme::TEXT_MUTED)).child(username)),
+            )
+            .child(
+                div()
+                    .id("open-edit-profile")
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .px(px(10.))
+                    .h(px(32.))
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgb(theme::BG_ACTIVE))
+                    .cursor_pointer()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(super::OpenEditProfile)))
+                    .child("Edit Profile")
+                    .child(icon("pencil", 14., theme::TEXT_BRIGHT)),
             );
 
         let mut contact = Vec::new();
