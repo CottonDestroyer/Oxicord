@@ -18,6 +18,7 @@ use oxicord_model::{
 use crate::{
     backend::{Backend, Command},
     favorite_game_editor::FavoriteGameEditor,
+    favorite_game_editor::SavedFavorite,
     icons::icon,
     media::{Media, avatar, decoration},
     profile::modal,
@@ -72,6 +73,8 @@ pub struct EditProfileModal {
     /// The board shows the Favorite Game widget editor.
     favorite_open: bool,
     favorite_editor: Entity<FavoriteGameEditor>,
+    /// The Favorite Game widget the board holds before it is saved.
+    pending_favorite: Option<SavedFavorite>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -107,6 +110,7 @@ impl EditProfileModal {
             widget_picker: false,
             favorite_open: false,
             favorite_editor,
+            pending_favorite: None,
             _subscriptions,
         }
     }
@@ -117,6 +121,7 @@ impl EditProfileModal {
         self.filled = false;
         self.widget_picker = false;
         self.favorite_open = false;
+        self.pending_favorite = None;
         self.favorite_editor.update(cx, |editor, cx| editor.opened(window, cx));
         let me = self.session.read(cx).store.me().cloned();
         if let Some(me) = &me
@@ -653,6 +658,13 @@ impl Render for EditProfileModal {
                         s.request_account(&backend, AccountRequest::SetFrame(frame), cx);
                     }
                 });
+                // The real client saves the board with PUT /users/@me/widgets.
+                // Build that request from the editor, but never send it from
+                // the real account; the model test covers the payload shape.
+                let submission = this.favorite_editor.read(cx).submission(cx);
+                if submission.is_some() {
+                    this.pending_favorite = this.favorite_editor.read(cx).saved(cx);
+                }
                 cx.emit(CloseEditProfileModal);
             }))
             .child("Save changes");
@@ -884,7 +896,7 @@ impl Render for EditProfileModal {
             );
 
         // Widgets board
-        let entries: Vec<(String, Option<String>)> = self
+        let mut entries: Vec<(String, Option<String>, String)> = self
             .session
             .read(cx)
             .profiles
@@ -898,14 +910,22 @@ impl Render for EditProfileModal {
                         (
                             known.map(|g| g.name.clone()).unwrap_or_default(),
                             known.and_then(|g| g.cover_url.clone()),
+                            entry.comment.clone(),
                         )
                     })
                     .collect()
             })
             .unwrap_or_default();
+        if let Some(saved) = &self.pending_favorite {
+            entries.retain(|(name, _, _)| name != saved.name);
+            entries.insert(
+                0,
+                (saved.name.to_owned(), saved.cover.map(str::to_owned), saved.comment.clone()),
+            );
+        }
         let empty = entries.is_empty();
         let mut widgets = div().flex().flex_col().gap_3();
-        for (title, cover) in entries {
+        for (title, cover, comment) in entries {
             let mut card = div()
                 .w(px(431.))
                 .flex_none()
@@ -929,14 +949,23 @@ impl Render for EditProfileModal {
                     div().w(px(80.)).h(px(114.)).flex_none().rounded(px(4.)).bg(rgb(theme::BG_ACTIVE)),
                 ),
             }
-            card = card.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .text_size(px(13.))
-                    .text_color(rgb(theme::TEXT))
-                    .child(div().truncate().child(title)),
-            );
+            let mut text = div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .text_size(px(13.))
+                .text_color(rgb(theme::TEXT))
+                .child(div().truncate().child(title));
+            if !comment.is_empty() {
+                text = text.child(
+                    div()
+                        .truncate()
+                        .text_size(px(12.))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .child(comment),
+                );
+            }
+            card = card.child(text);
             widgets = widgets.child(card);
         }
         let board = div()
@@ -979,6 +1008,10 @@ impl Render for EditProfileModal {
                                     .when(i == 0, |d| {
                                         d.cursor_pointer().on_click(cx.listener(
                                             |this, _: &ClickEvent, _, cx| {
+                                                if this.favorite_open {
+                                                    this.pending_favorite =
+                                                        this.favorite_editor.read(cx).saved(cx);
+                                                }
                                                 this.widget_picker = false;
                                                 this.favorite_open = false;
                                                 cx.notify();
@@ -1032,6 +1065,10 @@ impl Render for EditProfileModal {
                                     .text_size(px(13.))
                                     .text_color(rgb(theme::TEXT_BRIGHT))
                                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        if this.favorite_open {
+                                            this.pending_favorite =
+                                                this.favorite_editor.read(cx).saved(cx);
+                                        }
                                         this.widget_picker = true;
                                         this.favorite_open = false;
                                         cx.notify();

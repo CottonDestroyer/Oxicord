@@ -225,9 +225,18 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       clicking outside the tag menu does not close it, the tag values are
       lowercased labels where the wire values are unverified, and the card's
       remove button uses a new local trash icon copied from the live SVG.
-- [ ] Favorite Game widget save: turn the chosen game, comment and tags into
-      the `PUT /users/@me/widgets` payload and add the widget to the board.
-      Nothing is sent from the real account until the request is unit tested.
+- [x] Favorite Game widget save: the chosen game, comment and tags become a
+      `WidgetsSubmission` from `oxicord-model`, which serializes
+      `{"widgets":[{"data":{"type":"favorite_games","games":[{"game_id":"...","comment":"...","tags":["..."]}]}}]}`
+      (a new widget has no `id`). The editor sends the wire tag values and
+      the ids read from the live browse list; a unit test covers the payload.
+      Picking a game and returning to Board shows the pending card with its
+      cover, name and comment, and Save changes builds the request. Verified at
+      1920 x 1080: choosing Lethal Company and clicking Board shows its cover
+      and name. Nothing is
+      sent from the real account. Remaining differences: the card is the
+      simple cover/name/comment row, not the live profile widget, and the
+      pending card is lost when the modal reopens.
 - [ ] Games I Like widget editor, opened from its card in the picker
 - [x] `USER_NOTE_UPDATE`: notes changed on another device. Handled in
       `session.rs`, which updates the cached profile card.

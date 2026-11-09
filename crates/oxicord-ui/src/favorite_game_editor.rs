@@ -19,75 +19,106 @@ const LINE: u32 = 0x97979f33;
 
 struct Game {
     name: &'static str,
+    /// The game's Discord application id, as the save request names it.
+    id: &'static str,
     cover: Option<&'static str>,
 }
 
-/// The games the live browse list and suggestions contained on 2026-11-09.
+/// The games the live browse list and suggestions contained on 2026-11-09,
+/// with the ids read from that list.
 const GAMES: &[Game] = &[
     Game {
         name: "Lethal Company",
+        id: "1167674267748540516",
         cover: Some("https://images-ext-1.discordapp.net/external/kxdIMrNToiGKbJccIo93PX6wHpdMHbkms0kwiOWl6Bs/https/images.igdb.com/igdb/image/upload/t_cover_big/co5ive.jpg?keep_aspect_ratio=true&format=webp"),
     },
     Game {
         name: "Overwatch",
+        id: "356875221078245376",
         cover: Some("https://cdn.discordapp.com/app-icons/356875221078245376/843a3b07639f068fdacf40b9c3808c46.webp?size=128&keep_aspect_ratio=true"),
     },
     Game {
         name: "Stardew Valley",
+        id: "359509387670192128",
         cover: Some("https://cdn.discordapp.com/app-icons/359509387670192128/2727f218e06d9c3c4204fed086181a53.webp?size=128&keep_aspect_ratio=true"),
     },
     Game {
         name: "Destiny 2",
+        id: "372438022647578634",
         cover: Some("https://images-ext-1.discordapp.net/external/KRe_8xMkBNXe0t5RS8_aQc5WqI4Rgl2Sypdf_VLfJVk/https/images.igdb.com/igdb/image/upload/t_cover_big/coc89g.jpg?keep_aspect_ratio=true&format=webp"),
     },
     Game {
         name: "Among Us",
+        id: "1402418440685486130",
         cover: Some("https://images-ext-1.discordapp.net/external/vwjJ-pK7-GEXq_yHs8oOoJ5Zplu_7VP8dZIZEnW6jLQ/https/images.igdb.com/igdb/image/upload/t_cover_big/co6kqt.jpg?keep_aspect_ratio=true&format=webp"),
     },
     Game {
         name: "Escape from Tarkov: Arena",
+        id: "1215361187684946010",
         cover: Some("https://images-ext-1.discordapp.net/external/izydqalQpGYCOoUOURoSyS7t-RsETqZ7AWuLsUYv48M/https/images.igdb.com/igdb/image/upload/t_cover_big/cocxnk.jpg?keep_aspect_ratio=true&format=webp"),
     },
-    Game { name: "ROBLOX", cover: None },
-    Game { name: "VALORANT", cover: None },
-    Game { name: "League of Legends", cover: None },
-    Game { name: "Minecraft", cover: None },
-    Game { name: "Counter-Strike 2", cover: None },
-    Game { name: "Fortnite", cover: None },
-    Game { name: "Grand Theft Auto V Legacy", cover: None },
-    Game { name: "Dota 2", cover: None },
-    Game { name: "Rocket League", cover: None },
-    Game { name: "Call of Duty®: MWIII", cover: None },
-    Game { name: "PUBG: BATTLEGROUNDS", cover: None },
-    Game { name: "Apex Legends", cover: None },
-    Game { name: "Genshin Impact", cover: None },
-    Game { name: "ELDEN RING", cover: None },
+    Game { name: "ROBLOX", id: "363445589247131668", cover: None },
+    Game { name: "VALORANT", id: "700136079562375258", cover: None },
+    Game { name: "League of Legends", id: "1402418696126992445", cover: None },
+    Game { name: "Minecraft", id: "1402418491272986635", cover: None },
+    Game { name: "Counter-Strike 2", id: "1158877933042143272", cover: None },
+    Game { name: "Fortnite", id: "1402418703554842694", cover: None },
+    Game { name: "Grand Theft Auto V Legacy", id: "1402418714716143646", cover: None },
+    Game { name: "Dota 2", id: "356875988589740042", cover: None },
+    Game { name: "Rocket League", id: "356877880938070016", cover: None },
+    Game { name: "Call of Duty®: MWIII", id: "1402418487745581248", cover: None },
+    Game { name: "PUBG: BATTLEGROUNDS", id: "1402418717781921935", cover: None },
+    Game { name: "Apex Legends", id: "542075586886107149", cover: None },
+    Game { name: "Genshin Impact", id: "762434991303950386", cover: None },
+    Game { name: "ELDEN RING", id: "1402418436809953330", cover: None },
 ];
 
 /// The suggested covers, which are the first six games.
 const SUGGESTED: usize = 6;
 
-/// The tag menu's groups and their values, in the live order.
-const TAG_GROUPS: &[(&str, &[&str])] = &[
+/// The tag menu's groups, their labels and the wire value each sends.
+/// The empty wire value is the "None" option, which sends no tag.
+const TAG_GROUPS: &[(&str, &[(&str, &str)])] = &[
     (
         "Skill level",
-        &["None", "Casual", "Intermediate", "Expert", "Better than you"],
+        &[
+            ("None", ""),
+            ("Casual", "casual"),
+            ("Intermediate", "intermediate"),
+            ("Expert", "expert"),
+            ("Better than you", "better_than_you"),
+        ],
     ),
     (
         "Rating",
-        &["Obsessed", "Love it", "Kind of love it", "Kind of hate it", "Rage quitting"],
+        &[
+            ("Obsessed", "obsessed"),
+            ("Love it", "love_it"),
+            ("Kind of love it", "kind_of_love_it"),
+            ("Kind of hate it", "kind_of_hate_it"),
+            ("Rage quitting", "rage_quitting"),
+        ],
     ),
     (
         "Looking for",
         &[
-            "Looking for group",
-            "Open to play",
-            "Looking for tips",
-            "Open to teach",
-            "Looking to discuss",
+            ("Looking for group", "looking_for_group"),
+            ("Open to play", "open_to_play"),
+            ("Looking for tips", "looking_for_tips"),
+            ("Open to teach", "open_to_teach"),
+            ("Looking to discuss", "looking_to_discuss"),
         ],
     ),
 ];
+
+/// The game, comment and tags a pending Favorite Game widget holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedFavorite {
+    pub name: &'static str,
+    pub cover: Option<&'static str>,
+    pub comment: String,
+    pub tags: Vec<&'static str>,
+}
 
 pub struct FavoriteGameEditor {
     media: Entity<Media>,
@@ -148,6 +179,40 @@ impl FavoriteGameEditor {
         self.tags.clear();
         self.comment.update(cx, |state, cx| state.set_value("", window, cx));
         cx.notify();
+    }
+
+    /// What the board draws for the chosen game, if one is chosen.
+    pub fn saved(&self, cx: &gpui_kit::App) -> Option<SavedFavorite> {
+        let game = self.selected.map(|index| &GAMES[index])?;
+        Some(SavedFavorite {
+            name: game.name,
+            cover: game.cover,
+            comment: self.comment.read(cx).value().trim().to_owned(),
+            tags: self.tags.iter().map(|&(group, value)| TAG_GROUPS[group].1[value].0).collect(),
+        })
+    }
+
+    /// The `PUT /users/@me/widgets` entry for the chosen game. Built here so
+    /// the shape is exercised, but never sent from the real account.
+    pub fn submission(&self, cx: &gpui_kit::App) -> Option<oxicord_model::WidgetSubmission> {
+        let saved = self.saved(cx)?;
+        Some(oxicord_model::WidgetSubmission {
+            id: None,
+            data: oxicord_model::WidgetDataSubmission::FavoriteGames {
+                games: vec![oxicord_model::GameEntrySubmission {
+                    game_id: GAMES[self.selected?].id.parse().ok()?,
+                    comment: saved.comment,
+                    tags: self
+                        .tags
+                        .iter()
+                        .filter_map(|&(group, value)| {
+                            let wire = TAG_GROUPS[group].1[value].1;
+                            (!wire.is_empty()).then(|| wire.to_owned())
+                        })
+                        .collect(),
+                }],
+            },
+        })
     }
 
     fn game_tile(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -255,7 +320,7 @@ impl FavoriteGameEditor {
 
     /// One chosen tag, as the live chip row draws it.
     fn chip(&self, group: usize, value: usize, cx: &mut Context<Self>) -> AnyElement {
-        let label = TAG_GROUPS[group].1[value];
+        let label = TAG_GROUPS[group].1[value].0;
         div()
             .id(gpui_kit::ElementId::Name(format!("tag-{group}-{value}").into()))
             .h(px(20.))
@@ -315,7 +380,7 @@ impl FavoriteGameEditor {
                     .text_color(rgb(theme::TEXT_MUTED))
                     .child(*label),
             );
-            for (value, name) in values.iter().enumerate() {
+            for (value, (name, _)) in values.iter().enumerate() {
                 let chosen = self.tags.contains(&(group, value));
                 let radio = div()
                     .size(px(20.))

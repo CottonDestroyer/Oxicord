@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::Snowflake;
 
@@ -121,6 +121,47 @@ pub struct GameEntry {
 pub struct Game {
     pub name: String,
     pub cover_url: Option<String>,
+}
+
+/// The body of `PUT /users/@me/widgets`: every widget the board should hold.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct WidgetsSubmission {
+    pub widgets: Vec<WidgetSubmission>,
+}
+
+/// One widget in that body. A widget that has never been saved has no `id`
+/// and the server gives it one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct WidgetSubmission {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<Snowflake>,
+    pub data: WidgetDataSubmission,
+}
+
+/// What kind of widget this is, tagged the way the wire names it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WidgetDataSubmission {
+    FavoriteGames {
+        games: Vec<GameEntrySubmission>,
+    },
+    CurrentGames {
+        games: Vec<GameEntrySubmission>,
+    },
+    PlayedGames {
+        games: Vec<GameEntrySubmission>,
+    },
+    WantToPlayGames {
+        games: Vec<GameEntrySubmission>,
+    },
+}
+
+/// One game as the save request names it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct GameEntrySubmission {
+    pub game_id: Snowflake,
+    pub comment: String,
+    pub tags: Vec<String>,
 }
 
 /// The extra details behind a profile card. Discord nests the bio under
@@ -481,6 +522,40 @@ mod tests {
         assert_eq!(p.want_to_play_games[0].id, Snowflake(8));
         // Five is in two widgets but is looked up once.
         assert_eq!(p.game_ids(), [Snowflake(5), Snowflake(6), Snowflake(8)]);
+    }
+
+    #[test]
+    fn a_favorite_game_widget_serializes_as_the_save_request() {
+        let body = WidgetsSubmission {
+            widgets: vec![WidgetSubmission {
+                id: None,
+                data: WidgetDataSubmission::FavoriteGames {
+                    games: vec![GameEntrySubmission {
+                        game_id: Snowflake(1_167_674_267_748_540_516),
+                        comment: "peak".into(),
+                        tags: vec!["obsessed".into()],
+                    }],
+                },
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&body).unwrap(),
+            serde_json::json!({
+                "widgets": [{"data": {"type": "favorite_games", "games": [{
+                    "game_id": "1167674267748540516",
+                    "comment": "peak",
+                    "tags": ["obsessed"]
+                }]}}]
+            })
+        );
+        let saved = WidgetSubmission {
+            id: Some(Snowflake(7)),
+            data: WidgetDataSubmission::PlayedGames { games: Vec::new() },
+        };
+        assert_eq!(
+            serde_json::to_value(&saved).unwrap(),
+            serde_json::json!({"id": "7", "data": {"type": "played_games", "games": []}})
+        );
     }
 
     #[test]
