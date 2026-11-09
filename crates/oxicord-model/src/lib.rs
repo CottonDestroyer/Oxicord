@@ -31,6 +31,7 @@ pub mod snowflake;
 pub mod user;
 pub mod verification;
 pub mod voice;
+pub mod welcome;
 
 pub use account::{AccountDetails, AppInfo, AuthorizedApp, ClientInfo, Connection, LoginSession};
 pub use attachment::Attachment;
@@ -65,4 +66,5 @@ pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
 pub use user::{AccountMetadata, Badge, Game, GameEntry, LinkedAccount, MutualGuild, Profile, ServerTag, User};
 pub use verification::{FormField, GuildProfile, VerificationForm, VerificationInfo, VerificationResponse};
+pub use welcome::{WelcomeChannel, WelcomeScreen};
 pub use voice::VoiceState;

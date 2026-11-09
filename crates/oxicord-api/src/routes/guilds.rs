@@ -109,6 +109,20 @@ impl ApiClient {
         .await
     }
 
+    /// The welcome screen: its description and featured channels.
+    pub async fn welcome_screen(
+        &self,
+        guild: Snowflake,
+    ) -> Result<oxicord_model::WelcomeScreen, ApiError> {
+        self.json(
+            Method::GET,
+            &format!("/guilds/{guild}/welcome-screen"),
+            "GET /guilds/:id/welcome-screen",
+            None,
+        )
+        .await
+    }
+
     /// The card the screening dialog shows beside the form.
     pub async fn guild_profile(
         &self,

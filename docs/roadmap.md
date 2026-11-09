@@ -96,8 +96,14 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       a target. Visual check blocked by the same missing permission.
 - [x] Welcome screen fixture from `GET /guilds/:id/welcome-screen`.
       fixtures/welcome-screen.json, captured from SCP | Roleplay.
+- [x] Welcome screen model and endpoint: `WelcomeScreen` and
+      `WelcomeChannel` parse the fixture, and `ApiClient::welcome_screen`
+      calls `GET /guilds/:id/welcome-screen`. Unit test against
+      fixtures/welcome-screen.json.
 - [ ] Welcome screen view: description and featured channels when no channel
-      is selected
+      is selected. Unverified layout: /channels/<guild> redirects to a real
+      channel for an existing member, so this account cannot open the live
+      welcome screen. Data: fixtures/welcome-screen.json.
 - [ ] Onboarding fixture from `GET /guilds/:id/onboarding` (confirm)
 - [ ] Onboarding prompts view: questions and options, single and multi select
 - [ ] Onboarding channel and role selection applied, responses sent (confirm
