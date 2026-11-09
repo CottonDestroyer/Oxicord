@@ -61,29 +61,56 @@ impl VerificationForm {
         self.form_fields.iter().all(|f| f.field_type == "TERMS")
     }
 
-    /// The body `PUT /guilds/:id/requests/@me` expects. `agreed` answers every
-    /// terms field; other kinds have no answer yet.
-    pub fn submission(&self, agreed: bool) -> Value {
+    /// True when at least one field is a written answer or a choice.
+    pub fn has_manual_fields(&self) -> bool {
+        self.form_fields.iter().any(|f| f.field_type != "TERMS")
+    }
+
+    /// The body `PUT /guilds/:id/requests/@me` expects. `answers` holds one
+    /// response per field, in form order.
+    pub fn submission(&self, answers: &[VerificationResponse]) -> Value {
         let fields: Vec<Value> = self
             .form_fields
             .iter()
-            .map(|field| {
-                let response = if field.field_type == "TERMS" {
-                    json!(agreed)
-                } else {
-                    Value::Null
-                };
+            .enumerate()
+            .map(|(index, field)| {
+                let response = answers.get(index).map(VerificationResponse::value).unwrap_or(Value::Null);
                 json!({
                     "field_type": field.field_type,
                     "label": field.label,
                     "description": field.description,
                     "required": field.required,
                     "values": field.values,
+                    "choices": field.choices,
                     "response": response,
                 })
             })
             .collect();
         json!({ "version": self.version, "form_fields": fields })
+    }
+}
+
+/// What one form field was answered with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VerificationResponse {
+    /// The terms checkbox.
+    Terms(bool),
+    /// A written answer.
+    Text(String),
+    /// The index of the chosen option.
+    Choice(Option<usize>),
+}
+
+impl VerificationResponse {
+    fn value(&self) -> Value {
+        match self {
+            Self::Terms(agreed) => json!(agreed),
+            Self::Text(text) => json!(text),
+            Self::Choice(choice) => match choice {
+                Some(index) => json!(index),
+                None => Value::Null,
+            },
+        }
     }
 }
 
@@ -100,18 +127,9 @@ pub struct FormField {
     pub required: bool,
     #[serde(default)]
     pub values: Vec<String>,
-    /// Choices for a multiple choice question.
+    /// Options for a multiple choice question.
     #[serde(default)]
-    pub choices: Vec<FormChoice>,
-}
-
-/// One answer of a multiple choice question.
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct FormChoice {
-    #[serde(default)]
-    pub label: String,
-    #[serde(default)]
-    pub value: String,
+    pub choices: Vec<String>,
 }
 
 /// The two answers the dialog opens with.
@@ -141,18 +159,38 @@ mod tests {
     }
 
     #[test]
-    fn a_submission_answers_every_terms_field() {
+    fn a_submission_answers_every_field() {
         let form: VerificationForm = serde_json::from_str(
             r#"{"version":"v1","form_fields":[
                 {"field_type":"TERMS","label":"rules","required":true,"values":["one"]},
-                {"field_type":"TEXT_INPUT","label":"why","required":false,"values":[]}]}"#,
+                {"field_type":"TEXT_INPUT","label":"why","required":false,"values":[]},
+                {"field_type":"MULTIPLE_CHOICE","label":"pick","required":true,"choices":["a","b"]}]}"#,
         )
         .unwrap();
-        let body = form.submission(true);
+        let body = form.submission(&[
+            VerificationResponse::Terms(true),
+            VerificationResponse::Text("because".into()),
+            VerificationResponse::Choice(Some(1)),
+        ]);
         assert_eq!(body["version"], "v1");
         assert_eq!(body["form_fields"][0]["response"], true);
-        assert!(body["form_fields"][1]["response"].is_null());
+        assert_eq!(body["form_fields"][1]["response"], "because");
+        assert_eq!(body["form_fields"][2]["response"], 1);
+        assert_eq!(body["form_fields"][2]["choices"][1], "b");
         assert!(!form.only_terms());
+        assert!(form.has_manual_fields());
+    }
+
+    #[test]
+    fn reads_live_manual_fields() {
+        let form: VerificationForm = serde_json::from_str(
+            r#"{"version":"v1","form_fields":[
+                {"field_type":"PARAGRAPH","label":"Why?","required":true,"values":[]},
+                {"field_type":"TEXT_INPUT","label":"How?","required":true,"values":[]}]}"#,
+        )
+        .unwrap();
+        assert!(form.has_manual_fields());
+        assert_eq!(form.form_fields[0].label, "Why?");
     }
 
     #[test]

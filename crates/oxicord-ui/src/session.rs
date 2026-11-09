@@ -811,7 +811,7 @@ impl Session {
         backend: &Backend,
         guild: Snowflake,
         form: oxicord_model::VerificationForm,
-        agreed: bool,
+        answers: Vec<oxicord_model::VerificationResponse>,
         cx: &mut Context<Self>,
     ) {
         if let Some(state) = &mut self.verification {
@@ -820,7 +820,7 @@ impl Session {
         backend.send(Command::Admin(crate::AdminRequest::SubmitMemberVerification {
             guild,
             form,
-            agreed,
+            answers,
         }));
         cx.notify();
     }

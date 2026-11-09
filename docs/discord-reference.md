@@ -460,3 +460,38 @@ before you can talk." and its "Complete" button, and is the web client's
   what shows the banner and replaces the composer.
 - Only TERMS questions are filled in so far. TEXT_INPUT, PARAGRAPH and
   MULTIPLE_CHOICE questions still need their own inputs.
+
+## Server application form (from the web client, 2026-11-08)
+
+When a form has any field other than TERMS, the same dialog becomes a member
+application. The payload came from live servers: Mossad (962385052778512434)
+has PARAGRAPH + three TEXT_INPUT + MULTIPLE_CHOICE, Low iq gaymers
+(1403715216503472128) has PARAGRAPH + TEXT_INPUT. The live modal itself cannot
+be opened for an account that is already through screening, so the values below
+come from the client's modules and CSS, and the port was checked against a
+fixture.
+
+- Header: "Answer a few questions to join {server}", 32 px / 40 px weight 500
+  #dcdcdf, guild name in weight 700. Subtitle: "The server admin will get back
+  to you shortly after you submit.", 14 px / 18 px #d4d5d8.
+- Every question: 40 px above, 1 px padding, title 16 px / 20 px #dcdcdf,
+  12 px below the title.
+- TEXT_INPUT: one line, `maxLength` 150, placeholder "Enter your answer".
+  Generic Discord text field: 40 px high, background #0a0a0c, 1 px border
+  rgba(150,151,159,0.2), radius 4, 12 px side padding, 16 px text.
+- PARAGRAPH: textarea, `maxLength` 1000, autosize 3 to 10 rows, placeholder
+  "Enter your answer", remaining character count at the bottom right in
+  12 px / 16 px #81828a ("0/1000"). Body uses the same dark field background,
+  radius 8, 10 px padding.
+- MULTIPLE_CHOICE: vertical radio group, 16 px between options, 8 px top and
+  4 px bottom padding. Option is 20 px high with a 20 px radio at the left and
+  12 px to the label (padding-left 32). Radio is a 20 px circle with a 2 px
+  border; unselected border rgba(151,151,159,0.8) on #000, selected fill
+  #5865f2 with an 8 px white centre dot. Label 16 px / 20 px #d4d5d8.
+- Submit stays disabled until every required answer is present. Its tooltip
+  says "All required fields must be filled." or, when a TERMS field is the
+  missing one, "All required fields must be filled, including agreeing to the
+  rules."
+- Submission keeps the field order and sends the answer as `response`:
+  boolean for TERMS, the string for written answers, the option index (0 based)
+  for MULTIPLE_CHOICE. `version` is echoed from the form.

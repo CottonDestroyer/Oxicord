@@ -826,8 +826,8 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
             .map_err(text);
             say(AdminEvent::MemberVerification(guild, Box::new(result))).await;
         }
-        AdminRequest::SubmitMemberVerification { guild, form, agreed } => {
-            match api.submit_member_verification(guild, &form, agreed).await {
+        AdminRequest::SubmitMemberVerification { guild, form, answers } => {
+            match api.submit_member_verification(guild, &form, &answers).await {
                 Ok(()) => say(AdminEvent::Verified(guild, Ok(()))).await,
                 Err(err) => {
                     let message = describe_request(&err);

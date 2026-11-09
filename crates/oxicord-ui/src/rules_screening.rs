@@ -4,13 +4,17 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, Entity, EventEmitter, FontWeight, ImageSource,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render,
-    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window, div, img,
-    linear_color_stop, linear_gradient, px, rgb, rgba,
+    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight,
+    ImageSource, InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window,
+    component::input::{Input, InputEvent, InputState, Textarea, TextareaState},
+    div, img, linear_color_stop, linear_gradient, px, rgb, rgba,
 };
 use oxicord_media::cdn;
-use oxicord_model::{GuildProfile, Snowflake, VerificationForm, VerificationInfo};
+use oxicord_model::{
+    FormField, GuildProfile, Snowflake, VerificationForm, VerificationInfo,
+    VerificationResponse,
+};
 
 use crate::{
     account::Load,
@@ -31,9 +35,21 @@ pub struct RulesScreeningDialog {
     media: Entity<Media>,
     backend: Backend,
     guild: Option<Snowflake>,
-    agreed: bool,
+    /// One answer per form field, in form order.
+    answers: Vec<Answer>,
+    focused: Option<usize>,
     submitting: bool,
+    submit_hover: bool,
     _subscriptions: Vec<Subscription>,
+}
+
+/// What the dialog holds for one question.
+enum Answer {
+    Terms(bool),
+    Text(Entity<InputState>),
+    Paragraph(Entity<TextareaState>),
+    Choice(Option<usize>),
+    Unsupported,
 }
 
 impl RulesScreeningDialog {
@@ -65,16 +81,20 @@ impl RulesScreeningDialog {
             media,
             backend,
             guild: None,
-            agreed: false,
+            answers: Vec::new(),
+            focused: None,
             submitting: false,
+            submit_hover: false,
             _subscriptions: subscriptions,
         }
     }
 
     pub fn opened(&mut self, guild: Snowflake, cx: &mut Context<Self>) {
         self.guild = Some(guild);
-        self.agreed = false;
+        self.answers.clear();
+        self.focused = None;
         self.submitting = false;
+        self.submit_hover = false;
         cx.notify();
     }
 
@@ -82,20 +102,132 @@ impl RulesScreeningDialog {
         cx.emit(CloseRulesScreening);
     }
 
-    fn toggle_agreed(&mut self, cx: &mut Context<Self>) {
-        self.agreed = !self.agreed;
-        cx.notify();
+    /// Makes one answer holder per form field. Inputs are created on the fly
+    /// and their change events are watched so the submit button stays current.
+    fn sync_answers(
+        &mut self,
+        form: &VerificationForm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.answers.len() == form.form_fields.len() {
+            return;
+        }
+        self.answers = form
+            .form_fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| match field.field_type.as_str() {
+                "TERMS" => Answer::Terms(false),
+                "TEXT_INPUT" => {
+                    let input = cx.new(|cx| InputState::new(window, cx).placeholder("Enter your answer"));
+                    let subscription = cx.subscribe(&input, move |this, _, event: &InputEvent, cx| {
+                        match event {
+                            InputEvent::Focus => this.focused = Some(index),
+                            InputEvent::Blur if this.focused == Some(index) => this.focused = None,
+                            _ => {}
+                        }
+                        cx.notify();
+                    });
+                    self._subscriptions.push(subscription);
+                    Answer::Text(input)
+                }
+                "PARAGRAPH" => {
+                    let input = cx.new(|cx| {
+                        TextareaState::new(window, cx)
+                            .auto_grow(3, 10)
+                            .placeholder("Enter your answer")
+                    });
+                    let subscription = cx.subscribe(&input, move |this, _, event: &InputEvent, cx| {
+                        match event {
+                            InputEvent::Focus => this.focused = Some(index),
+                            InputEvent::Blur if this.focused == Some(index) => this.focused = None,
+                            _ => {}
+                        }
+                        cx.notify();
+                    });
+                    self._subscriptions.push(subscription);
+                    Answer::Paragraph(input)
+                }
+                "MULTIPLE_CHOICE" => Answer::Choice(None),
+                _ => Answer::Unsupported,
+            })
+            .collect();
+    }
+
+    fn toggle_terms(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(Answer::Terms(agreed)) = self.answers.get_mut(index) {
+            *agreed = !*agreed;
+            cx.notify();
+        }
+    }
+
+    fn set_choice(&mut self, index: usize, choice: usize, cx: &mut Context<Self>) {
+        if let Some(answer) = self.answers.get_mut(index) {
+            *answer = Answer::Choice(Some(choice));
+            cx.notify();
+        }
+    }
+
+    fn answer_valid(&self, field: &FormField, index: usize, cx: &App) -> bool {
+        if !field.required {
+            return true;
+        }
+        match self.answers.get(index) {
+            Some(Answer::Terms(agreed)) => *agreed,
+            Some(Answer::Text(input)) => !input.read(cx).value().trim().is_empty(),
+            Some(Answer::Paragraph(input)) => !input.read(cx).value().trim().is_empty(),
+            Some(Answer::Choice(choice)) => choice.is_some(),
+            _ => false,
+        }
+    }
+
+    fn all_valid(&self, form: &VerificationForm, cx: &App) -> bool {
+        form.form_fields
+            .iter()
+            .enumerate()
+            .all(|(index, field)| self.answer_valid(field, index, cx))
+    }
+
+    fn responses(&self, cx: &App) -> Vec<VerificationResponse> {
+        self.answers
+            .iter()
+            .map(|answer| match answer {
+                Answer::Terms(agreed) => VerificationResponse::Terms(*agreed),
+                Answer::Text(input) => VerificationResponse::Text(input.read(cx).value().to_string()),
+                Answer::Paragraph(input) => {
+                    VerificationResponse::Text(input.read(cx).value().to_string())
+                }
+                Answer::Choice(choice) => VerificationResponse::Choice(*choice),
+                Answer::Unsupported => VerificationResponse::Text(String::new()),
+            })
+            .collect()
+    }
+
+    /// The sentence shown when the disabled submit button is hovered.
+    fn submit_hint(&self, form: &VerificationForm, cx: &App) -> &'static str {
+        let terms_invalid = form
+            .form_fields
+            .iter()
+            .enumerate()
+            .any(|(index, field)| field.field_type == "TERMS" && !self.answer_valid(field, index, cx));
+        if terms_invalid {
+            "All required fields must be filled, including agreeing to the rules."
+        } else {
+            "All required fields must be filled."
+        }
     }
 
     fn submit(&mut self, form: VerificationForm, cx: &mut Context<Self>) {
         let Some(guild) = self.guild else { return };
-        if !self.agreed || self.submitting || !form.only_terms() {
+        if self.submitting || !self.all_valid(&form, cx) {
             return;
         }
         self.submitting = true;
+        let answers = self.responses(cx);
         let backend = self.backend.clone();
         self.session.update(cx, |session, cx| {
-            session.submit_verification(&backend, guild, form, self.agreed, cx);
+            session.submit_verification(&backend, guild, form, answers, cx);
         });
         cx.notify();
     }
@@ -267,14 +399,9 @@ impl RulesScreeningDialog {
             .into_any_element()
     }
 
-    fn terms_body(&self, form: &VerificationForm) -> AnyElement {
+    fn terms_body(&self, field: &FormField) -> AnyElement {
         let mut rows = div().flex().flex_col();
-        let list: Vec<&str> = form
-            .form_fields
-            .iter()
-            .filter(|f| f.field_type == "TERMS")
-            .flat_map(|f| f.values.iter().map(String::as_str))
-            .collect();
+        let list: Vec<&str> = field.values.iter().map(String::as_str).collect();
         let last = list.len().saturating_sub(1);
         for (index, text) in list.iter().enumerate() {
             let mut row = div()
@@ -320,9 +447,10 @@ impl RulesScreeningDialog {
 
     /// The checkbox under the rules. It sits outside the field's padding, so
     /// it lines up with the question title.
-    fn agreement_row(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn agreement_row(&mut self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let agreed = matches!(self.answers.get(index), Some(Answer::Terms(true)));
         div()
-            .id("screening-agree")
+            .id(("screening-agree", index))
             .h(px(20.))
             .mb(px(8.))
             .opacity(0.63)
@@ -334,19 +462,19 @@ impl RulesScreeningDialog {
             .text_size(px(16.))
             .line_height(px(20.))
             .text_color(rgb(theme::TEXT))
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_agreed(cx)))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle_terms(index, cx)))
             .child(
                 div()
                     .flex_none()
                     .size(px(20.))
                     .rounded(px(4.))
                     .border_1()
-                    .border_color(if self.agreed {
+                    .border_color(if agreed {
                         rgba(0x97979f00)
                     } else {
                         rgba(0x97979fcc)
                     })
-                    .bg(rgb(if self.agreed {
+                    .bg(rgb(if agreed {
                         theme::CHECKBOX
                     } else {
                         0x09090b
@@ -354,15 +482,167 @@ impl RulesScreeningDialog {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .children(self.agreed.then(|| icon("check", 13., 0xffffff))),
+                    .children(agreed.then(|| icon("check", 13., 0xffffff))),
             )
             .child("I have read and agree to the rules")
+            .into_any_element()
+    }
+
+    fn single_line(&self, _field: &FormField, index: usize) -> AnyElement {
+        let Some(Answer::Text(input)) = self.answers.get(index) else {
+            return div().into_any_element();
+        };
+        div()
+            .h(px(40.))
+            .px(px(12.))
+            .flex()
+            .items_center()
+            .rounded(px(4.))
+            .border_1()
+            .border_color(if self.focused == Some(index) {
+                rgb(theme::ACCENT)
+            } else {
+                rgba(0x9696a033)
+            })
+            .bg(rgb(theme::BG_INPUT))
+            .child(Input::new(input).appearance(false).bordered(false))
+            .into_any_element()
+    }
+
+    fn paragraph(&self, field: &FormField, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let _ = field;
+        let Some(Answer::Paragraph(input)) = self.answers.get(index) else {
+            return div().into_any_element();
+        };
+        let count = input.read(cx).value().chars().count();
+        div()
+            .min_h(px(88.))
+            .p(px(10.))
+            .flex()
+            .flex_col()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(if self.focused == Some(index) {
+                rgb(theme::ACCENT)
+            } else {
+                rgba(0x9696a033)
+            })
+            .bg(rgb(theme::BG_INPUT))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .child(Textarea::new(input).appearance(false).bordered(false)),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .justify_end()
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(rgb(theme::TEXT_FAINT))
+                    .child(format!("{count}/1000")),
+            )
+            .into_any_element()
+    }
+
+    fn choices(&mut self, field: &FormField, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let Some(Answer::Choice(selected)) = self.answers.get(index) else {
+            return div().into_any_element();
+        };
+        let selected = *selected;
+        let rows = field.choices.iter().enumerate().map(|(choice, label)| {
+            let picked = selected == Some(choice);
+            div()
+                .id(format!("screening-choice-{index}-{choice}"))
+                .h(px(20.))
+                .pl(px(32.))
+                .relative()
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .text_size(px(16.))
+                .line_height(px(20.))
+                .text_color(rgb(theme::TEXT))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.set_choice(index, choice, cx);
+                }))
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .size(px(20.))
+                        .rounded_full()
+                        .border_2()
+                        .border_color(if picked { rgb(theme::ACCENT) } else { rgba(0x97979fcc) })
+                        .bg(rgb(if picked { theme::ACCENT } else { 0x09090b }))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .children(picked.then(|| {
+                            div().size(px(8.)).rounded_full().bg(rgb(0xffffff))
+                        })),
+                )
+                .child(label.clone())
+        });
+        div()
+            .pt(px(8.))
+            .pb(px(4.))
+            .flex()
+            .flex_col()
+            .gap(px(16.))
+            .children(rows)
+            .into_any_element()
+    }
+
+    fn render_field(
+        &mut self,
+        index: usize,
+        field: &FormField,
+        manual: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let title = match field.field_type.as_str() {
+            "TERMS" => "Agree to rules".to_owned(),
+            _ => field.label.clone(),
+        };
+        let body = match field.field_type.as_str() {
+            "TERMS" => {
+                let mut body = div().flex().flex_col().child(self.terms_body(field));
+                if manual {
+                    body = body.child(div().mt(px(16.)).child(self.agreement_row(index, cx)));
+                }
+                body.into_any_element()
+            }
+            "TEXT_INPUT" => self.single_line(field, index),
+            "PARAGRAPH" => self.paragraph(field, index, cx),
+            "MULTIPLE_CHOICE" => self.choices(field, index, cx),
+            _ => div()
+                .text_size(px(14.))
+                .text_color(rgb(theme::DANGER))
+                .child("This question type is not supported yet.")
+                .into_any_element(),
+        };
+        div()
+            .mt(px(40.))
+            .p(px(1.))
+            .child(
+                div()
+                    .mb(px(12.))
+                    .text_size(px(16.))
+                    .line_height(px(20.))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(title),
+            )
+            .child(body)
             .into_any_element()
     }
 }
 
 impl Render for RulesScreeningDialog {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(guild) = self.guild else {
             return div().into_any_element();
         };
@@ -420,7 +700,9 @@ impl Render for RulesScreeningDialog {
             .unwrap_or((theme::TEXT_MUTED, theme::STATUS_POSITIVE));
 
         let card = self.guild_card(guild, profile, cx);
-        let can_submit = self.agreed && form.only_terms() && !self.submitting;
+        self.sync_answers(form, window, cx);
+        let manual = form.has_manual_fields();
+        let can_submit = self.all_valid(form, cx) && !self.submitting;
 
         let submit = div()
             .id("screening-submit")
@@ -442,6 +724,12 @@ impl Render for RulesScreeningDialog {
                     .hover(|s| s.bg(rgb(theme::SUCCESS_HOVER)))
             })
             .when(!can_submit, |s| s.opacity(0.5))
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if this.submit_hover != *hovered {
+                    this.submit_hover = *hovered;
+                    cx.notify();
+                }
+            }))
             .child("Submit")
             .when(can_submit, |s| {
                 s.on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -457,24 +745,104 @@ impl Render for RulesScreeningDialog {
                 }))
             });
 
-        let mut footer = div()
+        let mut left = div().flex_1().min_w_0();
+        if let Some(Err(error)) = &submit_error {
+            left = left.child(
+                div()
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(rgb(theme::DANGER))
+                    .child(error.clone()),
+            );
+        } else if self.submit_hover && !can_submit {
+            left = left.child(
+                div()
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(self.submit_hint(form, cx)),
+            );
+        }
+        let footer = div()
             .h(px(56.))
             .py(px(8.))
             .flex()
             .items_center()
-            .justify_end()
+            .justify_between()
+            .child(left)
             .child(submit);
-        if let Some(Err(error)) = submit_error {
-            footer = footer.child(
-                div()
-                    .mr(px(12.))
-                    .flex_1()
-                    .text_size(px(12.))
-                    .line_height(px(16.))
-                    .text_color(rgb(theme::DANGER))
-                    .child(error),
-            );
-        }
+
+        let heading = div()
+            .mt(px(8.))
+            .mb(px(8.))
+            .text_size(px(32.))
+            .line_height(px(40.))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .map(|heading| {
+                if manual {
+                    heading
+                        .flex()
+                        .items_baseline()
+                        .child("Answer a few questions to join ")
+                        .child(
+                            div()
+                                .font_weight(FontWeight::BOLD)
+                                .child(profile.name.clone()),
+                        )
+                } else {
+                    heading.child("Before you can talk here...")
+                }
+            });
+        let subtitle = div()
+            .text_size(px(14.))
+            .line_height(px(18.))
+            .text_color(rgb(theme::TEXT))
+            .child(if manual {
+                "The server admin will get back to you shortly after you submit."
+            } else {
+                "You\u{2019}ll need to complete the required steps below."
+            });
+        let fields: Vec<AnyElement> = form
+            .form_fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| self.render_field(index, field, manual, cx))
+            .collect();
+        let content = if manual {
+            div()
+                .id("screening-fields")
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_col()
+                .pb(px(12.))
+                .child(heading)
+                .child(subtitle)
+                .children(fields)
+                .into_any_element()
+        } else {
+            div()
+                .flex_1()
+                .min_h_0()
+                .relative()
+                .child(
+                    div()
+                        .id("screening-scroll")
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .pb(px(12.))
+                        .child(heading)
+                        .child(subtitle)
+                        .children(fields),
+                )
+                .into_any_element()
+        };
 
         let right = div()
             .flex_1()
@@ -492,58 +860,8 @@ impl Render for RulesScreeningDialog {
                     .pt(px(60.))
                     .pb(px(36.))
                     .px(px(24.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_h_0()
-                            .relative()
-                            .child(
-                                div()
-                                    .id("screening-scroll")
-                                    .absolute()
-                                    .top_0()
-                                    .left_0()
-                                    .size_full()
-                                    .overflow_y_scroll()
-                                    .flex()
-                                    .flex_col()
-                                    .pb(px(12.))
-                                    .child(
-                                        div()
-                                            .mt(px(8.))
-                                            .mb(px(8.))
-                                            .text_size(px(32.))
-                                            .line_height(px(40.))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(rgb(theme::TEXT_BRIGHT))
-                                            .child("Before you can talk here..."),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(14.))
-                                            .line_height(px(18.))
-                                            .text_color(rgb(theme::TEXT))
-                                            .child(
-                                                "You\u{2019}ll need to complete the required steps below.",
-                                            ),
-                                    )
-                                    .child(
-                                        div()
-                                            .mt(px(40.))
-                                            .p(px(1.))
-                                            .child(
-                                                div()
-                                                    .mb(px(12.))
-                                                    .text_size(px(16.))
-                                                    .line_height(px(20.))
-                                                    .text_color(rgb(theme::TEXT_BRIGHT))
-                                                    .child("Agree to rules"),
-                                            )
-                                            .child(self.terms_body(form)),
-                                    ),
-                            ),
-                    )
-                    .child(self.agreement_row(cx))
+                    .child(content)
+                    .children((!manual).then(|| self.agreement_row(0, cx)))
                     .child(footer),
             );
 
