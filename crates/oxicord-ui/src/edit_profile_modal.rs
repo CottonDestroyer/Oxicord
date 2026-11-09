@@ -11,7 +11,7 @@ use gpui_kit::{
     component::input::{Input, InputState, Textarea, TextareaState},
 };
 use oxicord_model::{
-    collectible::{Nameplate, NameplateCatalog},
+    collectible::{EffectCatalog, Nameplate, NameplateCatalog},
     Snowflake, User,
 };
 
@@ -35,8 +35,13 @@ pub struct OpenNameplate;
 /// Avatar Decoration dialog.
 pub struct OpenDecoration;
 
+/// Emitted when the profile effect tile is clicked; the window opens the
+/// Change Profile Effect dialog.
+pub struct OpenEffect;
+
 impl EventEmitter<OpenNameplate> for EditProfileModal {}
 impl EventEmitter<OpenDecoration> for EditProfileModal {}
+impl EventEmitter<OpenEffect> for EditProfileModal {}
 
 impl EventEmitter<CloseEditProfileModal> for EditProfileModal {}
 
@@ -51,7 +56,9 @@ pub struct EditProfileModal {
     filled: bool,
     applied: Option<String>,
     applied_decoration: Option<String>,
+    applied_effect: Option<String>,
     catalog: NameplateCatalog,
+    effect_catalog: EffectCatalog,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -75,7 +82,9 @@ impl EditProfileModal {
             filled: false,
             applied: None,
             applied_decoration: None,
+            applied_effect: None,
             catalog: NameplateCatalog::bundled(),
+            effect_catalog: EffectCatalog::bundled(),
             _subscriptions,
         }
     }
@@ -114,6 +123,16 @@ impl EditProfileModal {
         cx.notify();
     }
 
+    pub fn applied_effect(&self) -> Option<String> {
+        self.applied_effect.clone()
+    }
+
+    /// The effect the editor shows and the dialog starts from.
+    pub fn set_applied_effect(&mut self, applied: Option<String>, cx: &mut Context<Self>) {
+        self.applied_effect = applied;
+        cx.notify();
+    }
+
     fn fill_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.filled {
             return;
@@ -125,6 +144,7 @@ impl EditProfileModal {
             return;
         };
         let (bio, pronouns) = (profile.bio.clone(), profile.pronouns.clone());
+        self.applied_effect = profile.effect.map(|sku| sku.to_string());
         self.bio.update(cx, |i, cx| i.set_value(bio, window, cx));
         self.pronouns.update(cx, |i, cx| i.set_value(pronouns, window, cx));
         self.filled = true;
@@ -409,7 +429,32 @@ impl Render for EditProfileModal {
                 .into_any_element(),
         );
 
-        let effect_tile = self.tile("edit-effect", icon("palette", 32., theme::TEXT_MUTED), true, None);
+        let effect_art = match self
+            .applied_effect
+            .as_deref()
+            .and_then(|sku| self.effect_catalog.find(sku))
+        {
+            Some(item) => match self.media.update(cx, |media, _| media.get(&item.preview)) {
+                Some(image) => div()
+                    .size(px(64.))
+                    .rounded(px(4.))
+                    .overflow_hidden()
+                    .child(
+                        img(gpui_kit::ImageSource::Image(image))
+                            .size_full()
+                            .object_fit(gpui_kit::ObjectFit::Cover),
+                    )
+                    .into_any_element(),
+                None => icon("palette", 32., theme::TEXT_MUTED).into_any_element(),
+            },
+            None => icon("palette", 32., theme::TEXT_MUTED).into_any_element(),
+        };
+        let effect_tile = self.tile(
+            "edit-effect",
+            effect_art,
+            true,
+            Some(Box::new(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(OpenEffect)))),
+        );
         let frame_tile = self.tile("edit-frame", icon("circle-user-round", 32., theme::TEXT_MUTED), true, None);
         let effect_section = Self::section(
             "Profile Effect & Frame",
@@ -511,17 +556,29 @@ impl Render for EditProfileModal {
             .font_weight(FontWeight::MEDIUM)
             .text_color(rgb(theme::TEXT_BRIGHT))
             .hover(|s| s.bg(rgb(theme::SUCCESS_HOVER)))
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 let bio = this.bio.read(cx).value().trim().to_owned();
                 let pronouns = this.pronouns.read(cx).value().trim().to_owned();
                 let decoration = this.applied_decoration.clone();
+                let effect = this.applied_effect.clone();
                 let current = this.session.read(cx).store.me().and_then(|m| m.decoration()).map(|sku| sku.to_string());
                 let changed = current != decoration;
+                let current_effect = this
+                    .session
+                    .read(cx)
+                    .profiles
+                    .get(&me.id)
+                    .and_then(|p| p.effect)
+                    .map(|sku| sku.to_string());
+                let effect_changed = current_effect != effect;
                 let backend = this.backend.clone();
                 this.session.update(cx, |s, cx| {
                     s.request_account(&backend, AccountRequest::EditProfile { bio, pronouns }, cx);
                     if changed {
                         s.request_account(&backend, AccountRequest::SetDecoration(decoration), cx);
+                    }
+                    if effect_changed {
+                        s.request_account(&backend, AccountRequest::SetEffect(effect), cx);
                     }
                 });
                 cx.emit(CloseEditProfileModal);

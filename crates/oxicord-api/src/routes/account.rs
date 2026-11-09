@@ -50,6 +50,15 @@ impl ApiClient {
             .await
     }
 
+    /// Put on a profile effect by sku, or take it off with `None`. The field
+    /// name is the client's `profile_effect_sku_id`; never sent from the real
+    /// account, so the shape is unit tested only.
+    pub async fn set_profile_effect(&self, sku: Option<&str>) -> Result<(), ApiError> {
+        let body = profile_effect_body(sku);
+        self.empty(Method::PATCH, "/users/@me", "PATCH /users/@me", Some(&body))
+            .await
+    }
+
     pub async fn edit_profile(&self, bio: &str, pronouns: &str) -> Result<(), ApiError> {
         let body = json!({ "bio": bio, "pronouns": pronouns });
         self.empty(
@@ -154,9 +163,22 @@ fn decoration_body(sku: Option<&str>) -> serde_json::Value {
     })
 }
 
+fn profile_effect_body(sku: Option<&str>) -> serde_json::Value {
+    json!({ "profile_effect_sku_id": sku })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_effect_is_set_by_sku_and_cleared_with_null() {
+        assert_eq!(
+            profile_effect_body(Some("1139323098370424932")),
+            json!({ "profile_effect_sku_id": "1139323098370424932" })
+        );
+        assert_eq!(profile_effect_body(None), json!({ "profile_effect_sku_id": null }));
+    }
 
     #[test]
     fn a_decoration_is_set_by_sku_and_cleared_with_null() {

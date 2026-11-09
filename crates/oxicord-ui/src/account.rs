@@ -49,6 +49,7 @@ pub enum AccountRequest {
     SetAvatar(Option<String>),
     SetBanner(Option<String>),
     SetDecoration(Option<String>),
+    SetEffect(Option<String>),
 }
 
 /// The answers.

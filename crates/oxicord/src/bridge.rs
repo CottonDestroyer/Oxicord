@@ -939,6 +939,12 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             }
             say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
         }
+        AccountRequest::SetEffect(sku) => {
+            if let Err(err) = api.set_profile_effect(sku.as_deref()).await {
+                notify(events, "change your profile effect", &err).await;
+            }
+            say(AccountEvent::Details(api.account_details().await.map_err(text))).await;
+        }
     }
 }
 

@@ -870,7 +870,8 @@ impl Session {
             AccountRequest::LoadNotificationCenter => self.account.notification_center = Load::Loading,
             AccountRequest::SetAvatar(_)
             | AccountRequest::SetBanner(_)
-            | AccountRequest::SetDecoration(_) => self.account.details = Load::Loading,
+            | AccountRequest::SetDecoration(_)
+            | AccountRequest::SetEffect(_) => self.account.details = Load::Loading,
             _ => {}
         }
         backend.send(Command::Account(request));

@@ -120,7 +120,23 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       tile and the locked Nitro and shop tiles open nothing (the live client
       opens the shop or the Nitro upsell), and the account owns no decoration,
       so the selected and applied states could not be compared live.
-- [ ] Profile effect picker
+- [x] Profile effect picker, opened from the Profile Effect tile in the Edit
+      Profile modal: 663 by 802 frame, "Change Profile Effect", the 3 column
+      83.33 by 80 tile grid (2 px outer brand ring when selected) split into
+      Your Effects, Exclusive to Nitro and See What's in Shop, the 300 wide
+      preview card (105 banner, 80 avatar, name, username and tag row, bio and
+      the Example Button), and a right aligned Cancel and Apply footer with
+      Apply dimmed until the pick changes. Values from the live capture
+      (screenshots/reference/effect_picker.png) and the picker CSS. The catalog
+      is oxicord-model's EffectCatalog, copied from the live dialog (2 Nitro,
+      24 shop). Apply stores the pick in the editor and Save sends PATCH
+      /users/@me with profile_effect_sku_id (request built and unit tested
+      only, no live account write). Captures: screenshots/port/effect_picker.png.
+      Remaining differences: the preview banner uses the port's accent fallback
+      instead of the stored banner colour, and the Shop and locked Nitro and
+      shop tiles open nothing (the live client opens the shop or the Nitro
+      upsell). The account owns no effect, so the selected and applied states
+      could not be compared live.
 - [ ] Profile frame picker
 - [x] Remove the Profiles settings page. The sidebar lists My Account,
       Content & Social, Data & Privacy, Authorized Apps, Devices and
