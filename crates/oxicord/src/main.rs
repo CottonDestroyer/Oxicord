@@ -1,5 +1,5 @@
-// Release builds are a GUI app, so Windows shouldn't open a console for them.
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// All builds are GUI apps, so Windows shouldn't open a console for any of them.
+#![windows_subsystem = "windows"]
 
 mod assets;
 mod bridge;
