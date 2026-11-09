@@ -39,6 +39,7 @@ pub enum DevCommand {
     /// A synthetic message request channel, so its row and page can be
     /// checked without a real stranger writing first.
     FakeRequest(Snowflake, Snowflake),
+    FakeSpam(Snowflake, Snowflake),
     Close,
     Resize(u32, u32),
 }
@@ -80,6 +81,11 @@ pub fn parse(line: &str) -> Option<DevCommand> {
             let channel = words.clone().next()?.parse().ok().map(Snowflake)?;
             let user = words.clone().nth(1)?.parse().ok().map(Snowflake)?;
             Some(DevCommand::FakeRequest(channel, user))
+        }
+        "fake-spam" => {
+            let channel = words.clone().next()?.parse().ok().map(Snowflake)?;
+            let user = words.clone().nth(1)?.parse().ok().map(Snowflake)?;
+            Some(DevCommand::FakeSpam(channel, user))
         }
         "leave" => Some(DevCommand::Leave),
         "mute" => Some(DevCommand::Mute),

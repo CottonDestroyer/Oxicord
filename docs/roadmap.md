@@ -162,7 +162,13 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       checked on the page with a locally injected request:
       screenshots/port/message_requests_actions.png. Button and page layout
       unverified against the official page, see above.
-- [ ] Spam inbox tab
+- [x] Spam inbox tab. The requests page has two tabs, Message Requests and
+      Spam, styled like the friends page tabs; each lists only its own
+      channels (requests = `is_message_request && !is_spam`, spam =
+      `is_spam`). Verified on the port with a locally injected request and
+      a locally injected spam channel: each tab shows exactly its own row,
+      screenshots/port/spam_tab_*.png. The official page module was never
+      captured, so tab layout is our own, like the page itself.
 - [ ] Scheduled events fixture from `GET /guilds/:id/scheduled-events`
 - [ ] Scheduled events list and event card
 - [ ] Event details modal

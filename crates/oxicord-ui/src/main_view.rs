@@ -1119,6 +1119,24 @@ impl MainView {
                 });
                 cx.notify();
             }
+            DevCommand::FakeSpam(channel, user) => {
+                let data = serde_json::json!({
+                    "id": channel.0.to_string(), "type": 1,
+                    "recipients": [{ "id": user.0.to_string(), "username": "stranger", "global_name": "Stranger" }],
+                    "last_message_id": channel.0.to_string(),
+                    "is_message_request": true,
+                    "is_spam": true,
+                    "is_message_request_timestamp": "2026-11-09T09:00:00.000+00:00"
+                });
+                let Ok(channel) = serde_json::from_value(data) else { return };
+                self.session.update(cx, |session, cx| {
+                    let changes = session.store.apply(oxicord_model::gateway::DispatchEvent::ChannelCreate(
+                        Box::new(channel),
+                    ));
+                    cx.emit(changes);
+                });
+                cx.notify();
+            }
         }
     }
 

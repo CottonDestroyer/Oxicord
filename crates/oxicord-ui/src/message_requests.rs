@@ -22,7 +22,26 @@ pub struct MessageRequestsView {
     session: Entity<Session>,
     media: Entity<Media>,
     backend: Backend,
+    tab: MrTab,
     _subscriptions: Vec<Subscription>,
+}
+
+/// The two lists the client keeps: requests and its spam inbox.
+#[derive(Clone, Copy, PartialEq)]
+enum MrTab {
+    Requests,
+    Spam,
+}
+
+impl MrTab {
+    const ALL: [MrTab; 2] = [MrTab::Requests, MrTab::Spam];
+
+    fn label(self) -> &'static str {
+        match self {
+            MrTab::Requests => "Message Requests",
+            MrTab::Spam => "Spam",
+        }
+    }
 }
 
 struct RequestRow {
@@ -31,7 +50,6 @@ struct RequestRow {
     avatar: String,
     /// When the request arrived, or its last message is newer.
     when: chrono::DateTime<chrono::Utc>,
-    spam: bool,
 }
 
 /// The newer of the request time and the last message, the client's sort
@@ -55,21 +73,20 @@ impl MessageRequestsView {
         cx: &mut Context<Self>,
     ) -> Self {
         let _subscriptions = vec![cx.observe(&session, |_, _, cx| cx.notify())];
-        Self { session, media, backend, _subscriptions }
+        Self { session, media, backend, tab: MrTab::Requests, _subscriptions }
     }
 
     fn rows(&self, cx: &gpui_kit::App) -> Vec<RequestRow> {
         let store = &self.session.read(cx).store;
-        let mut rows: Vec<_> = store
-            .message_requests()
-            .into_iter()
-            .map(|c| Self::row(store, c, false))
-            .collect();
-        rows.extend(store.spam_channels().into_iter().map(|c| Self::row(store, c, true)));
-        rows
+        match self.tab {
+            MrTab::Requests => {
+                store.message_requests().into_iter().map(|c| Self::row(store, c)).collect()
+            }
+            MrTab::Spam => store.spam_channels().into_iter().map(|c| Self::row(store, c)).collect(),
+        }
     }
 
-    fn row(store: &Store, c: &Channel, spam: bool) -> RequestRow {
+    fn row(store: &Store, c: &Channel) -> RequestRow {
         let user = c.recipients.first();
         RequestRow {
             id: c.id,
@@ -84,7 +101,6 @@ impl MessageRequestsView {
                 },
             },
             when: activity(c),
-            spam,
         }
     }
 
@@ -98,11 +114,7 @@ impl MessageRequestsView {
             .as_number()
             == 1;
         let offset = *chrono::Local::now().offset();
-        let tag = if row.spam {
-            "Spam".to_owned()
-        } else {
-            message_time(row.when, chrono::Utc::now(), offset, hour12)
-        };
+        let tag = message_time(row.when, chrono::Utc::now(), offset, hour12);
         div()
             .id(("message-request", id.0))
             .h(px(42.))
@@ -185,6 +197,34 @@ impl MessageRequestsView {
             }))
             .child(icon("x", 14., theme::TEXT_MUTED))
     }
+
+    fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let mut tabs = div().flex().items_center().gap_1();
+        for tab in MrTab::ALL {
+            let selected = self.tab == tab;
+            tabs = tabs.child(
+                div()
+                    .id(tab.label())
+                    .h(px(28.))
+                    .px_3()
+                    .flex()
+                    .items_center()
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .text_size(px(14.))
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .text_color(rgb(if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
+                    .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_CHAT }))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.tab = tab;
+                        cx.notify();
+                    }))
+                    .child(tab.label()),
+            );
+        }
+        tabs
+    }
 }
 
 impl Render for MessageRequestsView {
@@ -207,11 +247,12 @@ impl Render for MessageRequestsView {
                     .flex_none()
                     .flex()
                     .items_center()
+                    .gap_4()
                     .px(px(16.))
                     .text_size(px(16.))
                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                     .text_color(rgb(theme::TEXT))
-                    .child("Message Requests"),
+                    .child(self.render_tabs(cx)),
             )
             .child(div().flex_1().min_h_0().flex().flex_col().child(body))
     }
