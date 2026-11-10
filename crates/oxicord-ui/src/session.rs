@@ -63,6 +63,8 @@ pub struct Session {
     pub own_nicks: HashMap<Snowflake, Option<String>>,
     /// How many people are interested in an event, once we have asked.
     pub event_counts: HashMap<Snowflake, u64>,
+    /// The events we are interested in.
+    pub interested_events: HashSet<Snowflake>,
     /// Pinned messages per channel, loaded when the panel asks.
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
@@ -379,6 +381,7 @@ impl Session {
             history_errors: HashMap::new(),
             reactors: HashMap::new(),
             event_counts: HashMap::new(),
+            interested_events: HashSet::new(),
             own_nicks: HashMap::new(),
             notice: None,
             settings,
@@ -1136,6 +1139,33 @@ impl Session {
             self.event_counts.insert(event, count);
             cx.notify();
         }
+    }
+
+    /// The answer to [`Command::LoadEventRsvps`]: the server's events we are
+    /// interested in. A failed ask keeps what we had.
+    pub fn apply_event_rsvps(&mut self, guild: Snowflake, result: Result<Vec<Snowflake>, String>, cx: &mut Context<Self>) {
+        let Ok(interested) = result else { return };
+        if let Some(guild) = self.store.guild(guild) {
+            for event in &guild.scheduled_events {
+                self.interested_events.remove(&event.id);
+            }
+        }
+        self.interested_events.extend(interested);
+        cx.notify();
+    }
+
+    /// Shows us interested in an event or not, and moves its count with us. The
+    /// client does this before the server answers and undoes it on a failure.
+    pub fn set_event_interest(&mut self, event: Snowflake, interested: bool, cx: &mut Context<Self>) {
+        let changed = if interested {
+            self.interested_events.insert(event)
+        } else {
+            self.interested_events.remove(&event)
+        };
+        if changed && let Some(count) = self.event_counts.get_mut(&event) {
+            *count = if interested { *count + 1 } else { count.saturating_sub(1) };
+        }
+        cx.notify();
     }
 
     /// An autocomplete request never reached the app.

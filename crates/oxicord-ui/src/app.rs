@@ -229,6 +229,14 @@ impl AppView {
                 self.session
                     .update(cx, |session, cx| session.apply_event_count(event, result, cx));
             }
+            Event::EventRsvps { guild, result } => {
+                self.session
+                    .update(cx, |session, cx| session.apply_event_rsvps(guild, result, cx));
+            }
+            Event::EventInterestFailed { event, interested } => {
+                self.session
+                    .update(cx, |session, cx| session.set_event_interest(event, !interested, cx));
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }

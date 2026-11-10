@@ -84,7 +84,18 @@ impl EventsDialog {
         self.show(event, false, cx);
     }
 
-    /// Asks how many people are interested in each of the server's events.
+    /// Flips our interest in an event. The button and the count change at
+    /// once, and the app undoes both if the server refuses.
+    fn toggle_interest(&mut self, guild: Snowflake, event: Snowflake, cx: &mut Context<Self>) {
+        let interested = !self.session.read(cx).interested_events.contains(&event);
+        self.session
+            .update(cx, |session, cx| session.set_event_interest(event, interested, cx));
+        self.backend.send(Command::SetEventInterest { guild, event, interested });
+        cx.notify();
+    }
+
+    /// Asks which of the server's events we are interested in and how many
+    /// people are interested in each.
     fn ask_counts(&self, cx: &mut Context<Self>) {
         let Some(guild) = self.guild else { return };
         let ids: Vec<Snowflake> = self
@@ -94,6 +105,7 @@ impl EventsDialog {
             .guild(guild)
             .map(|guild| guild.scheduled_events.iter().map(|event| event.id).collect())
             .unwrap_or_default();
+        self.backend.send(Command::LoadEventRsvps { guild });
         for event in ids {
             self.backend.send(Command::LoadEventCount { guild, event });
         }
@@ -189,6 +201,7 @@ impl EventsDialog {
         };
 
         let (guild, id) = (event.guild_id, event.id);
+        let going = self.session.read(cx).interested_events.contains(&id);
         let copy = button(
             ElementId::Name(format!("event-copy-{id}").into()),
             Some("Copy Link"),
@@ -245,11 +258,13 @@ impl EventsDialog {
                     ))
                     .child(copy)
                     .when(!active, |buttons| {
-                        buttons.child(button(
+                        buttons.child(sized_button(
                             ElementId::Name(format!("event-interested-{id}").into()),
                             Some("Interested"),
                             "bell",
-                            |_: &ClickEvent, _, _| {},
+                            false,
+                            going,
+                            cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle_interest(guild, id, cx)),
                         ))
                     }),
             );
@@ -392,6 +407,7 @@ impl EventsDialog {
         });
 
         let interested = self.session.read(cx).event_counts.get(&event.id).copied();
+        let going = self.session.read(cx).interested_events.contains(&event.id);
         let tab = |label: String, selected: bool| {
             div()
                 .flex_none()
@@ -552,6 +568,7 @@ impl EventsDialog {
                 None,
                 "ellipsis",
                 true,
+                false,
                 |_: &ClickEvent, _, _| {},
             ))
             .child(sized_button(
@@ -559,6 +576,7 @@ impl EventsDialog {
                 Some("Copy Link"),
                 "link",
                 true,
+                false,
                 move |_: &ClickEvent, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(event_link(guild_id, id)));
                 },
@@ -569,7 +587,8 @@ impl EventsDialog {
                     Some("Interested"),
                     "bell",
                     true,
-                    |_: &ClickEvent, _, _| {},
+                    going,
+                    cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle_interest(guild_id, id, cx)),
                 ))
             });
 
@@ -679,7 +698,7 @@ fn button(
     glyph: &'static str,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut gpui_kit::App) + 'static,
 ) -> AnyElement {
-    sized_button(id, label, glyph, false, on_click)
+    sized_button(id, label, glyph, false, false, on_click)
 }
 
 fn sized_button(
@@ -687,6 +706,7 @@ fn sized_button(
     label: Option<&'static str>,
     glyph: &'static str,
     large: bool,
+    pressed: bool,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut gpui_kit::App) + 'static,
 ) -> AnyElement {
     let (height, glyph_size, text_size, line) = if large { (40., 20., 16., 20.) } else { (32., 16., 14., 18.) };
@@ -706,7 +726,7 @@ fn sized_button(
         .gap(px(4.))
         .rounded(px(8.))
         .border_1()
-        .border_color(rgb(theme::BORDER_OVERLAY))
+        .border_color(rgb(if pressed { theme::ACCENT } else { theme::BORDER_OVERLAY }))
         .bg(rgb(theme::SECONDARY))
         .cursor_pointer()
         .hover(|s| s.bg(rgb(theme::SECONDARY_HOVER)))

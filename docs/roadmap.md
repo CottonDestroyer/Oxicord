@@ -515,7 +515,24 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       items sit closer together than the web client's markdown, and the
       sidebar "Happening Now" card with its Event Details button is not
       drawn (`EventsDialog::opened_event` is ready for it).
-- [ ] RSVP (interested) and its count (confirm endpoint)
+- [x] RSVP (interested) and its count. Confirmed in the web client's module
+      496092: the count is `GET /guilds/:id/scheduled-events/:id/users/counts`
+      (`{guild_scheduled_event_count, ...}`), our own answers are `GET
+      /users/@me/scheduled-events?guild_ids=` (entries carry
+      `guild_scheduled_event_id` and `response`, 1 interested), and the toggle
+      is `PUT .../scheduled-events/:id/users/@me` with `{"response":1}` or
+      `DELETE` on the same path, flipped by module 929267 (no answer sends 1,
+      an answer deletes). The dialog asks the counts and our answers when it
+      opens: each card shows a black pill with a people glyph and the total, the
+      details modal shows "1,108 people are interested" and an "N Interested"
+      tab label. Interested flips the button and the count at once and undoes
+      both if the request fails. Request body unit tested; never sent from the
+      real account. Pressed look checked with the dev command `interested
+      <event>` (local only): screenshots/port/event_interested.png, 1296 x 808.
+      Remaining differences: the pressed style (accent border) is unverified
+      against the web client because its button lives in a lazy chunk and a
+      live click would write to the account, recurring events skip the
+      occurrence picker, and the Interested tab does not list people yet.
 - [ ] Live updates: `GUILD_SCHEDULED_EVENT_CREATE`, `_UPDATE`, `_DELETE`,
       `_USER_ADD`, `_USER_REMOVE`
 

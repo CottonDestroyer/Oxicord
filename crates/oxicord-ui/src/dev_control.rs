@@ -46,6 +46,9 @@ pub enum DevCommand {
     ModalFail,
     /// Open the option form of a slash command by name in the current channel.
     Form(String),
+    /// Shows us interested in an event on screen only, so the pressed button
+    /// can be checked without sending a real RSVP.
+    Interested(Snowflake),
     Close,
     Resize(u32, u32),
 }
@@ -93,6 +96,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
             let user = words.clone().nth(1)?.parse().ok().map(Snowflake)?;
             Some(DevCommand::FakeSpam(channel, user))
         }
+        "interested" => id().map(DevCommand::Interested),
         "modal" => Some(DevCommand::Modal),
         "modal-fail" => Some(DevCommand::ModalFail),
         "form" => {
@@ -137,6 +141,7 @@ mod tests {
         assert_eq!(parse("tab nowhere"), None);
         assert_eq!(parse("close"), Some(DevCommand::Close));
         assert_eq!(parse("form help"), Some(DevCommand::Form("help".into())));
+        assert_eq!(parse("interested 7"), Some(DevCommand::Interested(Snowflake(7))));
     }
 
     #[test]

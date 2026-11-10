@@ -63,6 +63,21 @@ pub struct EventUserCounts {
     pub guild_scheduled_event_count: u64,
 }
 
+/// One entry of `GET /users/@me/scheduled-events`: an event we answered.
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct EventRsvp {
+    pub guild_scheduled_event_id: Snowflake,
+    /// 1 is interested, 0 is not interested.
+    #[serde(default)]
+    pub response: u8,
+}
+
+impl EventRsvp {
+    pub fn is_interested(&self) -> bool {
+        self.response == 1
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 struct EntityMetadata {
     #[serde(default)]
@@ -134,6 +149,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(counts.guild_scheduled_event_count, 1108);
+    }
+
+    #[test]
+    fn an_rsvp_reads_the_event_and_the_answer() {
+        let rsvps: Vec<EventRsvp> = serde_json::from_str(
+            r#"[{"guild_scheduled_event_id":"42","user_id":"7","response":1},
+                {"guild_scheduled_event_id":"43","user_id":"7","response":0}]"#,
+        )
+        .unwrap();
+        assert_eq!(rsvps[0].guild_scheduled_event_id, Snowflake(42));
+        assert!(rsvps[0].is_interested());
+        assert!(!rsvps[1].is_interested());
     }
 
     #[test]

@@ -1310,6 +1310,9 @@ impl MainView {
             }
             DevCommand::Full(user, guild) => self.show_profile(user, guild, None, true, cx),
             DevCommand::Rules(guild) => self.open_screening(guild, window, cx),
+            DevCommand::Interested(event) => {
+                self.session.update(cx, |session, cx| session.set_event_interest(event, true, cx));
+            }
             DevCommand::Tab(tab) => {
                 self.profile_tab = [profile::Tab::Board, profile::Tab::Activity, profile::Tab::Friends, profile::Tab::Servers]
                     [usize::from(tab).min(3)];

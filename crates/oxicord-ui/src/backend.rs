@@ -382,6 +382,18 @@ pub enum Command {
         guild: Snowflake,
         event: Snowflake,
     },
+    /// The events in a server that we are interested in. The answer arrives
+    /// as [`Event::EventRsvps`].
+    LoadEventRsvps {
+        guild: Snowflake,
+    },
+    /// Mark us interested in an event or take it back. A failure arrives as
+    /// [`Event::EventInterestFailed`].
+    SetEventInterest {
+        guild: Snowflake,
+        event: Snowflake,
+        interested: bool,
+    },
     /// Store the options picked in the Server Guide. The answer arrives as
     /// [`Event::OnboardingSaved`].
     SaveOnboarding {
@@ -514,6 +526,14 @@ pub enum Event {
     EventCount {
         event: Snowflake,
         result: Result<u64, String>,
+    },
+    EventRsvps {
+        guild: Snowflake,
+        result: Result<Vec<Snowflake>, String>,
+    },
+    EventInterestFailed {
+        event: Snowflake,
+        interested: bool,
     },
     Voice(VoiceNotice),
 }

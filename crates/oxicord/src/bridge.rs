@@ -709,6 +709,30 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::EventCount { event, result }).await;
             });
         }
+        Command::LoadEventRsvps { guild } => {
+            tokio::spawn(async move {
+                let result = match api.own_event_rsvps(guild).await {
+                    Ok(rsvps) => Ok(rsvps
+                        .iter()
+                        .filter(|rsvp| rsvp.is_interested())
+                        .map(|rsvp| rsvp.guild_scheduled_event_id)
+                        .collect()),
+                    Err(err) => {
+                        tracing::debug!(?err, "could not load our event answers");
+                        Err(describe_request(&err))
+                    }
+                };
+                let _ = events.send(Event::EventRsvps { guild, result }).await;
+            });
+        }
+        Command::SetEventInterest { guild, event, interested } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_event_interest(guild, event, interested).await {
+                    tracing::debug!(?err, "could not change our interest in an event");
+                    let _ = events.send(Event::EventInterestFailed { event, interested }).await;
+                }
+            });
+        }
         Command::SaveOnboarding { guild, submission } => {
             tokio::spawn(async move {
                 let result = api.update_onboarding(guild, &submission).await.map_err(|err| {
