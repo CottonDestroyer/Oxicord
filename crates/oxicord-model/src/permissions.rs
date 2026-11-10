@@ -47,6 +47,15 @@ bitflags! {
         const SEND_MESSAGES_IN_THREADS = 1 << 38;
         const USE_EMBEDDED_ACTIVITIES = 1 << 39;
         const MODERATE_MEMBERS = 1 << 40;
+        const USE_SOUNDBOARD = 1 << 42;
+        const CREATE_EVENTS = 1 << 44;
+        const USE_EXTERNAL_SOUNDS = 1 << 45;
+        const SEND_VOICE_MESSAGES = 1 << 46;
+        const SET_VOICE_CHANNEL_STATUS = 1 << 48;
+        const SEND_POLLS = 1 << 49;
+        const USE_EXTERNAL_APPS = 1 << 50;
+        const PIN_MESSAGES = 1 << 51;
+        const BYPASS_SLOWMODE = 1 << 52;
     }
 }
 
@@ -80,6 +89,17 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         assert_eq!(json, "\"3072\"");
         assert_eq!(serde_json::from_str::<Permissions>(&json).unwrap(), p);
+    }
+
+    #[test]
+    fn the_newer_flags_sit_where_discord_puts_them() {
+        assert_eq!(Permissions::PIN_MESSAGES.bits(), 1 << 51);
+        assert_eq!(Permissions::BYPASS_SLOWMODE.bits(), 1 << 52);
+        assert_eq!(Permissions::SEND_VOICE_MESSAGES.bits(), 1 << 46);
+        assert_eq!(Permissions::SEND_POLLS.bits(), 1 << 49);
+        assert_eq!(Permissions::USE_EXTERNAL_APPS.bits(), 1 << 50);
+        // The old test's bit 53 is still not named.
+        assert_eq!((Permissions::all().bits() >> 53) & 1, 0);
     }
 
     #[test]

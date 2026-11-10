@@ -14,6 +14,7 @@ use oxicord_model::{ChannelType, Snowflake};
 use crate::{
     admin::AdminRequest,
     backend::{Backend, Command},
+    channel_settings::OpenChannelPermissions,
     icons::icon,
     profile::modal,
     session::Session,
@@ -376,6 +377,16 @@ impl Render for EditChannelDialog {
                     .flex()
                     .justify_end()
                     .gap(px(8.))
+                    .child(
+                        button("edit-channel-permissions", "Permissions", false).on_click(cx.listener(
+                            |this, _: &ClickEvent, _, cx| {
+                                if let Some(channel) = this.channel {
+                                    this.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel)));
+                                }
+                                cx.emit(CloseEditChannel);
+                            },
+                        )),
+                    )
                     .child(
                         button("edit-channel-cancel", "Cancel", false)
                             .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(CloseEditChannel))),

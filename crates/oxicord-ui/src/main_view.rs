@@ -44,6 +44,7 @@ use crate::{
     rail::{self, Entry},
     inbox::{CloseInbox, Inbox},
     create_channel_dialog::{CloseCreateChannel, CreateChannelDialog},
+    channel_settings::{ChannelSettings, ChannelSettingsEvent, OpenChannelPermissions},
     edit_channel_dialog::{CloseEditChannel, EditChannelDialog},
     gift_dialog::{CloseGift, GiftDialog},
     invite_dialog::{CloseInvite, InviteDialog},
@@ -236,6 +237,8 @@ pub struct MainView {
     invite_open: bool,
     edit_channel: Entity<EditChannelDialog>,
     edit_channel_open: bool,
+    channel_settings: Entity<ChannelSettings>,
+    channel_settings_open: bool,
     create_channel: Entity<CreateChannelDialog>,
     create_channel_open: bool,
     gift_dialog: Entity<GiftDialog>,
@@ -395,6 +398,7 @@ impl MainView {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| EditChannelDialog::new(session, backend, window, cx))
         };
+        let channel_settings = cx.new(|_| ChannelSettings::new(session.clone()));
         let create_channel = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| CreateChannelDialog::new(session, backend, window, cx))
@@ -443,6 +447,20 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, open: &OpenChannelSettings, window, cx| {
                 this.edit_channel_open = true;
                 this.edit_channel.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&channel_settings, |this, _, event: &ChannelSettingsEvent, cx| {
+                this.channel_settings_open = false;
+                // The Overview tab is the older name and topic dialog.
+                if let ChannelSettingsEvent::Overview(channel) = event {
+                    let channel = *channel;
+                    this.session.update(cx, |_, cx| cx.emit(OpenChannelSettings(channel)));
+                }
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenChannelPermissions, cx| {
+                this.channel_settings_open = true;
+                this.channel_settings.update(cx, |screen, cx| screen.opened(open.0, cx));
                 cx.notify();
             }),
             cx.subscribe(&create_channel, |this, _, _: &CloseCreateChannel, cx| {
@@ -927,6 +945,8 @@ impl MainView {
             invite_open: false,
             edit_channel,
             edit_channel_open: false,
+            channel_settings,
+            channel_settings_open: false,
             create_channel,
             create_channel_open: false,
             gift_dialog,
@@ -1370,6 +1390,9 @@ impl MainView {
                 self.danger_open = true;
                 self.danger_dialog.update(cx, |dialog, cx| dialog.opened(kind, window, cx));
                 cx.notify();
+            }
+            DevCommand::ChannelPermissions(channel) => {
+                self.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel)));
             }
             DevCommand::TotpCodes => {
                 self.totp_open = true;
@@ -4460,6 +4483,7 @@ impl Render for MainView {
         let popup = self.popup_open.then(|| self.popup.clone());
         let invite = self.invite_open.then(|| self.invite.clone());
         let edit_channel = self.edit_channel_open.then(|| self.edit_channel.clone());
+        let channel_settings = self.channel_settings_open.then(|| self.channel_settings.clone());
         let create_channel = self.create_channel_open.then(|| self.create_channel.clone());
         let gift_dialog = self.gift_open.then(|| self.gift_dialog.clone());
         let server_settings = self.server_settings_open.then(|| self.server_settings.clone());
@@ -4558,6 +4582,7 @@ impl Render for MainView {
             .children(interaction_modal)
             .children(invite)
             .children(edit_channel)
+            .children(channel_settings)
             .children(create_channel)
             .children(gift_dialog)
             .children(server_settings)

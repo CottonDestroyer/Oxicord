@@ -698,7 +698,50 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 
 ## Phase 7: server admin (test server only)
 
-- [ ] Channel permission overwrites: list roles and members
+- [x] Channel permission overwrites: list roles and members. The live
+      channel settings is a full screen with its own sidebar (Overview,
+      Permissions, Invites, Integrations, Delete Channel). It was read, view
+      only, on a channel of the one server where this account has Manage
+      Channels (found with a temporary dev command, since removed), at 1920 x
+      1080, stable 670026. The new `ChannelSettings` screen draws its
+      Permissions tab: a 264 wide navigation column (60 top padding, 32 high
+      items, the selected one rgba(151,151,159,0.24) at radius 4, a divider and
+      a red Delete Channel with a trash glyph), a 660 wide content column 48
+      beside it and the close circle with "ESC" 40 past that. Content: the 20 /
+      24 weight 600 title and 14 / 18 line, the sync banner (66 high card, a
+      warning glyph, "Permissions not synced with category: <name>" and a Sync
+      Now button, or the synced wording), the 82 high Private Channel card
+      with its 48 by 24 switch (on when @everyone is denied View Channel), a
+      divider 40 below and the "Advanced permissions" 20 / 24 expander. Open,
+      it lists Roles/Members on the left (209 wide, 32 high rows, a colour dot
+      for coloured roles, roles in server order then members by name, @everyone
+      last and selected by default, a divider and the "Need help with
+      permissions?" link) and on the right the groups with each row's name,
+      description and the 96 by 28 segmented deny, inherit and allow control
+      showing the selected overwrite's state. The group names, permission names
+      and descriptions are scraped from the live page for a text channel and a
+      voice channel (`channel_permissions.rs`), so voice channels list Voice
+      Channel Permissions, Voice Channel Chat Permissions and Events
+      Permissions. Nine permission flags the live list uses (pin messages,
+      bypass slowmode, send voice messages, create polls, use external apps,
+      soundboard, external sounds, create events, voice channel status) were
+      added to `Permissions`. Reached from a Permissions button in the older
+      Edit Channel dialog (and `chperm <channel>` for checks), whose Overview
+      item here reopens that dialog. Verified at 1920 x 1080 on the same
+      channel: the banner, cards, expander, list, group titles and the View
+      Channel row sit at the live offsets plus a constant 8 px from the port's
+      window frame, selecting Quarantine shows its deny on View Channel and
+      Create Invite, and the voice channel scrolls through its own groups.
+      Unit tested: the tri-state read, the private test, category sync in any
+      order, and that every listed permission is one known flag and none
+      repeats. Captures: screenshots/reference/channel_permissions.png and
+      channel_permissions_advanced.png, screenshots/port/channel_permissions.png,
+      channel_permissions_role.png and channel_permissions_voice.png. Remaining
+      differences: the controls are display only (editing is the next item),
+      Sync Now, the add button and the other tabs do nothing, members show
+      without an avatar, the live page greys Manage Permissions for this account
+      where the port enables it (its rule for what an account may grant was not
+      worked out), and the add glyph is filled rather than outlined.
 - [ ] Channel permission overwrites: edit allow, deny, inherit
 - [ ] Webhooks: list, create, edit, delete
 - [ ] AutoMod rules: list
