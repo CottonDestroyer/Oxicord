@@ -74,3 +74,40 @@ pub struct ClientInfo {
     #[serde(default)]
     pub location: Option<String>,
 }
+
+/// One of the one-time codes that let someone in without their authenticator.
+#[derive(Clone, Debug, Deserialize)]
+pub struct BackupCode {
+    pub code: String,
+    #[serde(default)]
+    pub consumed: bool,
+}
+
+/// The answer to turning the authenticator app on.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct TotpEnabled {
+    /// The sign-in token that replaces the one before the change.
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub backup_codes: Vec<BackupCode>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn turning_on_the_authenticator_returns_a_token_and_backup_codes() {
+        let answer: TotpEnabled = serde_json::from_str(
+            r#"{"token":"fresh","backup_codes":[
+                {"user_id":"1","code":"abcd1234","consumed":false},
+                {"user_id":"1","code":"efgh5678","consumed":true}]}"#,
+        )
+        .unwrap();
+        assert_eq!(answer.token.as_deref(), Some("fresh"));
+        assert_eq!(answer.backup_codes.len(), 2);
+        assert_eq!(answer.backup_codes[0].code, "abcd1234");
+        assert!(answer.backup_codes[1].consumed);
+    }
+}

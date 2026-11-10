@@ -71,6 +71,11 @@ async fn run(
                             change_password(live.api.clone(), current, new, signins.clone(), events.clone());
                         }
                     }
+                    Command::Account(AccountRequest::EnableTotp { secret, code }) => {
+                        if let Some(live) = &live {
+                            enable_totp(live.api.clone(), secret, code, signins.clone(), events.clone());
+                        }
+                    }
                     Command::FetchImage(url) => fetch_image(&fetcher, url, events.clone()),
                     Command::Notify { title, body } => show_notification(title, body),
                     Command::SaveSettings(settings) => {
@@ -115,6 +120,25 @@ fn change_password(api: ApiClient, current: String, new: String, signins: Sender
             Err(err) => Err(describe_request(&err)),
         };
         let _ = events.send(Event::Account(AccountEvent::PasswordChanged(answer))).await;
+    });
+}
+
+/// Turns the authenticator app on in the background. Like a new password, it
+/// makes a new token, so a success signs in again with it before the backup
+/// codes are shown.
+fn enable_totp(api: ApiClient, secret: String, code: String, signins: Sender<Capture>, events: Sender<Event>) {
+    tokio::spawn(async move {
+        let answer = match api.enable_totp(&secret, &code).await {
+            Ok(enabled) => {
+                if let Some(token) = enabled.token {
+                    let identity = credentials::load().and_then(|saved| saved.identity);
+                    let _ = signins.send(Capture { token, identity }).await;
+                }
+                Ok(enabled.backup_codes)
+            }
+            Err(err) => Err(describe_request(&err)),
+        };
+        let _ = events.send(Event::Account(AccountEvent::TotpEnabled(answer))).await;
     });
 }
 
@@ -1030,7 +1054,7 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             say(AccountEvent::Connections(api.connections().await.map_err(text))).await;
         }
         // Needs the sign-in channel, so `run` takes it before it gets here.
-        AccountRequest::ChangePassword { .. } => {}
+        AccountRequest::ChangePassword { .. } | AccountRequest::EnableTotp { .. } => {}
         AccountRequest::AuthorizeConnection(kind) => match api.connection_authorize_url(&kind).await {
             Ok(url) => say(AccountEvent::ConnectionUrl(url)).await,
             Err(err) => notify(events, "start linking that account", &err).await,

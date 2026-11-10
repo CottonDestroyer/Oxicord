@@ -216,6 +216,11 @@ pub struct OpenChangePassword;
 
 impl EventEmitter<OpenChangePassword> for Session {}
 
+/// The account page's button that starts the authenticator app setup.
+pub struct OpenTotpSetup;
+
+impl EventEmitter<OpenTotpSetup> for Session {}
+
 pub struct OpenPollVoters {
     pub channel: Snowflake,
     pub message: Snowflake,
@@ -951,6 +956,7 @@ impl Session {
             AccountRequest::LoadSessions => self.account.sessions = Load::Loading,
             AccountRequest::LoadNotificationCenter => self.account.notification_center = Load::Loading,
             AccountRequest::ChangePassword { .. } => self.account.password = Load::Loading,
+            AccountRequest::EnableTotp { .. } => self.account.totp = Load::Loading,
             AccountRequest::SetAvatar(_)
             | AccountRequest::SetBanner(_)
             | AccountRequest::SetDecoration(_)

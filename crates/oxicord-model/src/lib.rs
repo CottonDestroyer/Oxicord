@@ -37,7 +37,9 @@ pub mod verification;
 pub mod voice;
 pub mod welcome;
 
-pub use account::{AccountDetails, AppInfo, AuthorizedApp, ClientInfo, Connection, LoginSession};
+pub use account::{
+    AccountDetails, AppInfo, AuthorizedApp, BackupCode, ClientInfo, Connection, LoginSession, TotpEnabled,
+};
 pub use attachment::Attachment;
 pub use command::{AutocompleteChoice, Choice, CommandIndex, CommandOption, SlashCommand};
 pub use component::{ButtonStyle, Component, FLAG_COMPONENTS_V2, MediaRef, SelectOption};

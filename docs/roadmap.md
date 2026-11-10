@@ -593,7 +593,44 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       than under each field, the settings page has no live "Password &
       Security" section (an Edit row sits in the Account group), and the
       re-login after a success was not exercised.
-- [ ] Enable 2FA: QR code and backup codes screens
+- [x] Enable 2FA: QR code and backup codes screens. The live "Enable
+      Authenticator App" modal (Multi-Factor Authentication page, stable
+      670026, measured at 1920 x 1080 without pressing Activate) shows all
+      three steps at once, and the port draws the same: a 480 wide frame with
+      the password dialog's header, three rows 20 apart divided by 1 px
+      lines, a 156 wide picture column and a 254 wide text column 20 beside it.
+      Step 1 is the 100 px authenticator picture with "Download an
+      authenticator app" 14 / 18 weight 600 and the Authy and Google
+      Authenticator links, step 2 a 128 square code on a 144 white tile with
+      the 2FA key in groups of four (Consolas 16 / 20), step 3 the 100 by 85
+      phone picture, "Log in with your code", a 146 wide "000 000" field and a
+      100 by 40 Activate. The key and address follow the web client's module
+      464477: 20 random bytes as base32, lowercased in groups of four, and
+      `otpauth://totp/Discord:<email>?secret=<KEY>&issuer=Discord`; the code is
+      painted from the `qrcode` crate on a canvas. Activate checks for six
+      digits, then sends `POST /users/@me/mfa/totp/enable` with
+      `{secret, code}` and shows the backup codes the answer carries (two
+      columns of 209 by 40 tiles, a used code struck through, Copy Codes and
+      Done); the answer's new token signs in again like a password change and
+      leaving the codes reloads the account. The two pictures are in
+      discord-assets/mfa. Opened from an "Enable Authenticator App" button in
+      the My Account page's Account group while two-factor is off. Verified
+      in the port: the frame is 593 high against the live 592 and the rows,
+      code, key and Activate line up within a pixel; Activate on an empty
+      field shows the six-digit message without sending. Captures:
+      screenshots/reference/mfa_enable_step1.png and
+      screenshots/port/totp_setup.png, totp_setup_error.png and
+      totp_backup_codes.png (dev command `totp-codes` shows the codes screen
+      with made-up codes). Unit tested: key length and alphabet, grouping, the
+      address, the code matrix, the request body and the answer. Unverified:
+      the body's exact fields (the lazy chunk that sends it was not captured,
+      so a password may also be required), the backup codes screen's wording
+      and layout (unreachable without turning the authenticator on, built
+      from the web client's), and the re-login after a success. Never sent
+      from the real account (account writes rule). Remaining differences:
+      the step 1 link text wraps one word earlier than live, the focused code
+      field keeps gpui's border, and the Security Keys section and the
+      breadcrumbed Multi-Factor page are not built.
 - [ ] Disable 2FA dialog
 - [ ] Disable account dialog
 - [ ] Delete account dialog

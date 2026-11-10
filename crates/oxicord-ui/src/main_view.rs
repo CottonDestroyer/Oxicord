@@ -25,6 +25,7 @@ use crate::{
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
     password_dialog::{ClosePassword, PasswordDialog},
+    totp_dialog::{CloseTotp, TotpDialog},
     decoration_dialog::{CloseDecorationDialog, DecorationDialog},
     effect_dialog::{CloseEffectDialog, EffectDialog},
     edit_profile_modal::{CloseEditProfileModal, EditProfileModal, OpenDecoration, OpenEffect, OpenFrame, OpenNameplate},
@@ -53,7 +54,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{OpenChangePassword, DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{OpenChangePassword, OpenTotpSetup, DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -206,6 +207,8 @@ pub struct MainView {
     create_server_open: bool,
     password_dialog: Entity<PasswordDialog>,
     password_open: bool,
+    totp_dialog: Entity<TotpDialog>,
+    totp_open: bool,
     pub poll_voters_open: bool,
     pub poll_voters: Vec<oxicord_model::User>,
     create_poll_dialog: Entity<CreatePollDialog>,
@@ -337,6 +340,10 @@ impl MainView {
         let password_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| PasswordDialog::new(session, backend, window, cx))
+        };
+        let totp_dialog = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| TotpDialog::new(session, media, backend, window, cx))
         };
         let create_poll_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -588,6 +595,15 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, _: &OpenChangePassword, window, cx| {
                 this.password_open = true;
                 this.password_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&totp_dialog, |this, _, _: &CloseTotp, cx| {
+                this.totp_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, _: &OpenTotpSetup, window, cx| {
+                this.totp_open = true;
+                this.totp_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
                 cx.notify();
             }),
             cx.subscribe(&create_poll_dialog, |this, _, _: &CloseCreatePoll, cx| {
@@ -862,6 +878,8 @@ impl MainView {
             create_server_open: false,
             password_dialog,
             password_open: false,
+            totp_dialog,
+            totp_open: false,
             poll_voters_open: false,
             poll_voters: Vec::new(),
             create_poll_dialog,
@@ -1328,6 +1346,11 @@ impl MainView {
             }
             DevCommand::Full(user, guild) => self.show_profile(user, guild, None, true, cx),
             DevCommand::Rules(guild) => self.open_screening(guild, window, cx),
+            DevCommand::TotpCodes => {
+                self.totp_open = true;
+                self.totp_dialog.update(cx, |dialog, cx| dialog.preview_codes(window, cx));
+                cx.notify();
+            }
             DevCommand::Interested(event) => {
                 self.session.update(cx, |session, cx| session.set_event_interest(event, true, cx));
             }
@@ -4375,6 +4398,7 @@ impl Render for MainView {
         let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
         let create_server_dialog = self.create_server_open.then(|| self.create_server_dialog.clone());
         let password_dialog = self.password_open.then(|| self.password_dialog.clone());
+        let totp_dialog = self.totp_open.then(|| self.totp_dialog.clone());
         let poll_voters_modal = self.poll_voters_open.then(|| {
             let users = self.poll_voters.clone();
             let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -4519,6 +4543,7 @@ impl Render for MainView {
             .children(settings)
             // Opened from the settings page, so above it.
             .children(password_dialog)
+            .children(totp_dialog)
             // Last, so it stays usable above any dialog.
             .child(title_bar::title_bar(title, window))
     }

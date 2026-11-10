@@ -169,6 +169,22 @@ impl ApiClient {
         Ok(answer.token)
     }
 
+    /// Turns the authenticator app on: the key the person scanned and the
+    /// first code it made. The answer carries the backup codes and the token
+    /// that replaces the old one. Gated by the account-write rule: built and
+    /// unit tested, never sent from the real account. The body is the web
+    /// client's as far as its bundle shows; the lazy chunk that sends it was
+    /// not captured, so the exact fields are unconfirmed.
+    pub async fn enable_totp(&self, secret: &str, code: &str) -> Result<oxicord_model::TotpEnabled, ApiError> {
+        self.json(
+            Method::POST,
+            "/users/@me/mfa/totp/enable",
+            "POST /users/@me/mfa/totp/enable",
+            Some(&totp_body(secret, code)),
+        )
+        .await
+    }
+
     /// Removes a linked connection.
     pub async fn remove_connection(&self, kind: &str, id: &str) -> Result<(), ApiError> {
         self.empty(
@@ -203,6 +219,10 @@ impl ApiClient {
         self.empty(Method::POST, "/auth/sessions/logout", "POST /auth/sessions/logout", None)
             .await
     }
+}
+
+fn totp_body(secret: &str, code: &str) -> serde_json::Value {
+    json!({ "secret": secret, "code": code })
 }
 
 fn password_body(current: &str, new: &str) -> serde_json::Value {
@@ -255,6 +275,14 @@ mod tests {
         assert_eq!(answer.token.as_deref(), Some("fresh"));
         let none: PasswordAnswer = serde_json::from_str(r#"{"id":"1"}"#).unwrap();
         assert!(none.token.is_none());
+    }
+
+    #[test]
+    fn turning_on_the_authenticator_sends_the_key_and_the_first_code() {
+        assert_eq!(
+            totp_body("NJYGYR6P", "123456"),
+            json!({ "secret": "NJYGYR6P", "code": "123456" })
+        );
     }
 
     #[test]

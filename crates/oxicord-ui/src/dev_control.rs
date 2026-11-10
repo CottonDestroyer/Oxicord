@@ -49,6 +49,9 @@ pub enum DevCommand {
     /// Shows us interested in an event on screen only, so the pressed button
     /// can be checked without sending a real RSVP.
     Interested(Snowflake),
+    /// The authenticator dialog on its backup codes screen with made-up codes,
+    /// so the screen can be checked without turning anything on.
+    TotpCodes,
     Close,
     Resize(u32, u32),
 }
@@ -97,6 +100,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
             Some(DevCommand::FakeSpam(channel, user))
         }
         "interested" => id().map(DevCommand::Interested),
+        "totp-codes" => Some(DevCommand::TotpCodes),
         "modal" => Some(DevCommand::Modal),
         "modal-fail" => Some(DevCommand::ModalFail),
         "form" => {

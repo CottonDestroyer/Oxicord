@@ -29,6 +29,9 @@ thiserror = "2"
 tracing = { version = "0.1", features = ["release_max_level_off"] }
 base64 = "0.22"
 percent-encoding = "2"
+data-encoding = "2"
+getrandom = "0.3"
+qrcode = { version = "0.14", default-features = false }
 
 oxicord-model = { path = "crates/oxicord-model" }
 async-channel = "2"
