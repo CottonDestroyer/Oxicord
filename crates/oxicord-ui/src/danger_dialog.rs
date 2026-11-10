@@ -26,6 +26,9 @@ use crate::{
 pub enum Danger {
     DisableAccount,
     DeleteAccount,
+    /// Switch the authenticator app off. Unverified against the live client,
+    /// whose dialog needs an account that has two-factor on.
+    RemoveTotp,
 }
 
 impl Danger {
@@ -33,25 +36,29 @@ impl Danger {
         match self {
             Self::DisableAccount => "Disable account",
             Self::DeleteAccount => "Delete account",
+            Self::RemoveTotp => "Remove Authenticator App",
         }
     }
 
-    fn warning(self) -> &'static str {
+    /// The amber box over the field, when the live dialog has one.
+    fn warning(self) -> Option<&'static str> {
         match self {
-            Self::DisableAccount => {
+            Self::DisableAccount => Some(
                 "Are you sure that you want to disable your account? This will immediately log you out and make \
-                 your account inaccessible to anyone."
-            }
-            Self::DeleteAccount => {
+                 your account inaccessible to anyone.",
+            ),
+            Self::DeleteAccount => Some(
                 "Are you sure that you want to delete your account? This will immediately log you out of your \
-                 account and you will not be able to log in again."
-            }
+                 account and you will not be able to log in again.",
+            ),
+            Self::RemoveTotp => None,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
             Self::DisableAccount | Self::DeleteAccount => "Password",
+            Self::RemoveTotp => "Enter Discord Auth/Backup Code",
         }
     }
 
@@ -59,19 +66,27 @@ impl Danger {
         match self {
             Self::DisableAccount => "Disable Account",
             Self::DeleteAccount => "Delete Account",
+            Self::RemoveTotp => "Remove",
         }
     }
 
     fn missing(self) -> &'static str {
         match self {
             Self::DisableAccount | Self::DeleteAccount => "Enter your password to go on.",
+            Self::RemoveTotp => "Enter a code from your authenticator app or a backup code.",
         }
+    }
+
+    /// A code is read as it is typed, a password is hidden.
+    fn uses_code(self) -> bool {
+        matches!(self, Self::RemoveTotp)
     }
 
     fn request(self, secret: String) -> AccountRequest {
         match self {
             Self::DisableAccount => AccountRequest::DisableAccount { password: secret },
             Self::DeleteAccount => AccountRequest::DeleteAccount { password: secret },
+            Self::RemoveTotp => AccountRequest::DisableTotp { code: secret.split_whitespace().collect() },
         }
     }
 }
@@ -90,6 +105,8 @@ pub struct DangerDialog {
     backend: Backend,
     kind: Danger,
     secret: Entity<InputState>,
+    /// The field for a code, which is shown as typed.
+    code: Entity<InputState>,
     error: Option<String>,
     _subscription: Subscription,
 }
@@ -97,9 +114,15 @@ pub struct DangerDialog {
 impl DangerDialog {
     pub fn new(session: Entity<Session>, backend: Backend, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let secret = cx.new(|cx| InputState::new(window, cx).masked(true));
+        let code = cx.new(|cx| InputState::new(window, cx).placeholder("000 000"));
         let subscription = cx.observe(&session, |this, session, cx| match session.read(cx).account.danger.clone() {
             Load::Ready(()) => {
                 session.update(cx, |session, _| session.account.danger = Load::Idle);
+                // The two-factor line on the account page has just changed.
+                if this.kind == Danger::RemoveTotp {
+                    let backend = this.backend.clone();
+                    session.update(cx, |session, cx| session.request_account(&backend, AccountRequest::LoadDetails, cx));
+                }
                 cx.emit(CloseDanger);
             }
             Load::Failed(message) => {
@@ -109,16 +132,20 @@ impl DangerDialog {
             }
             _ => cx.notify(),
         });
-        Self { session, backend, kind: Danger::DisableAccount, secret, error: None, _subscription: subscription }
+        Self { session, backend, kind: Danger::DisableAccount, secret, code, error: None, _subscription: subscription }
+    }
+
+    /// The field this kind asks into.
+    fn field(&self) -> &Entity<InputState> {
+        if self.kind.uses_code() { &self.code } else { &self.secret }
     }
 
     pub fn opened(&mut self, kind: Danger, window: &mut Window, cx: &mut Context<Self>) {
         self.kind = kind;
         self.error = None;
-        self.secret.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-            input.focus(window, cx);
-        });
+        self.secret.update(cx, |input, cx| input.set_value("", window, cx));
+        self.code.update(cx, |input, cx| input.set_value("", window, cx));
+        self.field().clone().update(cx, |input, cx| input.focus(window, cx));
         cx.notify();
     }
 
@@ -126,7 +153,7 @@ impl DangerDialog {
         if matches!(self.session.read(cx).account.danger, Load::Loading) {
             return;
         }
-        let typed = self.secret.read(cx).value().trim().to_string();
+        let typed = self.field().read(cx).value().trim().to_string();
         if typed.is_empty() {
             self.error = Some(self.kind.missing().to_owned());
             cx.notify();
@@ -185,7 +212,7 @@ impl Render for DangerDialog {
             .pb(px(8.))
             .flex()
             .flex_col()
-            .child(
+            .children(kind.warning().map(|warning| {
                 div()
                     .mt(px(24.))
                     .p(px(10.))
@@ -194,11 +221,11 @@ impl Render for DangerDialog {
                     .text_size(px(16.))
                     .line_height(px(20.))
                     .text_color(rgb(0xce8000))
-                    .child(kind.warning()),
-            )
+                    .child(warning)
+            }))
             .child(
                 div()
-                    .mt(px(20.))
+                    .mt(px(if kind.warning().is_some() { 20. } else { 24. }))
                     .flex()
                     .gap(px(4.))
                     .text_size(px(16.))
@@ -208,7 +235,11 @@ impl Render for DangerDialog {
                     .child(kind.label())
                     .child(div().text_color(rgb(theme::DANGER)).child("*")),
             )
-            .child(div().mt(px(8.)).h(px(40.)).child(Input::new(&self.secret).mask_toggle()))
+            .child(div().mt(px(8.)).h(px(40.)).child(if kind.uses_code() {
+                Input::new(&self.code)
+            } else {
+                Input::new(&self.secret).mask_toggle()
+            }))
             .child(
                 div()
                     .h(px(20.))
@@ -283,6 +314,17 @@ mod tests {
         };
         assert_eq!(password, "hunter2");
         assert_eq!(Danger::DeleteAccount.title(), "Delete account");
-        assert!(Danger::DeleteAccount.warning().contains("delete your account"));
+        assert!(Danger::DeleteAccount.warning().is_some_and(|text| text.contains("delete your account")));
+    }
+
+    #[test]
+    fn removing_the_authenticator_sends_the_code_without_spaces() {
+        let AccountRequest::DisableTotp { code } = Danger::RemoveTotp.request("123 456".into()) else {
+            panic!("wrong request");
+        };
+        assert_eq!(code, "123456");
+        assert!(Danger::RemoveTotp.warning().is_none());
+        assert!(Danger::RemoveTotp.uses_code());
+        assert!(!Danger::DeleteAccount.uses_code());
     }
 }

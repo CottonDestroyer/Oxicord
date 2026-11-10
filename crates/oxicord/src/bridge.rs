@@ -76,6 +76,11 @@ async fn run(
                             enable_totp(live.api.clone(), secret, code, signins.clone(), events.clone());
                         }
                     }
+                    Command::Account(AccountRequest::DisableTotp { code }) => {
+                        if let Some(live) = &live {
+                            disable_totp(live.api.clone(), code, signins.clone(), events.clone());
+                        }
+                    }
                     Command::FetchImage(url) => fetch_image(&fetcher, url, events.clone()),
                     Command::Notify { title, body } => show_notification(title, body),
                     Command::SaveSettings(settings) => {
@@ -139,6 +144,24 @@ fn enable_totp(api: ApiClient, secret: String, code: String, signins: Sender<Cap
             Err(err) => Err(describe_request(&err)),
         };
         let _ = events.send(Event::Account(AccountEvent::TotpEnabled(answer))).await;
+    });
+}
+
+/// Turns the authenticator app off in the background. It makes a new token
+/// like turning it on does, so a success signs in again with it.
+fn disable_totp(api: ApiClient, code: String, signins: Sender<Capture>, events: Sender<Event>) {
+    tokio::spawn(async move {
+        let answer = match api.disable_totp(&code).await {
+            Ok(token) => {
+                if let Some(token) = token {
+                    let identity = credentials::load().and_then(|saved| saved.identity);
+                    let _ = signins.send(Capture { token, identity }).await;
+                }
+                Ok(())
+            }
+            Err(err) => Err(describe_request(&err)),
+        };
+        let _ = events.send(Event::Account(AccountEvent::DangerDone(answer))).await;
     });
 }
 
@@ -1081,7 +1104,9 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             end_session(api.delete_account(&password).await, events).await;
         }
         // Needs the sign-in channel, so `run` takes it before it gets here.
-        AccountRequest::ChangePassword { .. } | AccountRequest::EnableTotp { .. } => {}
+        AccountRequest::ChangePassword { .. }
+        | AccountRequest::EnableTotp { .. }
+        | AccountRequest::DisableTotp { .. } => {}
         AccountRequest::AuthorizeConnection(kind) => match api.connection_authorize_url(&kind).await {
             Ok(url) => say(AccountEvent::ConnectionUrl(url)).await,
             Err(err) => notify(events, "start linking that account", &err).await,

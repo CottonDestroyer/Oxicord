@@ -52,6 +52,9 @@ pub enum DevCommand {
     /// The authenticator dialog on its backup codes screen with made-up codes,
     /// so the screen can be checked without turning anything on.
     TotpCodes,
+    /// A kind of the shared drastic-action dialog: 0 disable, 1 delete, 2 remove
+    /// two-factor. Opening is harmless, nothing is sent until its button.
+    Danger(u8),
     Close,
     Resize(u32, u32),
 }
@@ -101,6 +104,12 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         }
         "interested" => id().map(DevCommand::Interested),
         "totp-codes" => Some(DevCommand::TotpCodes),
+        "danger" => match words.clone().next()? {
+            "disable" => Some(DevCommand::Danger(0)),
+            "delete" => Some(DevCommand::Danger(1)),
+            "totp" => Some(DevCommand::Danger(2)),
+            _ => None,
+        },
         "modal" => Some(DevCommand::Modal),
         "modal-fail" => Some(DevCommand::ModalFail),
         "form" => {

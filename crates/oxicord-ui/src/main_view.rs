@@ -1364,6 +1364,13 @@ impl MainView {
             }
             DevCommand::Full(user, guild) => self.show_profile(user, guild, None, true, cx),
             DevCommand::Rules(guild) => self.open_screening(guild, window, cx),
+            DevCommand::Danger(kind) => {
+                use crate::danger_dialog::Danger;
+                let kind = [Danger::DisableAccount, Danger::DeleteAccount, Danger::RemoveTotp][usize::from(kind).min(2)];
+                self.danger_open = true;
+                self.danger_dialog.update(cx, |dialog, cx| dialog.opened(kind, window, cx));
+                cx.notify();
+            }
             DevCommand::TotpCodes => {
                 self.totp_open = true;
                 self.totp_dialog.update(cx, |dialog, cx| dialog.preview_codes(window, cx));

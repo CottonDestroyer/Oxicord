@@ -631,7 +631,26 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       the step 1 link text wraps one word earlier than live, the focused code
       field keeps gpui's border, and the Security Keys section and the
       breadcrumbed Multi-Factor page are not built.
-- [ ] Disable 2FA dialog
+- [x] Disable 2FA dialog, the third kind of the shared `DangerDialog`
+      ("Remove Authenticator App"). Unverified against the live client: the
+      account has no authenticator, so the live dialog cannot be opened, and
+      the title, the label "Enter Discord Auth/Backup Code" and the button
+      "Remove" are from the web client's wording as remembered. It uses the
+      same 480 wide frame, header, field offsets and 211 by 40 red button as
+      the other two with no amber box, and a plain field with a "000 000" hint
+      because a code is read as typed. The My Account page shows a "Remove
+      Authenticator App" button in place of "Enable Authenticator App" when
+      two-factor is on. Remove checks a code was typed, strips its spaces and
+      sends `POST /users/@me/mfa/totp/disable` with `{code}`; the answer's new
+      token signs in again like enabling it and the account reloads. Unit
+      tested: the body, the kind's request and its spaces. Never sent from the
+      real account (account writes rule). Verified in the port with the dev
+      command `danger totp` (also `danger disable` and `danger delete`):
+      Remove on an empty field shows "Enter a code from your authenticator app
+      or a backup code." without sending. Captures:
+      screenshots/port/remove_totp_dialog.png and remove_totp_error.png.
+      Remaining differences: the exact endpoint body and the live dialog's
+      layout are unconfirmed, and the focused field keeps gpui's border.
 - [x] Disable account dialog, as the live "Disable account" modal draws it
       (opened from the Account page's Disable Account button and measured
       without submitting, stable 670026, 1920 x 1080): a 480 by 350 frame

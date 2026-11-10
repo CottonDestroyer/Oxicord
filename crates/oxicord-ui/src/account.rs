@@ -54,6 +54,9 @@ pub enum AccountRequest {
     DisableAccount { password: String },
     /// Delete the account for good. Ends the session like a disable.
     DeleteAccount { password: String },
+    /// Turn the authenticator app off with a current or backup code. The
+    /// answer arrives as [`AccountEvent::DangerDone`].
+    DisableTotp { code: String },
     LoadSessions,
     LogoutOtherSessions,
     LoadNotificationCenter,

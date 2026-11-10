@@ -258,27 +258,32 @@ impl SettingsView {
                         }))
                         .into_any_element(),
                 );
-                // Turning it off is the next item, so only the way in is here.
-                if !d.mfa_enabled {
-                    let session_for_totp = self.session.clone();
-                    contact.push(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_3()
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(rgb(theme::TEXT_MUTED))
-                                    .child("Authenticator app"),
-                            )
-                            .child(button("enable-totp", "Enable Authenticator App", Tone::Plain, move |_, _, cx| {
-                                session_for_totp.update(cx, |_, cx| cx.emit(OpenTotpSetup));
-                            }))
-                            .into_any_element(),
-                    );
-                }
+                // The way in while it is off, the way out while it is on.
+                let session_for_totp = self.session.clone();
+                let action = if d.mfa_enabled {
+                    button("remove-totp", "Remove Authenticator App", Tone::Danger, move |_, _, cx| {
+                        session_for_totp.update(cx, |_, cx| cx.emit(OpenDanger(Danger::RemoveTotp)));
+                    })
+                } else {
+                    button("enable-totp", "Enable Authenticator App", Tone::Plain, move |_, _, cx| {
+                        session_for_totp.update(cx, |_, cx| cx.emit(OpenTotpSetup));
+                    })
+                };
+                contact.push(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child("Authenticator app"),
+                        )
+                        .child(action)
+                        .into_any_element(),
+                );
                 contact.push(
                     div()
                         .child(button(

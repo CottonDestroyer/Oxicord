@@ -957,7 +957,9 @@ impl Session {
             AccountRequest::LoadNotificationCenter => self.account.notification_center = Load::Loading,
             AccountRequest::ChangePassword { .. } => self.account.password = Load::Loading,
             AccountRequest::EnableTotp { .. } => self.account.totp = Load::Loading,
-            AccountRequest::DisableAccount { .. } | AccountRequest::DeleteAccount { .. } => {
+            AccountRequest::DisableAccount { .. }
+            | AccountRequest::DeleteAccount { .. }
+            | AccountRequest::DisableTotp { .. } => {
                 self.account.danger = Load::Loading;
             }
             AccountRequest::SetAvatar(_)

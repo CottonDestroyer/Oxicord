@@ -212,6 +212,23 @@ impl ApiClient {
         .await
     }
 
+    /// Turns the authenticator app off, proven with a current code or a backup
+    /// code. The answer carries the token that replaces the old one. Gated by
+    /// the account-write rule: built and unit tested, never sent from the real
+    /// account. The body is a best reading of the endpoint, unconfirmed
+    /// because the live dialog needs an account that has two-factor on.
+    pub async fn disable_totp(&self, code: &str) -> Result<Option<String>, ApiError> {
+        let answer: PasswordAnswer = self
+            .json(
+                Method::POST,
+                "/users/@me/mfa/totp/disable",
+                "POST /users/@me/mfa/totp/disable",
+                Some(&code_body(code)),
+            )
+            .await?;
+        Ok(answer.token)
+    }
+
     /// Removes a linked connection.
     pub async fn remove_connection(&self, kind: &str, id: &str) -> Result<(), ApiError> {
         self.empty(
@@ -251,6 +268,10 @@ impl ApiClient {
 /// What disabling or deleting the account sends: the password and nothing else.
 fn proof_body(password: &str) -> serde_json::Value {
     json!({ "password": password })
+}
+
+fn code_body(code: &str) -> serde_json::Value {
+    json!({ "code": code })
 }
 
 fn totp_body(secret: &str, code: &str) -> serde_json::Value {
@@ -315,6 +336,11 @@ mod tests {
             totp_body("NJYGYR6P", "123456"),
             json!({ "secret": "NJYGYR6P", "code": "123456" })
         );
+    }
+
+    #[test]
+    fn turning_the_authenticator_off_sends_a_code() {
+        assert_eq!(code_body("123456"), json!({ "code": "123456" }));
     }
 
     #[test]
