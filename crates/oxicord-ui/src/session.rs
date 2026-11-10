@@ -928,6 +928,9 @@ impl Session {
     }
 
     pub fn apply_account(&mut self, event: AccountEvent, cx: &mut Context<Self>) {
+        if let AccountEvent::ConnectionUrl(url) = &event {
+            cx.open_url(url);
+        }
         self.account.apply(event);
         cx.notify();
     }
@@ -1232,6 +1235,13 @@ impl Session {
                         profile.note = update.note;
                         cx.notify();
                     }
+                }
+            }
+            // A linked account was added, changed or removed, here or in the
+            // browser that finished linking one.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, .. }) if name == "USER_CONNECTIONS_UPDATE" => {
+                if matches!(self.account.connections, Load::Ready(_)) {
+                    backend.send(Command::Account(AccountRequest::LoadConnections));
                 }
             }
             // Somebody answered an event, or took their answer back.

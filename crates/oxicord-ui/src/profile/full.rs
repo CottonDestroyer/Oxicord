@@ -198,7 +198,7 @@ fn section(title: &str) -> Div {
 }
 
 /// The file under `connections/` that holds a service's logo.
-fn logo_file(kind: &str) -> Option<&'static str> {
+pub(crate) fn logo_file(kind: &str) -> Option<&'static str> {
     Some(match kind {
         "steam" => "steam.svg",
         "riotgames" => "riotgames.png",

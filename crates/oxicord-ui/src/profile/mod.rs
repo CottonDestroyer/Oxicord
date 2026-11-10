@@ -17,6 +17,7 @@ use oxicord_model::{Snowflake, Status};
 
 pub use effect::EffectView;
 pub use full::full;
+pub(crate) use full::logo_file;
 pub use popout::popout;
 
 use crate::{

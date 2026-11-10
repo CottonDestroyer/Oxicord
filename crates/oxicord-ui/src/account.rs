@@ -41,6 +41,9 @@ pub enum AccountRequest {
     RevokeApp(Snowflake),
     LoadConnections,
     RemoveConnection { kind: String, id: String },
+    /// Start linking an outside account. The answer arrives as
+    /// [`AccountEvent::ConnectionUrl`] and is opened in the browser.
+    AuthorizeConnection(String),
     LoadSessions,
     LogoutOtherSessions,
     LoadNotificationCenter,
@@ -60,6 +63,8 @@ pub enum AccountEvent {
     Settings(Result<AccountSettings, String>),
     Apps(Result<Vec<AuthorizedApp>, String>),
     Connections(Result<Vec<Connection>, String>),
+    /// Where to send the person to link an outside account.
+    ConnectionUrl(String),
     Sessions(Result<Vec<LoginSession>, String>),
     NotificationCenter(Result<Vec<serde_json::Value>, String>),
 }
@@ -89,6 +94,8 @@ impl AccountState {
             AccountEvent::Settings(r) => self.settings = Load::from_result(r),
             AccountEvent::Apps(r) => self.apps = Load::from_result(r),
             AccountEvent::Connections(r) => self.connections = Load::from_result(r),
+            // The session opens it, there is nothing to keep.
+            AccountEvent::ConnectionUrl(_) => {}
             AccountEvent::Sessions(r) => self.sessions = Load::from_result(r),
             AccountEvent::NotificationCenter(r) => self.notification_center = Load::from_result(r),
         }

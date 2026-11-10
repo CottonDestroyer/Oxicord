@@ -12,6 +12,11 @@ struct SettingsResponse {
 }
 
 #[derive(Deserialize)]
+struct AuthorizeResponse {
+    url: String,
+}
+
+#[derive(Deserialize)]
 struct SessionsResponse {
     #[serde(default)]
     user_sessions: Vec<LoginSession>,
@@ -130,6 +135,23 @@ impl ApiClient {
         .await
     }
 
+    /// Where to send the person to link an outside account, such as
+    /// `github`. The service sends them back to Discord's own callback page in
+    /// their browser, which finishes the link there. Gated by the
+    /// account-write rule: built and unit tested, never sent from the real
+    /// account.
+    pub async fn connection_authorize_url(&self, platform: &str) -> Result<String, ApiError> {
+        let answer: AuthorizeResponse = self
+            .json(
+                Method::GET,
+                &format!("/connections/{platform}/authorize"),
+                "GET /connections/:platform/authorize",
+                None,
+            )
+            .await?;
+        Ok(answer.url)
+    }
+
     /// Removes a linked connection.
     pub async fn remove_connection(&self, kind: &str, id: &str) -> Result<(), ApiError> {
         self.empty(
@@ -200,6 +222,13 @@ mod tests {
             json!({ "profile_frame_sku_id": "1556809649808736266" })
         );
         assert_eq!(profile_frame_body(None), json!({ "profile_frame_sku_id": null }));
+    }
+
+    #[test]
+    fn the_authorize_answer_is_a_url_to_open() {
+        let answer: AuthorizeResponse =
+            serde_json::from_str(r#"{"url":"https://github.com/login/oauth/authorize?state=abc"}"#).unwrap();
+        assert_eq!(answer.url, "https://github.com/login/oauth/authorize?state=abc");
     }
 
     #[test]

@@ -1005,6 +1005,10 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             }
             say(AccountEvent::Connections(api.connections().await.map_err(text))).await;
         }
+        AccountRequest::AuthorizeConnection(kind) => match api.connection_authorize_url(&kind).await {
+            Ok(url) => say(AccountEvent::ConnectionUrl(url)).await,
+            Err(err) => notify(events, "start linking that account", &err).await,
+        },
         AccountRequest::LoadSessions => say(AccountEvent::Sessions(api.login_sessions().await.map_err(text))).await,
         AccountRequest::LoadNotificationCenter => say(AccountEvent::NotificationCenter(api.notification_center_items().await.map_err(text))).await,
         AccountRequest::LogoutOtherSessions => {

@@ -1,6 +1,6 @@
 use gpui_kit::{
     AnyElement, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _,
-    Styled as _, div, px, rgb,
+    Styled as _, div, px, rgb, rgba,
     component::input::{Input, },
 };
 use oxicord_media::cdn;
@@ -26,6 +26,17 @@ use crate::{
 const FRIENDS_OF_FRIENDS: u32 = 2;
 const SERVER_MEMBERS: u32 = 4;
 const EVERYONE: u32 = 8;
+
+/// The services the live Connections page offers, in its order: Riot Games,
+/// Battle.net, Bluesky, Letterboxd, PayPal, Reddit, Steam, X, eBay,
+/// Crunchyroll, PlayStation Network, Spotify and Xbox, then Amazon Music,
+/// Bungie.net, Domain, Epic Games, Facebook, GitHub, Roblox, Twitch and
+/// YouTube.
+const CONNECTION_SERVICES: [&str; 22] = [
+    "riotgames", "battlenet", "bluesky", "letterboxd", "paypal", "reddit", "steam", "twitter", "ebay", "crunchyroll",
+    "playstation", "spotify", "xbox", "amazon-music", "bungie", "domain", "epicgames", "facebook", "github", "roblox",
+    "twitch", "youtube",
+];
 
 /// Flips one friend request source in the stored bit mask.
 pub(super) fn toggle_friend_source(flags: u32, source: u32) -> u32 {
@@ -511,10 +522,43 @@ impl SettingsView {
 
     fn connections_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let connections = self.session.read(cx).account.connections.clone();
-        let rows: Vec<AnyElement> = match &connections {
-            Load::Ready(list) if list.is_empty() => {
-                vec![status_line("link", "No accounts are connected.".into(), theme::TEXT_MUTED)]
-            }
+
+        // The grid the live page opens with: 44 px tiles 8 apart, each with the
+        // service's logo at 28.
+        let tiles: Vec<AnyElement> = CONNECTION_SERVICES
+            .iter()
+            .map(|kind| {
+                let (backend, session) = (self.backend.clone(), self.session.clone());
+                let kind = (*kind).to_owned();
+                let logo = crate::profile::logo_file(&kind);
+                div()
+                    .id(gpui_kit::ElementId::Name(format!("add-connection-{kind}").into()))
+                    .size(px(44.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(8.))
+                    .bg(rgba(0x97979f1f))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgba(0x97979f33)))
+                    .on_click(move |_, _, cx| {
+                        let (backend, kind) = (backend.clone(), kind.clone());
+                        session.update(cx, |s, cx| {
+                            s.request_account(&backend, AccountRequest::AuthorizeConnection(kind), cx);
+                        });
+                    })
+                    .child(match logo {
+                        Some(file) => gpui_kit::img(gpui_kit::SharedString::from(format!("connections/{file}")))
+                            .size(px(28.))
+                            .into_any_element(),
+                        None => icon("link", 20., theme::TEXT_MUTED).into_any_element(),
+                    })
+                    .into_any_element()
+            })
+            .collect();
+
+        let linked: Vec<AnyElement> = match &connections {
             Load::Ready(list) => list
                 .iter()
                 .map(|c| {
@@ -563,15 +607,68 @@ impl SettingsView {
                 })
                 .collect(),
             Load::Failed(error) => vec![status_line("triangle-alert", error.clone(), theme::DANGER)],
-            _ => vec![status_line("loader-circle", "Loading...".into(), theme::TEXT_MUTED)],
+            Load::Loading => vec![status_line("loader-circle", "Loading...".into(), theme::TEXT_MUTED)],
+            Load::Idle => Vec::new(),
         };
+
+        let empty = matches!(&connections, Load::Ready(list) if list.is_empty());
         div()
             .flex()
             .flex_col()
-            .gap_2()
-            .child(title("Connections"))
-            .child(blurb("Accounts linked to yours. Add or remove them from Discord's own settings."))
-            .child(group("Linked accounts", rows))
+            .child(
+                div()
+                    .text_size(px(24.))
+                    .line_height(px(32.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("Connections"),
+            )
+            .child(
+                div()
+                    .mt(px(4.))
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(
+                        "These are accounts from other platforms. Connecting them here can unlock new features \
+                         on Discord, like the ability to share what you're currently listening to, get paid \
+                         safely and securely, and more.",
+                    ),
+            )
+            .child(
+                div()
+                    .mt(px(29.))
+                    .text_size(px(16.))
+                    .line_height(px(20.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("Add a new connection"),
+            )
+            .child(div().mt(px(16.)).flex().flex_wrap().gap_x(px(8.)).gap_y(px(9.)).children(tiles))
+            .child(div().mt(px(24.)).flex().flex_col().gap_2().children(linked))
+            .children(empty.then(|| {
+                div()
+                    .mt(px(64.))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(20.))
+                            .line_height(px(24.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child("No Connections"),
+                    )
+                    .child(
+                        div()
+                            .mt(px(8.))
+                            .text_size(px(16.))
+                            .line_height(px(20.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child("Connect your accounts to unlock special Discord integrations"),
+                    )
+            }))
             .into_any_element()
     }
 

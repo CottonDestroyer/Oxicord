@@ -552,7 +552,23 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 ## Phase 6: account (UI and request building only, see the rule at the top)
 
 - [x] Log out other devices, remove a connection
-- [ ] Add a connection
+- [x] Add a connection. The Connections settings page is now the live
+      "Connected Apps" page (stable 670026, measured through the logged in web
+      client at 1920 x 1080): a 24 / 32 weight 500 title, the 14 / 18
+      description, "Add a new connection" at 16 / 20 weight 500, and 44 by 44
+      tiles (radius 8, rgba(151,151,159,0.12)) with a 28 px logo, 8 apart across
+      and 53 down, in the live order of 22 services (Riot Games to Xbox, then
+      Amazon Music to YouTube). Linked accounts list under the grid and an
+      account with none shows "No Connections" with its 20 / 24 and 16 / 20
+      lines. A tile sends `GET /connections/:platform/authorize` (module 77468)
+      and opens the returned URL in the browser, where Discord's own callback
+      page finishes the link; `USER_CONNECTIONS_UPDATE` reloads the list. The
+      answer shape is unit tested; no tile was clicked from the real account
+      (account writes rule). Captures: screenshots/reference/connected_apps.png
+      and screenshots/port/connections_page.png. Remaining differences: the
+      Nitro Rewards promo banner is not drawn, the empty state sits closer to
+      the grid than the live one, and a linked account row is still the old
+      plain row because this account has none to compare.
 - [ ] Change password dialog
 - [ ] Enable 2FA: QR code and backup codes screens
 - [ ] Disable 2FA dialog
