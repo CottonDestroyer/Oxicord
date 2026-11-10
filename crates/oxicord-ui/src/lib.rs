@@ -26,6 +26,7 @@ mod games_i_like_editor;
 mod icons;
 mod invite_dialog;
 mod inbox;
+mod interaction_modal;
 mod join_server;
 mod kick_dialog;
 mod keys;

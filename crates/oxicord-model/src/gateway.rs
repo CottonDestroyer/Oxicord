@@ -518,6 +518,7 @@ pub enum DispatchEvent {
     InteractionCreate(InteractionEvent),
     InteractionSuccess(InteractionEvent),
     InteractionFailure(InteractionEvent),
+    InteractionModalCreate(Box<crate::InteractionModal>),
     Unknown { name: String, data: Value },
 }
 
@@ -583,6 +584,7 @@ impl DispatchEvent {
             "INTERACTION_CREATE" => Self::InteractionCreate(de(data)?),
             "INTERACTION_SUCCESS" => Self::InteractionSuccess(de(data)?),
             "INTERACTION_FAILURE" => Self::InteractionFailure(de(data)?),
+            "INTERACTION_MODAL_CREATE" => Self::InteractionModalCreate(Box::new(de(data)?)),
             _ => Self::Unknown {
                 name: name.to_owned(),
                 data,

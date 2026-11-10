@@ -22,6 +22,7 @@ pub mod member;
 pub mod notification;
 pub mod onboarding;
 pub mod message;
+pub mod modal;
 pub mod permissions;
 pub mod poll;
 pub mod presence;
@@ -62,6 +63,7 @@ pub use message::{
     Message, MessageSnapshot, MessageType, PartialMessage, Reaction, SavedMessage, SavedMessageData,
     SnapshotMessage, StickerItem,
 };
+pub use modal::{InteractionModal, ModalApplication, ModalInput, ModalRow};
 pub use permissions::Permissions;
 pub use poll::{Poll, PollAnswer, Tally};
 pub use presence::{Activity, ActivityTimestamps, ActivityType, Status};

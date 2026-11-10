@@ -62,6 +62,8 @@ pub const SECONDARY: u32 = 0x1b1b1e;
 pub const SECONDARY_HOVER: u32 = 0x262629;
 /// border-subtle over the dialog background, rgba(150,151,159,0.24).
 pub const BORDER_OVERLAY: u32 = 0x2c2c2e;
+/// The modal frame: border-subtle at 0.2 over `BG_PANEL`.
+pub const MODAL_BORDER: u32 = 0x25252a;
 /// control-critical-secondary-text-default.
 pub const DANGER: u32 = 0xeb5f5e;
 /// background-feedback-notification.

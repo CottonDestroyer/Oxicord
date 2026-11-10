@@ -375,8 +375,19 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       screenshots/port/interaction_failed.png. A real failure needs a live
       click, which is a write, so it is unverified live.
       docs/discord-reference.md.
-- [ ] Modal view from an `INTERACTION_MODAL_CREATE` fixture: title, text inputs
-      (short and paragraph), required, min and max length
+- [x] Modal view from an `INTERACTION_MODAL_CREATE` fixture: title, text inputs
+      (short and paragraph), required, min and max length. `modal` loads the
+      fixture: 480 wide, 12 radius, 48 header with a 20/24 title and 40 close,
+      body labels 16/20 and a 12/16 counter, footer 40 high buttons. The frame
+      follows the live Create a Poll modal (the same newer modal component) at
+      1920 x 1080; the bot modal component is a lazy chunk absent from
+      reference/web and no bot in the account opened one (Ticket King creates
+      tickets directly, Ticket Tool /panel timed out), so its exact width,
+      header and footer are unverified. Verified in the port at 1920 x 1080:
+      empty required fields keep Submit disabled, 5 and 13 characters enable
+      it, and 85/80 turns the hint and counter red and disables Submit again.
+      Captures: screenshots/port/interaction_modal_v8.png,
+      interaction_modal_filled.png, interaction_modal_too_long.png.
 - [ ] Modal submit (interaction type 5) and its success and failure states
 - [ ] Slash option autocomplete request (interaction type 4) while typing
 - [ ] Autocomplete results list from

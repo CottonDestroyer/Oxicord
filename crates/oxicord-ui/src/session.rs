@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{Context, EventEmitter, Pixels, Point};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Channel, Message, Profile, SavedMessage, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
+use oxicord_model::{Channel, InteractionModal, Message, Profile, SavedMessage, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 use crate::{
@@ -42,6 +42,8 @@ pub struct Session {
     pub store: Store,
     /// Clicks sent to apps that have not succeeded yet.
     pub interactions: HashMap<String, InteractionEntry>,
+    /// The bot modal waiting for an answer, if any.
+    pub interaction_modal: Option<InteractionModal>,
     pub connection: ConnectionState,
     /// Channels whose last history request failed, with the reason to show.
     pub history_errors: HashMap<Snowflake, String>,
@@ -246,6 +248,11 @@ pub struct OpenServerGuide(pub Snowflake);
 
 impl EventEmitter<OpenServerGuide> for Session {}
 
+/// A bot asked for input in a modal.
+pub struct OpenInteractionModal(pub InteractionModal);
+
+impl EventEmitter<OpenInteractionModal> for Session {}
+
 /// Someone wants to edit this channel (name and topic), from its sidebar row.
 pub struct OpenChannelSettings(pub Snowflake);
 
@@ -359,6 +366,7 @@ impl Session {
             scheduled_messages: Load::Idle,
             bookmarked: HashSet::new(),
             interactions: HashMap::new(),
+            interaction_modal: None,
             invite_joined: None,            created_invite: Load::Idle,
             previews: HashMap::new(),
             jump_target: None,
@@ -984,6 +992,14 @@ impl Session {
         cx.notify();
     }
 
+    /// Records a bot modal and tells the view to open it. The modal is kept
+    /// until it is submitted or dismissed.
+    pub fn open_interaction_modal(&mut self, modal: InteractionModal, cx: &mut Context<Self>) {
+        self.interaction_modal = Some(modal.clone());
+        cx.emit(OpenInteractionModal(modal));
+        cx.notify();
+    }
+
     pub fn handle(&mut self, backend: &Backend, event: GatewayEvent, cx: &mut Context<Self>) {
         match event {
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data })
@@ -1056,6 +1072,9 @@ impl Session {
                     entry.state = InteractionState::Failed;
                     cx.notify();
                 }
+            }
+            GatewayEvent::Dispatch(DispatchEvent::InteractionModalCreate(modal)) => {
+                self.open_interaction_modal(*modal, cx);
             }
             GatewayEvent::Dispatch(event) => {
                 // People who left the server aren't members any more, but

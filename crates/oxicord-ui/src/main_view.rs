@@ -44,13 +44,14 @@ use crate::{
     edit_channel_dialog::{CloseEditChannel, EditChannelDialog},
     gift_dialog::{CloseGift, GiftDialog},
     invite_dialog::{CloseInvite, InviteDialog},
+    interaction_modal::{CloseInteractionModal, InteractionModalView},
     keys::{self, QuickSwitch},
     onboarding_dialog::{CloseOnboarding, OnboardingDialog},
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -187,6 +188,8 @@ pub struct MainView {
     screening_open: bool,
     onboarding: Entity<OnboardingDialog>,
     onboarding_open: bool,
+    interaction_modal: Entity<InteractionModalView>,
+    interaction_modal_open: bool,
     forward: Entity<ForwardDialog>,
     forward_open: bool,
     nickname: Entity<NicknameDialog>,
@@ -269,6 +272,7 @@ impl MainView {
             let backend = backend.clone();
             cx.new(|_| OnboardingDialog::new(backend))
         };
+        let interaction_modal = cx.new(|_| InteractionModalView::new());
         let status_dialog = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| StatusDialog::new(session, media, backend, window, cx))
@@ -672,6 +676,20 @@ impl MainView {
                 this.onboarding_open = false;
                 cx.notify();
             }),
+            cx.subscribe(&interaction_modal, |this, _, _: &CloseInteractionModal, cx| {
+                this.interaction_modal_open = false;
+                this.session.update(cx, |session, cx| {
+                    session.interaction_modal = None;
+                    cx.notify();
+                });
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenInteractionModal, window, cx| {
+                this.interaction_modal_open = true;
+                this.interaction_modal
+                    .update(cx, |view, cx| view.opened(open.0.clone(), window, cx));
+                cx.notify();
+            }),
             cx.subscribe(&session, |this, _, open: &OpenServerGuide, cx| {
                 this.onboarding_open = true;
                 this.onboarding.update(cx, |dialog, cx| dialog.opened(open.0, cx));
@@ -795,6 +813,8 @@ impl MainView {
             screening_open: false,
             onboarding,
             onboarding_open: false,
+            interaction_modal,
+            interaction_modal_open: false,
             forward,
             forward_open: false,
             nickname,
@@ -1317,6 +1337,14 @@ impl MainView {
                     cx.emit(changes);
                 });
                 cx.notify();
+            }
+            DevCommand::Modal => {
+                if let Ok(text) = std::fs::read_to_string("fixtures/interaction-modal.json")
+                    && let Ok(modal) = serde_json::from_str(&text)
+                {
+                    self.session
+                        .update(cx, |session, cx| session.open_interaction_modal(modal, cx));
+                }
             }
         }
     }
@@ -4284,6 +4312,7 @@ impl Render for MainView {
         let join = self.join_open.then(|| self.join.clone());
         let screening = self.screening_open.then(|| self.screening.clone());
         let onboarding = self.onboarding_open.then(|| self.onboarding.clone());
+        let interaction_modal = self.interaction_modal_open.then(|| self.interaction_modal.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
@@ -4383,6 +4412,7 @@ impl Render for MainView {
             .children(join)
             .children(screening)
             .children(onboarding)
+            .children(interaction_modal)
             .children(invite)
             .children(edit_channel)
             .children(create_channel)

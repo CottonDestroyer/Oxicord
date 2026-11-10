@@ -40,6 +40,8 @@ pub enum DevCommand {
     /// checked without a real stranger writing first.
     FakeRequest(Snowflake, Snowflake),
     FakeSpam(Snowflake, Snowflake),
+    /// The bot modal fixture, for checking its layout without a live click.
+    Modal,
     Close,
     Resize(u32, u32),
 }
@@ -87,6 +89,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
             let user = words.clone().nth(1)?.parse().ok().map(Snowflake)?;
             Some(DevCommand::FakeSpam(channel, user))
         }
+        "modal" => Some(DevCommand::Modal),
         "leave" => Some(DevCommand::Leave),
         "mute" => Some(DevCommand::Mute),
         "deafen" => Some(DevCommand::Deafen),
