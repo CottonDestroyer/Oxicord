@@ -42,6 +42,8 @@ pub enum DevCommand {
     FakeSpam(Snowflake, Snowflake),
     /// The bot modal fixture, for checking its layout without a live click.
     Modal,
+    /// The bot modal's failure state, without waiting for an app to time out.
+    ModalFail,
     Close,
     Resize(u32, u32),
 }
@@ -90,6 +92,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
             Some(DevCommand::FakeSpam(channel, user))
         }
         "modal" => Some(DevCommand::Modal),
+        "modal-fail" => Some(DevCommand::ModalFail),
         "leave" => Some(DevCommand::Leave),
         "mute" => Some(DevCommand::Mute),
         "deafen" => Some(DevCommand::Deafen),

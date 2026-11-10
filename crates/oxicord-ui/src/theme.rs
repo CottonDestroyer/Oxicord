@@ -66,6 +66,10 @@ pub const BORDER_OVERLAY: u32 = 0x2c2c2e;
 pub const MODAL_BORDER: u32 = 0x25252a;
 /// control-critical-secondary-text-default.
 pub const DANGER: u32 = 0xeb5f5e;
+/// background-feedback-mod-critical (rgba(242,63,67,0.1)) over `BG_PANEL`.
+pub const DANGER_BANNER: u32 = 0x210f10;
+/// The matching critical border, rgba(242,63,67,0.4) over `BG_PANEL`.
+pub const DANGER_BORDER: u32 = 0x671f22;
 /// background-feedback-notification.
 pub const BADGE: u32 = 0xd22d39;
 /// status-positive: the connected label, the voice channel you are in and

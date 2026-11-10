@@ -272,7 +272,10 @@ impl MainView {
             let backend = backend.clone();
             cx.new(|_| OnboardingDialog::new(backend))
         };
-        let interaction_modal = cx.new(|_| InteractionModalView::new());
+        let interaction_modal = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| InteractionModalView::new(session, backend, cx))
+        };
         let status_dialog = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| StatusDialog::new(session, media, backend, window, cx))
@@ -678,10 +681,8 @@ impl MainView {
             }),
             cx.subscribe(&interaction_modal, |this, _, _: &CloseInteractionModal, cx| {
                 this.interaction_modal_open = false;
-                this.session.update(cx, |session, cx| {
-                    session.interaction_modal = None;
-                    cx.notify();
-                });
+                this.session
+                    .update(cx, |session, cx| session.dismiss_interaction_modal(cx));
                 cx.notify();
             }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenInteractionModal, window, cx| {
@@ -1344,6 +1345,12 @@ impl MainView {
                 {
                     self.session
                         .update(cx, |session, cx| session.open_interaction_modal(modal, cx));
+                }
+            }
+            DevCommand::ModalFail => {
+                if self.interaction_modal_open {
+                    self.interaction_modal
+                        .update(cx, |view, cx| view.fail(cx));
                 }
             }
         }

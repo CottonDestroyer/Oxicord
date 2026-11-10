@@ -44,6 +44,8 @@ pub struct Session {
     pub interactions: HashMap<String, InteractionEntry>,
     /// The bot modal waiting for an answer, if any.
     pub interaction_modal: Option<InteractionModal>,
+    /// The nonce of a modal submit we are waiting on.
+    modal_submit: Option<String>,
     pub connection: ConnectionState,
     /// Channels whose last history request failed, with the reason to show.
     pub history_errors: HashMap<Snowflake, String>,
@@ -253,6 +255,14 @@ pub struct OpenInteractionModal(pub InteractionModal);
 
 impl EventEmitter<OpenInteractionModal> for Session {}
 
+/// How a modal submit ended. On success the modal closes; on failure it stays
+/// open with the app's error so the answer can be sent again.
+pub struct ModalSubmitFinished {
+    pub ok: bool,
+}
+
+impl EventEmitter<ModalSubmitFinished> for Session {}
+
 /// Someone wants to edit this channel (name and topic), from its sidebar row.
 pub struct OpenChannelSettings(pub Snowflake);
 
@@ -367,6 +377,7 @@ impl Session {
             bookmarked: HashSet::new(),
             interactions: HashMap::new(),
             interaction_modal: None,
+            modal_submit: None,
             invite_joined: None,            created_invite: Load::Idle,
             previews: HashMap::new(),
             jump_target: None,
@@ -1000,6 +1011,73 @@ impl Session {
         cx.notify();
     }
 
+    /// Closes the bot modal and forgets a submit in flight.
+    pub fn dismiss_interaction_modal(&mut self, cx: &mut Context<Self>) {
+        self.interaction_modal = None;
+        self.modal_submit = None;
+        cx.notify();
+    }
+
+    /// Sends the answers to the open bot modal. False when the modal is missing
+    /// something the request needs, so the view can say it went wrong.
+    pub fn submit_interaction_modal(
+        &mut self,
+        backend: &Backend,
+        answers: Vec<(String, String)>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(modal) = self.interaction_modal.as_ref() else {
+            return false;
+        };
+        let (Some(channel), Some(application), Some(session_id)) = (
+            modal.channel_id,
+            modal.application.as_ref().map(|app| app.id),
+            self.store.session_id().map(str::to_owned),
+        ) else {
+            return false;
+        };
+        let guild = self.store.channel(channel).and_then(|channel| channel.guild_id);
+        let custom_id = modal.custom_id.clone();
+        let nonce = Snowflake::nonce().to_string();
+        self.modal_submit = Some(nonce.clone());
+        backend.send(Command::SubmitModal {
+            guild,
+            channel,
+            application,
+            session_id,
+            custom_id,
+            answers,
+            nonce: nonce.clone(),
+        });
+        // The app has ten seconds to answer. After that the modal offers a
+        // retry, like the live client.
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_secs(10))
+                .await;
+            this.update(cx, |this, cx| this.fail_modal_submit(&nonce, cx))
+                .ok();
+        })
+        .detach();
+        cx.notify();
+        true
+    }
+
+    /// The submit request, or the app's answer, failed. Only the latest
+    /// submit may change the modal.
+    pub fn fail_modal_submit(&mut self, nonce: &str, cx: &mut Context<Self>) {
+        if self.modal_submit.as_deref() == Some(nonce) {
+            self.modal_submit = None;
+            cx.emit(ModalSubmitFinished { ok: false });
+            cx.notify();
+        }
+    }
+
+    /// A submit request that never reached the app.
+    pub fn apply_modal_submit_failed(&mut self, nonce: &str, cx: &mut Context<Self>) {
+        self.fail_modal_submit(nonce, cx);
+    }
+
     pub fn handle(&mut self, backend: &Backend, event: GatewayEvent, cx: &mut Context<Self>) {
         match event {
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data })
@@ -1063,14 +1141,25 @@ impl Session {
             }
             GatewayEvent::Dispatch(DispatchEvent::InteractionSuccess(event)) => {
                 if let Some(nonce) = event.nonce {
-                    self.interactions.remove(&nonce);
-                    cx.notify();
+                    if self.modal_submit.as_deref() == Some(nonce.as_str()) {
+                        self.modal_submit = None;
+                        self.interaction_modal = None;
+                        cx.emit(ModalSubmitFinished { ok: true });
+                        cx.notify();
+                    } else {
+                        self.interactions.remove(&nonce);
+                        cx.notify();
+                    }
                 }
             }
             GatewayEvent::Dispatch(DispatchEvent::InteractionFailure(event)) => {
-                if let Some(entry) = event.nonce.as_ref().and_then(|nonce| self.interactions.get_mut(nonce)) {
-                    entry.state = InteractionState::Failed;
-                    cx.notify();
+                if let Some(nonce) = event.nonce {
+                    if self.modal_submit.as_deref() == Some(nonce.as_str()) {
+                        self.fail_modal_submit(&nonce, cx);
+                    } else if let Some(entry) = self.interactions.get_mut(&nonce) {
+                        entry.state = InteractionState::Failed;
+                        cx.notify();
+                    }
                 }
             }
             GatewayEvent::Dispatch(DispatchEvent::InteractionModalCreate(modal)) => {

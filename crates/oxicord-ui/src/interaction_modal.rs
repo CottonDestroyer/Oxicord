@@ -1,18 +1,24 @@
 //! A bot's modal from `INTERACTION_MODAL_CREATE`: its title and text inputs.
-//! Submitting is the next roadmap item; this view owns the fields and their
-//! required/min/max validation.
+//! The view owns the fields, their required/min/max validation and the
+//! submit state.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _,
-    Window,
+    Subscription, Window,
     component::input::{Input, InputState, Textarea, TextareaState},
     div, px, rgb,
 };
 use oxicord_model::{InteractionModal, ModalInput};
 
-use crate::{icons::icon, profile::modal, theme};
+use crate::{
+    backend::Backend,
+    icons::icon,
+    profile::modal,
+    session::{ModalSubmitFinished, Session},
+    theme,
+};
 
 pub struct CloseInteractionModal;
 
@@ -29,22 +35,47 @@ struct Row {
 }
 
 pub struct InteractionModalView {
+    session: Entity<Session>,
+    backend: Backend,
     modal: Option<InteractionModal>,
     rows: Vec<Row>,
     scroll: ScrollHandle,
+    submitting: bool,
+    /// The app did not answer; the fields stay filled for another try.
+    failed: bool,
+    _subscription: Subscription,
 }
 
 impl InteractionModalView {
-    pub fn new() -> Self {
+    pub fn new(session: Entity<Session>, backend: Backend, cx: &mut Context<Self>) -> Self {
+        let _subscription = cx.subscribe(&session, |this, _, result: &ModalSubmitFinished, cx| {
+            this.submitting = false;
+            if result.ok {
+                this.modal = None;
+                this.rows.clear();
+                this.failed = false;
+                cx.emit(CloseInteractionModal);
+            } else {
+                this.failed = true;
+                cx.notify();
+            }
+        });
         Self {
+            session,
+            backend,
             modal: None,
             rows: Vec::new(),
             scroll: ScrollHandle::new(),
+            submitting: false,
+            failed: false,
+            _subscription,
         }
     }
 
     pub fn opened(&mut self, modal: InteractionModal, window: &mut Window, cx: &mut Context<Self>) {
         self.scroll.set_offset(gpui_kit::point(px(0.), px(0.)));
+        self.submitting = false;
+        self.failed = false;
         self.rows = modal
             .inputs()
             .map(|input| {
@@ -70,7 +101,36 @@ impl InteractionModalView {
     fn close(&mut self, cx: &mut Context<Self>) {
         self.modal = None;
         self.rows.clear();
+        self.submitting = false;
+        self.failed = false;
         cx.emit(CloseInteractionModal);
+    }
+
+    /// Sends every input, including the ones left blank, the way the live
+    /// client submits the whole form.
+    fn submit(&mut self, cx: &mut Context<Self>) {
+        if self.submitting || !self.valid(cx) {
+            return;
+        }
+        let answers: Vec<(String, String)> = self
+            .rows
+            .iter()
+            .map(|row| (row.input.custom_id.clone(), self.text(&row.field, cx)))
+            .collect();
+        let backend = self.backend.clone();
+        let sent = self.session.update(cx, |session, cx| {
+            session.submit_interaction_modal(&backend, answers, cx)
+        });
+        self.submitting = sent;
+        self.failed = !sent;
+        cx.notify();
+    }
+
+    /// Shows the failure state without sending; the dev command uses it.
+    pub fn fail(&mut self, cx: &mut Context<Self>) {
+        self.submitting = false;
+        self.failed = true;
+        cx.notify();
     }
 
     fn text(&self, field: &Field, cx: &Context<Self>) -> String {
@@ -163,12 +223,6 @@ impl InteractionModalView {
     }
 }
 
-impl Default for InteractionModalView {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Render for InteractionModalView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(sheet) = &self.modal else {
@@ -181,6 +235,22 @@ impl Render for InteractionModalView {
             .px(px(24.))
             .pt(px(16.))
             .pb(px(8.));
+        if self.failed {
+            body = body.child(
+                div()
+                    .w_full()
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgb(theme::DANGER_BANNER))
+                    .border_1()
+                    .border_color(rgb(theme::DANGER_BORDER))
+                    .px(px(12.))
+                    .py(px(10.))
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .text_color(rgb(theme::DANGER))
+                    .child("Something went wrong. Try again."),
+            );
+        }
         for row in &self.rows {
             body = body.child(self.row(row, cx));
         }
@@ -193,7 +263,7 @@ impl Render for InteractionModalView {
             .track_scroll(&self.scroll)
             .child(body);
 
-        let valid = self.valid(cx);
+        let valid = self.valid(cx) && !self.submitting;
         let cancel = div()
             .id("interaction-modal-cancel")
             .h(px(40.))
@@ -227,7 +297,11 @@ impl Render for InteractionModalView {
             .line_height(px(20.))
             .font_weight(FontWeight::MEDIUM)
             .text_color(rgb(0xffff_ffff))
-            .when(valid, |button| button.hover(|s| s.bg(rgb(theme::ACCENT_HOVER))))
+            .when(valid, |button| {
+                button
+                    .hover(|s| s.bg(rgb(theme::ACCENT_HOVER)))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.submit(cx)))
+            })
             .when(!valid, |button| button.opacity(0.5).cursor_default())
             .child("Submit");
 

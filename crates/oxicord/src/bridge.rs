@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
     ApiClient, ApiError, Credentials,
-    routes::{AllowedMentions, CommandRun, ComponentClick, IndexOutcome, MessagePage, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
+    routes::{AllowedMentions, CommandRun, ComponentClick, IndexOutcome, MessagePage, ModalSubmit, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
     super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
@@ -347,6 +347,31 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 };
                 if let Err(err) = api.click_component(&click).await {
                     notify(&events, "use that button", &err).await;
+                }
+            });
+        }
+        Command::SubmitModal {
+            guild,
+            channel,
+            application,
+            session_id,
+            custom_id,
+            answers,
+            nonce,
+        } => {
+            tokio::spawn(async move {
+                let submit = ModalSubmit {
+                    guild,
+                    channel,
+                    application,
+                    session_id,
+                    custom_id,
+                    answers,
+                    nonce: nonce.clone(),
+                };
+                if let Err(err) = api.submit_modal(&submit).await {
+                    tracing::warn!(?err, "could not submit a modal");
+                    let _ = events.send(Event::ModalSubmitFailed { nonce }).await;
                 }
             });
         }

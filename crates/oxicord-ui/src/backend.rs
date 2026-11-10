@@ -139,6 +139,19 @@ pub enum Command {
         /// events so the click can be tracked.
         nonce: String,
     },
+    /// Send the answers to a bot's modal. A failure is reported as
+    /// [`Event::ModalSubmitFailed`]; the app's answer arrives through the
+    /// gateway.
+    SubmitModal {
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+        application: Snowflake,
+        session_id: String,
+        custom_id: String,
+        /// Input custom id and what was typed in it.
+        answers: Vec<(String, String)>,
+        nonce: String,
+    },
     /// Set our votes on a poll to exactly these answers.
     VotePoll {
         channel: Snowflake,
@@ -444,6 +457,8 @@ pub enum Event {
         channel: Snowflake,
         result: Result<oxicord_model::CommandIndex, String>,
     },
+    /// The submit request never reached the app; the modal can be retried.
+    ModalSubmitFailed { nonce: String },
     InvitePreview(Result<oxicord_model::InvitePreview, String>),
     InviteCreated(Result<String, String>),
     InviteJoined(Result<(), String>),

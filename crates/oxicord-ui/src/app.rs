@@ -174,6 +174,10 @@ impl AppView {
             Event::Commands { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_commands(channel, result, cx));
             }
+            Event::ModalSubmitFailed { nonce } => {
+                self.session
+                    .update(cx, |session, cx| session.apply_modal_submit_failed(&nonce, cx));
+            }
             Event::InvitePreview(result) => {
                 self.session.update(cx, |session, cx| session.apply_invite_preview(result, cx));
             }

@@ -20,6 +20,56 @@ pub struct ComponentClick {
     pub nonce: String,
 }
 
+/// The answers to a bot's modal.
+#[derive(Clone, Debug)]
+pub struct ModalSubmit {
+    pub guild: Option<Snowflake>,
+    pub channel: Snowflake,
+    pub application: Snowflake,
+    pub session_id: String,
+    pub custom_id: String,
+    /// Input custom id and what was typed in it, in the order the modal drew
+    /// the inputs.
+    pub answers: Vec<(String, String)>,
+    pub nonce: String,
+}
+
+/// The request body for a modal submit, built apart from the network so it
+/// can be checked on its own.
+pub fn modal_body(submit: &ModalSubmit) -> Value {
+    let components: Vec<Value> = submit
+        .answers
+        .iter()
+        .map(|(custom_id, value)| {
+            json!({
+                // Action row holding one text input.
+                "type": 1,
+                "components": [{
+                    "type": 4,
+                    "custom_id": custom_id,
+                    "value": value,
+                }],
+            })
+        })
+        .collect();
+    let mut body = json!({
+        // Interaction type 5 is a modal submit.
+        "type": 5,
+        "nonce": submit.nonce,
+        "channel_id": submit.channel.to_string(),
+        "application_id": submit.application.to_string(),
+        "session_id": submit.session_id,
+        "data": {
+            "custom_id": submit.custom_id,
+            "components": components,
+        },
+    });
+    if let Some(guild) = submit.guild {
+        body["guild_id"] = json!(guild.to_string());
+    }
+    body
+}
+
 /// The request body for a click, built apart from the network so it can be
 /// checked on its own.
 pub fn click_body(click: &ComponentClick) -> Value {
@@ -78,6 +128,18 @@ impl ApiClient {
         )
         .await
     }
+
+    /// Sends the answers to a bot modal. The app answers through the gateway,
+    /// not in this response.
+    pub async fn submit_modal(&self, submit: &ModalSubmit) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            "/interactions",
+            "POST /interactions",
+            Some(&modal_body(submit)),
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -122,5 +184,32 @@ mod tests {
         let mut c = click(2, vec![]);
         c.guild = None;
         assert!(click_body(&c).get("guild_id").is_none());
+    }
+
+    #[test]
+    fn a_modal_submit_names_its_fields() {
+        let body = modal_body(&ModalSubmit {
+            guild: Some(Snowflake(9)),
+            channel: Snowflake(5),
+            application: Snowflake(3),
+            session_id: "sess".into(),
+            custom_id: "ticket-modal".into(),
+            answers: vec![
+                ("subject".into(), "Hello".into()),
+                ("details".into(), "Need help".into()),
+            ],
+            nonce: "123".into(),
+        });
+        assert_eq!(body["type"], 5);
+        assert_eq!(body["nonce"], "123");
+        assert_eq!(body["channel_id"], "5");
+        assert_eq!(body["application_id"], "3");
+        assert_eq!(body["guild_id"], "9");
+        assert_eq!(body["data"]["custom_id"], "ticket-modal");
+        assert_eq!(body["data"]["components"][0]["type"], 1);
+        assert_eq!(body["data"]["components"][0]["components"][0]["type"], 4);
+        assert_eq!(body["data"]["components"][0]["components"][0]["custom_id"], "subject");
+        assert_eq!(body["data"]["components"][0]["components"][0]["value"], "Hello");
+        assert_eq!(body["data"]["components"][1]["components"][0]["custom_id"], "details");
     }
 }

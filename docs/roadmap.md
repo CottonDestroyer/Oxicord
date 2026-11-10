@@ -388,7 +388,18 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       it, and 85/80 turns the hint and counter red and disables Submit again.
       Captures: screenshots/port/interaction_modal_v8.png,
       interaction_modal_filled.png, interaction_modal_too_long.png.
-- [ ] Modal submit (interaction type 5) and its success and failure states
+- [x] Modal submit (interaction type 5) and its success and failure states.
+      Submit sends every input, blank ones included, as one action row per text
+      input in `POST /interactions` type 5, with the modal custom id, app,
+      channel, gateway session and a new nonce. The modal stays open and Submit
+      dims until the gateway answers; `INTERACTION_SUCCESS` closes it, while
+      `INTERACTION_FAILURE`, a failed request or ten seconds without an answer
+      keeps the answers and shows "Something went wrong. Try again." above the
+      fields. The request body is unit tested. The live bot modal component is
+      a missing lazy chunk and no bot in the account opened a modal, so the
+      live in-flight and error presentation are unverified; the port's error
+      banner is styled from Discord's critical feedback colours and captured in
+      screenshots/port/interaction_modal_failed.png.
 - [ ] Slash option autocomplete request (interaction type 4) while typing
 - [ ] Autocomplete results list from
       `APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE`
