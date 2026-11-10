@@ -7,6 +7,7 @@ mod ban_dialog;
 pub mod backend;
 mod chat;
 mod emoji_panel;
+mod events_dialog;
 mod forum;
 mod context_menu;
 mod dm_picker;mod create_channel_dialog;

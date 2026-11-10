@@ -479,9 +479,23 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       description, start and end, status, entity type, location, image hash
       and recurrence, and `Guild.scheduled_events` keeps them (a bad event is
       dropped, not the guild). Unit tests on the fixture and the guild.
-- [ ] Scheduled events list and event card. Reference:
-      screenshots/reference/events_modal.png (the "4 Events" row opens a
-      modal with one card per event)
+- [x] Scheduled events list and event card. A "4 Events" row (calendar glyph,
+      CHANNELS_DEFAULT) sits above the channels while the server has events
+      running or coming, and opens the Events modal: 604 wide frame (radius
+      12, max 802 high) with a 48 high header, 24 side margins, 554 wide
+      cards 16 apart (BG_CARD, radius 8, 1 px border), a 120 high cover from
+      `cdn.discordapp.com/guild-events/:id/:hash`, a status row (green
+      "Happening Now" or the blue "Fri Nov 20th · 7:00 PM"), the 20/24 name,
+      the markdown description capped at 4 lines, a divider and a footer with
+      the location, a "..." button, Copy Link (copies
+      discord.com/events/:guild/:event) and Interested on upcoming events.
+      Verified at 1920 x 1080 against the live SCP | Roleplay modal: frame,
+      card heights (about 351) and gaps match. Captures:
+      screenshots/reference/events_modal.png and
+      screenshots/port/events_modal.png, events_sidebar_row.png. Remaining
+      differences: no RSVP pill or interested avatars yet (counts come with
+      the RSVP item), the sidebar "Happening Now" card above the channel list
+      is not drawn, and the "..." and Interested buttons do nothing yet.
 - [ ] Event details modal
 - [ ] RSVP (interested) and its count (confirm endpoint)
 - [ ] Live updates: `GUILD_SCHEDULED_EVENT_CREATE`, `_UPDATE`, `_DELETE`,

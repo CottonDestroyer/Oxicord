@@ -252,6 +252,11 @@ pub struct OpenServerGuide(pub Snowflake);
 
 impl EventEmitter<OpenServerGuide> for Session {}
 
+/// Opens a server's list of scheduled events.
+pub struct OpenEvents(pub Snowflake);
+
+impl EventEmitter<OpenEvents> for Session {}
+
 /// A bot asked for input in a modal.
 pub struct OpenInteractionModal(pub InteractionModal);
 

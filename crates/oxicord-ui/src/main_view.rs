@@ -9,7 +9,7 @@ use gpui_kit::{
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
 use oxicord_media::cdn;
-use oxicord_model::{ChannelType, RelationshipKind, Snowflake, Status, WelcomeScreen};
+use oxicord_model::{ChannelType, EventStatus, RelationshipKind, Snowflake, Status, WelcomeScreen};
 use oxicord_store::Unread;
 
 use crate::{
@@ -46,12 +46,13 @@ use crate::{
     invite_dialog::{CloseInvite, InviteDialog},
     interaction_modal::{CloseInteractionModal, InteractionModalView},
     keys::{self, QuickSwitch},
+    events_dialog::{CloseEvents, EventsDialog},
     onboarding_dialog::{CloseOnboarding, OnboardingDialog},
     media::{Media, ViewImage, acronym, avatar},
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -188,6 +189,8 @@ pub struct MainView {
     screening_open: bool,
     onboarding: Entity<OnboardingDialog>,
     onboarding_open: bool,
+    events: Entity<EventsDialog>,
+    events_open: bool,
     interaction_modal: Entity<InteractionModalView>,
     interaction_modal_open: bool,
     forward: Entity<ForwardDialog>,
@@ -271,6 +274,10 @@ impl MainView {
         let onboarding = {
             let backend = backend.clone();
             cx.new(|_| OnboardingDialog::new(backend))
+        };
+        let events = {
+            let (session, media) = (session.clone(), media.clone());
+            cx.new(|_| EventsDialog::new(session, media))
         };
         let interaction_modal = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -691,6 +698,15 @@ impl MainView {
                     .update(cx, |view, cx| view.opened(open.0.clone(), window, cx));
                 cx.notify();
             }),
+            cx.subscribe(&events, |this, _, _: &CloseEvents, cx| {
+                this.events_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenEvents, cx| {
+                this.events_open = true;
+                this.events.update(cx, |dialog, cx| dialog.opened(open.0, cx));
+                cx.notify();
+            }),
             cx.subscribe(&session, |this, _, open: &OpenServerGuide, cx| {
                 this.onboarding_open = true;
                 this.onboarding.update(cx, |dialog, cx| dialog.opened(open.0, cx));
@@ -814,6 +830,8 @@ impl MainView {
             screening_open: false,
             onboarding,
             onboarding_open: false,
+            events,
+            events_open: false,
             interaction_modal,
             interaction_modal_open: false,
             forward,
@@ -2610,6 +2628,9 @@ impl MainView {
         let mut list = div().flex().flex_col().gap(px(2.)).p_2();
         match self.guild {
             Some(guild) => {
+                if let Some(row) = self.render_events_entry(guild, cx) {
+                    list = list.child(row);
+                }
                 for group in self.group_items(guild, cx) {
                     list = list.child(self.render_group(group, cx));
                 }
@@ -2703,6 +2724,43 @@ impl MainView {
             )
             // Room for the user card, which floats over the bottom of the rail and the list.
             .child(div().h(px(self.user_card_space(cx))).flex_none())
+    }
+
+    /// The "N Events" row above a server's channels, drawn while the server
+    /// has events that are running or still to come.
+    fn render_events_entry(&mut self, guild: Snowflake, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let count = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)?
+            .scheduled_events
+            .iter()
+            .filter(|event| matches!(event.status(), EventStatus::Active | EventStatus::Scheduled))
+            .count();
+        if count == 0 {
+            return None;
+        }
+        Some(
+            div()
+                .id("events-entry")
+                .h(px(32.))
+                .flex()
+                .items_center()
+                .gap_2()
+                .px(px(8.))
+                .rounded(px(theme::RADIUS))
+                .cursor_pointer()
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .text_color(rgb(theme::CHANNELS_DEFAULT))
+                .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.session.update(cx, |_, cx| cx.emit(OpenEvents(guild)));
+                }))
+                .child(icon("calendar", 20., theme::CHANNELS_DEFAULT))
+                .child(format!("{count} Event{}", if count == 1 { "" } else { "s" }))
+                .into_any_element(),
+        )
     }
 
     /// Height the user card takes at the bottom of the rail and the list,
@@ -4323,6 +4381,7 @@ impl Render for MainView {
         let join = self.join_open.then(|| self.join.clone());
         let screening = self.screening_open.then(|| self.screening.clone());
         let onboarding = self.onboarding_open.then(|| self.onboarding.clone());
+        let events = self.events_open.then(|| self.events.clone());
         let interaction_modal = self.interaction_modal_open.then(|| self.interaction_modal.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
@@ -4423,6 +4482,7 @@ impl Render for MainView {
             .children(join)
             .children(screening)
             .children(onboarding)
+            .children(events)
             .children(interaction_modal)
             .children(invite)
             .children(edit_channel)
