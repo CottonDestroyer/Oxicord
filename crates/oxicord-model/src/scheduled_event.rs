@@ -55,6 +55,14 @@ pub struct ScheduledEvent {
     pub recurrence_rule: Option<serde_json::Value>,
 }
 
+/// The answer to `GET .../scheduled-events/:id/users/counts`.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+pub struct EventUserCounts {
+    /// How many people are interested.
+    #[serde(default)]
+    pub guild_scheduled_event_count: u64,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 struct EntityMetadata {
     #[serde(default)]
@@ -117,6 +125,15 @@ mod tests {
         assert!(events[0].image.is_some());
         assert_eq!(events[1].status(), EventStatus::Scheduled);
         assert!(events[1].scheduled_end_time.is_some());
+    }
+
+    #[test]
+    fn the_counts_answer_names_the_interested_total() {
+        let counts: EventUserCounts = serde_json::from_str(
+            r#"{"guild_scheduled_event_count":1108,"guild_scheduled_event_exception_counts":{}}"#,
+        )
+        .unwrap();
+        assert_eq!(counts.guild_scheduled_event_count, 1108);
     }
 
     #[test]

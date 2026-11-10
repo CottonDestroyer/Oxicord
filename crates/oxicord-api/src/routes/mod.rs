@@ -4,6 +4,7 @@ mod account;
 mod admin;
 mod channels;
 mod commands;
+mod events;
 mod gifs;
 mod guilds;
 mod interactions;

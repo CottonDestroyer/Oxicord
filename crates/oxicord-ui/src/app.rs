@@ -225,6 +225,10 @@ impl AppView {
                     main.update(cx, |main, cx| main.apply_onboarding_saved(guild, result, cx));
                 }
             }
+            Event::EventCount { event, result } => {
+                self.session
+                    .update(cx, |session, cx| session.apply_event_count(event, result, cx));
+            }
             Event::Pins { channel, result } => {
                 self.session.update(cx, |session, cx| session.apply_pins(channel, result, cx));
             }

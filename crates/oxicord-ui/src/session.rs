@@ -61,6 +61,8 @@ pub struct Session {
     pub reactors: HashMap<(Snowflake, String, u32), Vec<String>>,
     /// Our nickname per server, as far as we have asked.
     pub own_nicks: HashMap<Snowflake, Option<String>>,
+    /// How many people are interested in an event, once we have asked.
+    pub event_counts: HashMap<Snowflake, u64>,
     /// Pinned messages per channel, loaded when the panel asks.
     pub pins: HashMap<Snowflake, Load<Vec<Message>>>,
     /// Recent mentions for the inbox.
@@ -376,6 +378,7 @@ impl Session {
             connection: ConnectionState::Connecting,
             history_errors: HashMap::new(),
             reactors: HashMap::new(),
+            event_counts: HashMap::new(),
             own_nicks: HashMap::new(),
             notice: None,
             settings,
@@ -1124,6 +1127,15 @@ impl Session {
         });
         cx.notify();
         Some(nonce)
+    }
+
+    /// The answer to [`Command::LoadEventCount`]. A failed ask leaves the
+    /// count unknown, so nothing is drawn for it.
+    pub fn apply_event_count(&mut self, event: Snowflake, result: Result<u64, String>, cx: &mut Context<Self>) {
+        if let Ok(count) = result {
+            self.event_counts.insert(event, count);
+            cx.notify();
+        }
     }
 
     /// An autocomplete request never reached the app.

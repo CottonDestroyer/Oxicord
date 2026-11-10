@@ -700,6 +700,15 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 let _ = events.send(Event::Onboarding { guild, result }).await;
             });
         }
+        Command::LoadEventCount { guild, event } => {
+            tokio::spawn(async move {
+                let result = api.event_user_count(guild, event).await.map_err(|err| {
+                    tracing::debug!(?err, "could not load an event's interested count");
+                    describe_request(&err)
+                });
+                let _ = events.send(Event::EventCount { event, result }).await;
+            });
+        }
         Command::SaveOnboarding { guild, submission } => {
             tokio::spawn(async move {
                 let result = api.update_onboarding(guild, &submission).await.map_err(|err| {

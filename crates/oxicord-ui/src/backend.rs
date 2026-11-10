@@ -376,6 +376,12 @@ pub enum Command {
     LoadOnboarding {
         guild: Snowflake,
     },
+    /// How many people are interested in an event. The answer arrives as
+    /// [`Event::EventCount`].
+    LoadEventCount {
+        guild: Snowflake,
+        event: Snowflake,
+    },
     /// Store the options picked in the Server Guide. The answer arrives as
     /// [`Event::OnboardingSaved`].
     SaveOnboarding {
@@ -504,6 +510,10 @@ pub enum Event {
     OnboardingSaved {
         guild: Snowflake,
         result: Result<oxicord_model::OnboardingUpdate, String>,
+    },
+    EventCount {
+        event: Snowflake,
+        result: Result<u64, String>,
     },
     Voice(VoiceNotice),
 }

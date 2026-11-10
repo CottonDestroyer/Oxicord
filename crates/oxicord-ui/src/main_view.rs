@@ -276,8 +276,8 @@ impl MainView {
             cx.new(|_| OnboardingDialog::new(backend))
         };
         let events = {
-            let (session, media) = (session.clone(), media.clone());
-            cx.new(|_| EventsDialog::new(session, media))
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|_| EventsDialog::new(session, media, backend))
         };
         let interaction_modal = {
             let (session, backend) = (session.clone(), backend.clone());

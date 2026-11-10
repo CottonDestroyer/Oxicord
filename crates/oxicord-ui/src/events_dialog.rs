@@ -12,6 +12,7 @@ use oxicord_media::cdn;
 use oxicord_model::{EventPlace, EventStatus, ScheduledEvent, Snowflake};
 
 use crate::{
+    backend::{Backend, Command},
     chat::markdown::rich,
     icons::icon,
     media::Media,
@@ -48,6 +49,7 @@ struct Detail {
 pub struct EventsDialog {
     session: Entity<Session>,
     media: Entity<Media>,
+    backend: Backend,
     guild: Option<Snowflake>,
     detail: Option<Detail>,
     scroll: ScrollHandle,
@@ -55,10 +57,11 @@ pub struct EventsDialog {
 }
 
 impl EventsDialog {
-    pub fn new(session: Entity<Session>, media: Entity<Media>) -> Self {
+    pub fn new(session: Entity<Session>, media: Entity<Media>, backend: Backend) -> Self {
         Self {
             session,
             media,
+            backend,
             guild: None,
             detail: None,
             scroll: ScrollHandle::new(),
@@ -70,18 +73,50 @@ impl EventsDialog {
         self.guild = Some(guild);
         self.detail = None;
         self.scroll.set_offset(gpui_kit::point(px(0.), px(0.)));
+        self.ask_counts(cx);
         cx.notify();
     }
 
     /// Opens one event's details straight away, with no list behind it.
     pub fn opened_event(&mut self, guild: Snowflake, event: Snowflake, cx: &mut Context<Self>) {
         self.guild = Some(guild);
+        self.ask_counts(cx);
         self.show(event, false, cx);
+    }
+
+    /// Asks how many people are interested in each of the server's events.
+    fn ask_counts(&self, cx: &mut Context<Self>) {
+        let Some(guild) = self.guild else { return };
+        let ids: Vec<Snowflake> = self
+            .session
+            .read(cx)
+            .store
+            .guild(guild)
+            .map(|guild| guild.scheduled_events.iter().map(|event| event.id).collect())
+            .unwrap_or_default();
+        for event in ids {
+            self.backend.send(Command::LoadEventCount { guild, event });
+        }
     }
 
     fn show(&mut self, event: Snowflake, from_list: bool, cx: &mut Context<Self>) {
         self.detail = Some(Detail { event, from_list });
         self.detail_scroll.set_offset(gpui_kit::point(px(0.), px(0.)));
+        // The creator is often someone we have never seen.
+        let creator = self.guild.and_then(|guild| {
+            let session = self.session.read(cx);
+            let creator = session
+                .store
+                .guild(guild)?
+                .scheduled_events
+                .iter()
+                .find(|e| e.id == event)?
+                .creator_id?;
+            session.store.user(creator).is_none().then_some((guild, creator))
+        });
+        if let Some((guild, creator)) = creator {
+            self.backend.send(Command::RequestMembers { guild, ids: vec![creator] });
+        }
         cx.notify();
     }
 
@@ -98,6 +133,7 @@ impl EventsDialog {
 
     fn card(&mut self, event: &ScheduledEvent, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let active = event.status() == EventStatus::Active;
+        let interested = self.session.read(cx).event_counts.get(&event.id).copied();
         let (status_color, status) = if active {
             (theme::STATUS_POSITIVE, "Happening Now".to_owned())
         } else {
@@ -241,16 +277,46 @@ impl EventsDialog {
                             .h(px(20.))
                             .flex()
                             .items_center()
+                            .justify_between()
                             .gap(px(8.))
-                            .child(icon("calendar", 20., status_color))
                             .child(
                                 div()
-                                    .text_size(px(14.))
-                                    .line_height(px(18.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(if active { theme::STATUS_POSITIVE } else { theme::TEXT_BRIGHT }))
-                                    .child(status),
-                            ),
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .child(icon("calendar", 20., status_color))
+                                    .child(
+                                        div()
+                                            .text_size(px(14.))
+                                            .line_height(px(18.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(rgb(if active {
+                                                theme::STATUS_POSITIVE
+                                            } else {
+                                                theme::TEXT_BRIGHT
+                                            }))
+                                            .child(status),
+                                    ),
+                            )
+                            .children(interested.map(|count| {
+                                div()
+                                    .h(px(20.))
+                                    .px(px(8.))
+                                    .flex()
+                                    .flex_none()
+                                    .items_center()
+                                    .gap(px(4.))
+                                    .rounded(px(12.))
+                                    .bg(rgb(0x000000))
+                                    .child(icon("people", 12., theme::TEXT_BRIGHT))
+                                    .child(
+                                        div()
+                                            .text_size(px(14.))
+                                            .line_height(px(18.))
+                                            .text_color(rgb(theme::TEXT_BRIGHT))
+                                            .child(count.to_string()),
+                                    )
+                            })),
                     )
                     .child(
                         div()
@@ -325,7 +391,8 @@ impl EventsDialog {
                 })
         });
 
-        let tab = |label: &'static str, selected: bool| {
+        let interested = self.session.read(cx).event_counts.get(&event.id).copied();
+        let tab = |label: String, selected: bool| {
             div()
                 .flex_none()
                 .flex()
@@ -376,6 +443,13 @@ impl EventsDialog {
         };
         if let Some((glyph, text)) = place {
             rows.push(Self::info_row(icon(glyph, 20., theme::TEXT_MUTED).into_any_element(), Self::info_text(text)));
+        }
+        if let Some(count) = interested {
+            let text = match count {
+                1 => "1 person is interested".to_owned(),
+                n => format!("{} people are interested", thousands(n)),
+            };
+            rows.push(Self::info_row(icon("people", 20., theme::TEXT_MUTED).into_any_element(), Self::info_text(text)));
         }
         let creator = event
             .creator_id
@@ -429,8 +503,11 @@ impl EventsDialog {
                             .flex()
                             .items_start()
                             .gap(px(32.))
-                            .child(tab("Event Info", true))
-                            .child(tab("Interested", false)),
+                            .child(tab("Event Info".to_owned(), true))
+                            .child(tab(
+                                interested.map_or_else(|| "Interested".to_owned(), |count| format!("{count} Interested")),
+                                false,
+                            )),
                     ),
             )
             .child(
@@ -555,6 +632,19 @@ impl EventsDialog {
 /// Where the web client sends people to see an event.
 fn event_link(guild: Snowflake, event: Snowflake) -> String {
     format!("https://discord.com/events/{guild}/{event}")
+}
+
+/// 1108 as "1,108".
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
 }
 
 fn ordinal(day: u32) -> &'static str {
@@ -745,6 +835,12 @@ mod tests {
             .map(|day| ordinal(*day))
             .collect();
         assert_eq!(words, ["st", "nd", "rd", "th", "th", "th", "th", "st", "nd", "rd", "th", "th"]);
+    }
+
+    #[test]
+    fn counts_get_thousands_separators() {
+        let words: Vec<_> = [0, 7, 999, 1000, 1108, 12_345, 1_234_567].iter().map(|n| thousands(*n)).collect();
+        assert_eq!(words, ["0", "7", "999", "1,000", "1,108", "12,345", "1,234,567"]);
     }
 
     #[test]
