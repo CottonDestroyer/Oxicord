@@ -520,6 +520,10 @@ pub enum DispatchEvent {
     RecipientRemove(RecipientChange),
     GuildEmojisUpdate(GuildEmojisUpdate),
     GuildStickersUpdate(GuildStickersUpdate),
+    /// A scheduled event was created or changed. Both carry the whole event.
+    ScheduledEventUpsert(Box<crate::ScheduledEvent>),
+    /// A scheduled event was deleted. The payload is the event as it was.
+    ScheduledEventDelete(Box<crate::ScheduledEvent>),
     ThreadListSync(ThreadListSync),
     ThreadMembersUpdate(ThreadMembersUpdate),
     ThreadMemberUpdate(ThreadMembersUpdate),
@@ -591,6 +595,10 @@ impl DispatchEvent {
             "THREAD_MEMBER_UPDATE" => Self::ThreadMemberUpdate(de(data)?),
             "GUILD_EMOJIS_UPDATE" => Self::GuildEmojisUpdate(de(data)?),
             "GUILD_STICKERS_UPDATE" => Self::GuildStickersUpdate(de(data)?),
+            "GUILD_SCHEDULED_EVENT_CREATE" | "GUILD_SCHEDULED_EVENT_UPDATE" => {
+                Self::ScheduledEventUpsert(Box::new(de(data)?))
+            }
+            "GUILD_SCHEDULED_EVENT_DELETE" => Self::ScheduledEventDelete(Box::new(de(data)?)),
             "TYPING_START" => Self::TypingStart(de(data)?),
             "GUILD_MEMBER_LIST_UPDATE" => Self::GuildMemberListUpdate(Box::new(de(data)?)),
             "INTERACTION_CREATE" => Self::InteractionCreate(de(data)?),

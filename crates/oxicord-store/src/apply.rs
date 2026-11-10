@@ -1,5 +1,6 @@
 use oxicord_model::{
-    Activity, Emoji, Message, PartialMessage, Reaction, ReadState, Relationship, Snowflake, Status,
+    Activity, Emoji, Message, PartialMessage, Reaction, ReadState, Relationship, ScheduledEvent,
+    Snowflake, Status,
     gateway::{
         DispatchEvent, GuildDelete, GuildMemberUpdate, GuildRoleDelete, GuildRoleEvent,
         MemberListUpdate, MessageAck, MessageDelete, MessageDeleteBulk, PresenceUpdate,
@@ -116,6 +117,8 @@ impl Store {
                     guild.stickers = e.stickers;
                 }
             }
+            DispatchEvent::ScheduledEventUpsert(event) => self.on_scheduled_event(*event, false, &mut changes),
+            DispatchEvent::ScheduledEventDelete(event) => self.on_scheduled_event(*event, true, &mut changes),
             DispatchEvent::ThreadListSync(sync) => self.on_thread_list_sync(sync, &mut changes),
             DispatchEvent::ThreadMembersUpdate(u) => self.on_thread_members(u, false, &mut changes),
             DispatchEvent::ThreadMemberUpdate(u) => self.on_thread_members(u, true, &mut changes),
@@ -598,6 +601,23 @@ impl Store {
         }
         changes.guild_list = true;
         changes.channel_lists.insert(update.id);
+    }
+
+    /// Adds, replaces or drops one of a server's scheduled events. The sidebar
+    /// row that counts them lives in the channel list.
+    fn on_scheduled_event(&mut self, event: ScheduledEvent, deleted: bool, changes: &mut Changes) {
+        let Some(guild) = self.guilds.get_mut(&event.guild_id) else { return };
+        let guild_id = event.guild_id;
+        let slot = guild.scheduled_events.iter().position(|old| old.id == event.id);
+        match (slot, deleted) {
+            (Some(at), true) => {
+                guild.scheduled_events.remove(at);
+            }
+            (Some(at), false) => guild.scheduled_events[at] = event,
+            (None, false) => guild.scheduled_events.push(event),
+            (None, true) => return,
+        }
+        changes.channel_lists.insert(guild_id);
     }
 
     fn on_guild_delete(&mut self, delete: GuildDelete, changes: &mut Changes) {

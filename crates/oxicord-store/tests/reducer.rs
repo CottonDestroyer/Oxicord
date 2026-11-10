@@ -1227,3 +1227,42 @@ fn message_requests_stay_out_of_the_dm_list() {
     store.apply(event("READY", serde_json::from_str(ready).unwrap()));
     assert_eq!(store.message_requests().len(), 1);
 }
+
+fn scheduled_event(id: u64, name: &str) -> Value {
+    json!({
+        "id": id.to_string(), "guild_id": "100", "name": name, "status": 1,
+        "scheduled_start_time": "2026-12-01T19:00:00+00:00", "entity_type": 3,
+        "entity_metadata": { "location": "somewhere" }
+    })
+}
+
+#[test]
+fn scheduled_events_follow_the_gateway() {
+    let mut store = Store::new();
+    store.apply(event("READY", ready_json()));
+    assert!(store.guild(id(GUILD)).unwrap().scheduled_events.is_empty());
+
+    let changes = store.apply(event("GUILD_SCHEDULED_EVENT_CREATE", scheduled_event(7, "raid")));
+    assert!(changes.channel_lists.contains(&id(GUILD)));
+    store.apply(event("GUILD_SCHEDULED_EVENT_CREATE", scheduled_event(8, "movie")));
+    assert_eq!(store.guild(id(GUILD)).unwrap().scheduled_events.len(), 2);
+
+    // An update replaces the event in place instead of adding a second one.
+    store.apply(event("GUILD_SCHEDULED_EVENT_UPDATE", scheduled_event(7, "raid night")));
+    let events = &store.guild(id(GUILD)).unwrap().scheduled_events;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].name, "raid night");
+
+    store.apply(event("GUILD_SCHEDULED_EVENT_DELETE", scheduled_event(7, "raid night")));
+    let events = &store.guild(id(GUILD)).unwrap().scheduled_events;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].id, id(8));
+
+    // Deleting what we never had, or an event of a server we lack, is quiet.
+    let changes = store.apply(event("GUILD_SCHEDULED_EVENT_DELETE", scheduled_event(99, "ghost")));
+    assert!(changes.channel_lists.is_empty());
+    let mut stranger = scheduled_event(5, "elsewhere");
+    stranger["guild_id"] = json!("555");
+    store.apply(event("GUILD_SCHEDULED_EVENT_CREATE", stranger));
+    assert_eq!(store.guild(id(GUILD)).unwrap().scheduled_events.len(), 1);
+}
