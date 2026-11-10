@@ -496,7 +496,25 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       differences: no RSVP pill or interested avatars yet (counts come with
       the RSVP item), the sidebar "Happening Now" card above the channel list
       is not drawn, and the "..." and Interested buttons do nothing yet.
-- [ ] Event details modal
+- [x] Event details modal, opened by clicking a card in the Events modal and
+      closing back to the list. 680 wide frame (radius 12, height the window
+      minus 155, max 952, 8 top and 16 bottom padding), a 40 by 40 close
+      button, the 20/24 weight 600 title, a 630 by 240 cover (radius 8), the
+      Event Info and Interested tabs (16/20 weight 500, 32 apart, a 2 px
+      track with a brand underline on the active one), the date row (blue
+      calendar and "Fri Nov 20th · 7:00 PM, a dash, Fri Dec 4th · 7:00 PM", or
+      green "Happening Now" for a running event), the name again, a 28 pitch
+      info list (server with its icon, location or voice channel), the
+      markdown description and a footer with a 40 high "...", Copy Link and
+      Interested (not on a running event). Values from the live DOM and
+      screenshots/reference/event_details_modal.png and
+      event_details_active.png; port capture screenshots/port/
+      event_details.png at 1920 x 1080. Remaining differences: the "people
+      are interested" and "Created by" rows need the counts and a user
+      lookup (next item), the Interested tab is not clickable yet, list
+      items sit closer together than the web client's markdown, and the
+      sidebar "Happening Now" card with its Event Details button is not
+      drawn (`EventsDialog::opened_event` is ready for it).
 - [ ] RSVP (interested) and its count (confirm endpoint)
 - [ ] Live updates: `GUILD_SCHEDULED_EVENT_CREATE`, `_UPDATE`, `_DELETE`,
       `_USER_ADD`, `_USER_REMOVE`

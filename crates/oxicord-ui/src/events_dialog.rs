@@ -27,6 +27,9 @@ const UPCOMING: u32 = 0x6374f4;
 const CARD_BORDER: u32 = 0x303135;
 const FRAME_WIDTH: f32 = 604.;
 const FRAME_HEIGHT: f32 = 802.;
+const DETAIL_WIDTH: f32 = 680.;
+const DETAIL_HEIGHT: f32 = 952.;
+const DETAIL_COVER_HEIGHT: f32 = 240.;
 const COVER_HEIGHT: f32 = 120.;
 /// The description stops after four 18 high lines.
 const DESCRIPTION_HEIGHT: f32 = 72.;
@@ -35,26 +38,62 @@ pub struct CloseEvents;
 
 impl EventEmitter<CloseEvents> for EventsDialog {}
 
+/// The event whose details are open, and whether the list sits behind it.
+#[derive(Clone, Copy)]
+struct Detail {
+    event: Snowflake,
+    from_list: bool,
+}
+
 pub struct EventsDialog {
     session: Entity<Session>,
     media: Entity<Media>,
     guild: Option<Snowflake>,
+    detail: Option<Detail>,
     scroll: ScrollHandle,
+    detail_scroll: ScrollHandle,
 }
 
 impl EventsDialog {
     pub fn new(session: Entity<Session>, media: Entity<Media>) -> Self {
-        Self { session, media, guild: None, scroll: ScrollHandle::new() }
+        Self {
+            session,
+            media,
+            guild: None,
+            detail: None,
+            scroll: ScrollHandle::new(),
+            detail_scroll: ScrollHandle::new(),
+        }
     }
 
     pub fn opened(&mut self, guild: Snowflake, cx: &mut Context<Self>) {
         self.guild = Some(guild);
+        self.detail = None;
         self.scroll.set_offset(gpui_kit::point(px(0.), px(0.)));
         cx.notify();
     }
 
+    /// Opens one event's details straight away, with no list behind it.
+    pub fn opened_event(&mut self, guild: Snowflake, event: Snowflake, cx: &mut Context<Self>) {
+        self.guild = Some(guild);
+        self.show(event, false, cx);
+    }
+
+    fn show(&mut self, event: Snowflake, from_list: bool, cx: &mut Context<Self>) {
+        self.detail = Some(Detail { event, from_list });
+        self.detail_scroll.set_offset(gpui_kit::point(px(0.), px(0.)));
+        cx.notify();
+    }
+
+    /// Closes the details and shows the list again, or closes the whole modal.
     fn close(&mut self, cx: &mut Context<Self>) {
-        cx.emit(CloseEvents);
+        match self.detail {
+            Some(Detail { from_list: true, .. }) => {
+                self.detail = None;
+                cx.notify();
+            }
+            _ => cx.emit(CloseEvents),
+        }
     }
 
     fn card(&mut self, event: &ScheduledEvent, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -180,6 +219,7 @@ impl EventsDialog {
             );
 
         div()
+            .id(ElementId::Name(format!("event-card-{id}").into()))
             .w_full()
             .flex_none()
             .flex()
@@ -188,6 +228,8 @@ impl EventsDialog {
             .border_1()
             .border_color(rgb(CARD_BORDER))
             .bg(rgb(theme::BG_CARD))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.show(id, true, cx)))
             .children(cover)
             .child(
                 div()
@@ -227,6 +269,289 @@ impl EventsDialog {
     }
 }
 
+impl EventsDialog {
+    /// One line of the info list: a 20 high glyph or picture, then text.
+    fn info_row(glyph: AnyElement, text: AnyElement) -> AnyElement {
+        div()
+            .h(px(20.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(glyph)
+            .child(text)
+            .into_any_element()
+    }
+
+    fn info_text(text: impl Into<SharedString>) -> AnyElement {
+        div()
+            .text_size(px(14.))
+            .line_height(px(18.))
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .child(text.into())
+            .into_any_element()
+    }
+
+    /// The details of one event, over the list when it was opened from there.
+    fn details(&mut self, event: &ScheduledEvent, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let active = event.status() == EventStatus::Active;
+        let when = if active {
+            "Happening Now".to_owned()
+        } else {
+            let start = start_label(&event.scheduled_start_time.with_timezone(&Local));
+            match event.scheduled_end_time {
+                Some(end) => format!("{start} \u{2014} {}", start_label(&end.with_timezone(&Local))),
+                None => start,
+            }
+        };
+
+        let cover = event.image.as_deref().map(|hash| {
+            let url = cdn::event_cover(event.id, hash, 1024);
+            let image = self.media.update(cx, |media, _| media.get(&url));
+            div()
+                .h(px(DETAIL_COVER_HEIGHT))
+                .w_full()
+                .flex_none()
+                .overflow_hidden()
+                .rounded(px(8.))
+                .bg(rgb(theme::BG_CARD))
+                .when_some(image, |cover, image| {
+                    cover.child(
+                        img(gpui_kit::ImageSource::Image(image))
+                            .w_full()
+                            .h(px(DETAIL_COVER_HEIGHT))
+                            .rounded(px(8.))
+                            .object_fit(ObjectFit::Cover),
+                    )
+                })
+        });
+
+        let tab = |label: &'static str, selected: bool| {
+            div()
+                .flex_none()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .h(px(20.))
+                        .text_size(px(16.))
+                        .line_height(px(20.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .mt(px(14.))
+                        .h(px(2.))
+                        .w_full()
+                        .rounded_full()
+                        .when(selected, |bar| bar.bg(rgb(theme::ACCENT))),
+                )
+        };
+
+        let mut rows = Vec::new();
+        let guild = self.session.read(cx).store.guild(event.guild_id).map(|g| (g.name.clone(), g.icon.clone()));
+        if let Some((name, icon_hash)) = guild {
+            let image = icon_hash.and_then(|hash| {
+                let url = cdn::guild_icon(event.guild_id, &hash, 40);
+                self.media.update(cx, |media, _| media.get(&url))
+            });
+            let badge = div()
+                .size(px(20.))
+                .flex_none()
+                .overflow_hidden()
+                .rounded(px(6.))
+                .bg(rgb(theme::ACCENT))
+                .when_some(image, |badge, image| {
+                    badge.child(img(gpui_kit::ImageSource::Image(image)).size_full().rounded(px(6.)))
+                });
+            rows.push(Self::info_row(badge.into_any_element(), Self::info_text(name)));
+        }
+        let place = match event.place() {
+            EventPlace::External => event.location().map(|text| ("location-pin", text.to_owned())),
+            EventPlace::Voice | EventPlace::Stage => event
+                .channel_id
+                .and_then(|channel| self.session.read(cx).store.channel(channel).and_then(|c| c.name.clone()))
+                .map(|name| ("volume-2", name)),
+        };
+        if let Some((glyph, text)) = place {
+            rows.push(Self::info_row(icon(glyph, 20., theme::TEXT_MUTED).into_any_element(), Self::info_text(text)));
+        }
+        let creator = event
+            .creator_id
+            .and_then(|id| self.session.read(cx).store.user(id).cloned());
+        if let Some(user) = creator {
+            let url = cdn::user_avatar(user.id, user.avatar.as_deref(), 40);
+            let avatar = crate::media::avatar(&self.media, &url, 20., user.display_name(), cx).into_any_element();
+            rows.push(Self::info_row(avatar, Self::info_text(format!("Created by {}", user.display_name()))));
+        }
+
+        let key = event.id.0 ^ 0xDE7A;
+        let description = event
+            .description
+            .as_deref()
+            .filter(|text| !text.trim().is_empty())
+            .map(|text| {
+                let names = Default::default();
+                div()
+                    .mt(px(16.))
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(rich(text, key, &self.media, &names, window, cx))
+            });
+
+        let (guild_id, id) = (event.guild_id, event.id);
+        let content = div()
+            .px(px(24.))
+            .pt(px(16.))
+            .pb(px(32.))
+            .flex()
+            .flex_col()
+            .children(cover)
+            .child(
+                div()
+                    .mt(px(16.))
+                    .relative()
+                    .w_full()
+                    .child(
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .left_0()
+                            .right_0()
+                            .h(px(2.))
+                            .rounded_full()
+                            .bg(rgb(theme::MODAL_BORDER)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(px(32.))
+                            .child(tab("Event Info", true))
+                            .child(tab("Interested", false)),
+                    ),
+            )
+            .child(
+                div()
+                    .mt(px(28.))
+                    .h(px(20.))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(icon("calendar", 20., if active { theme::STATUS_POSITIVE } else { UPCOMING }))
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .line_height(px(18.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(when),
+                    ),
+            )
+            .child(
+                div()
+                    .mt(px(16.))
+                    .text_size(px(20.))
+                    .line_height(px(24.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(event.name.clone()),
+            )
+            .child(div().mt(px(16.)).flex().flex_col().gap(px(8.)).children(rows))
+            .children(description);
+
+        let footer = div()
+            .flex_none()
+            .px(px(24.))
+            .pt(px(16.))
+            .flex()
+            .items_center()
+            .justify_end()
+            .gap(px(8.))
+            .child(sized_button(
+                ElementId::Name(format!("event-detail-more-{id}").into()),
+                None,
+                "ellipsis",
+                true,
+                |_: &ClickEvent, _, _| {},
+            ))
+            .child(sized_button(
+                ElementId::Name(format!("event-detail-copy-{id}").into()),
+                Some("Copy Link"),
+                "link",
+                true,
+                move |_: &ClickEvent, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(event_link(guild_id, id)));
+                },
+            ))
+            .when(!active, |footer| {
+                footer.child(sized_button(
+                    ElementId::Name(format!("event-detail-interested-{id}").into()),
+                    Some("Interested"),
+                    "bell",
+                    true,
+                    |_: &ClickEvent, _, _| {},
+                ))
+            });
+
+        let height = (window.viewport_size().height - px(155.)).min(px(DETAIL_HEIGHT));
+        div()
+            .id("event-details")
+            .occlude()
+            .w(px(DETAIL_WIDTH))
+            .h(height)
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .rounded(px(12.))
+            .border_1()
+            .border_color(rgb(theme::BORDER_OVERLAY))
+            .bg(rgb(theme::BG_PANEL))
+            .pt(px(8.))
+            .pb(px(16.))
+            .child(
+                div()
+                    .flex_none()
+                    .px(px(24.))
+                    .h(px(40.))
+                    .flex()
+                    .items_start()
+                    .justify_between()
+                    .child(
+                        div()
+                            .mt(px(16.))
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(20.))
+                            .line_height(px(24.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child(event.name.clone()),
+                    )
+                    .child(
+                        div()
+                            .id("close-event-details")
+                            .size(px(40.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(8.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.close(cx)))
+                            .child(icon("x", 20., theme::TEXT_MUTED)),
+                    ),
+            )
+            .child(scroll::vertical("event-details-body", &self.detail_scroll, content))
+            .child(footer)
+            .into_any_element()
+    }
+}
+
 /// Where the web client sends people to see an event.
 fn event_link(guild: Snowflake, event: Snowflake) -> String {
     format!("https://discord.com/events/{guild}/{event}")
@@ -256,18 +581,34 @@ where
     )
 }
 
-/// A 32 high secondary button: just a glyph, or a glyph and its label.
+/// A secondary button: just a glyph, or a glyph and its label. Small ones sit
+/// in a card (32 high), large ones under the details (40 high).
 fn button(
     id: ElementId,
     label: Option<&'static str>,
     glyph: &'static str,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut gpui_kit::App) + 'static,
 ) -> AnyElement {
+    sized_button(id, label, glyph, false, on_click)
+}
+
+fn sized_button(
+    id: ElementId,
+    label: Option<&'static str>,
+    glyph: &'static str,
+    large: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut gpui_kit::App) + 'static,
+) -> AnyElement {
+    let (height, glyph_size, text_size, line) = if large { (40., 20., 16., 20.) } else { (32., 16., 14., 18.) };
     div()
         .id(id)
-        .h(px(32.))
-        .min_w(px(32.))
-        .px(px(if label.is_some() { 12. } else { 0. }))
+        .h(px(height))
+        .min_w(px(height))
+        .px(px(match (label.is_some(), large) {
+            (false, _) => 0.,
+            (true, true) => 15.,
+            (true, false) => 11.,
+        }))
         .flex()
         .flex_none()
         .items_center()
@@ -279,12 +620,16 @@ fn button(
         .bg(rgb(theme::SECONDARY))
         .cursor_pointer()
         .hover(|s| s.bg(rgb(theme::SECONDARY_HOVER)))
-        .on_click(on_click)
-        .child(icon(glyph, 16., theme::TEXT_BRIGHT))
+        .on_click(move |event, window, cx| {
+            // The card behind opens its details on a click.
+            cx.stop_propagation();
+            on_click(event, window, cx);
+        })
+        .child(icon(glyph, glyph_size, theme::TEXT_BRIGHT))
         .children(label.map(|text| {
             div()
-                .text_size(px(14.))
-                .line_height(px(18.))
+                .text_size(px(text_size))
+                .line_height(px(line))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(rgb(theme::TEXT_BRIGHT))
                 .child(text)
@@ -302,6 +647,13 @@ impl Render for EventsDialog {
         events.retain(|event| matches!(event.status(), EventStatus::Active | EventStatus::Scheduled));
         // What is on now comes first, then by start.
         events.sort_by_key(|event| (event.status() != EventStatus::Active, event.scheduled_start_time));
+
+        if let Some(detail) = self.detail
+            && let Some(event) = events.iter().find(|event| event.id == detail.event)
+        {
+            let frame = self.details(event, window, cx);
+            return modal(frame, Box::new(cx.listener(|this, _: &ClickEvent, _, cx| this.close(cx))));
+        }
 
         let title = format!("{} Event{}", events.len(), if events.len() == 1 { "" } else { "s" });
         let mut list = div().px(px(24.)).pt(px(8.)).pb(px(24.)).flex().flex_col().gap(px(16.));
