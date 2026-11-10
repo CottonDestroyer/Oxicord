@@ -149,6 +149,8 @@ pub enum Tone {
     Primary,
     Plain,
     Danger,
+    /// The live client's filled red button, for the one that cannot be undone.
+    DangerFilled,
 }
 
 pub fn button(
@@ -161,6 +163,7 @@ pub fn button(
         Tone::Primary => (theme::ACCENT, theme::ACCENT, theme::TEXT_BRIGHT),
         Tone::Plain => (theme::BG_ACTIVE, theme::BG_ACTIVE, theme::TEXT_BRIGHT),
         Tone::Danger => (theme::BG_PANEL, theme::DANGER, theme::DANGER),
+        Tone::DangerFilled => (0xd22d39, 0xd22d39, 0xffffff),
     };
     // The wrapper keeps the button its natural width inside a column.
     div()

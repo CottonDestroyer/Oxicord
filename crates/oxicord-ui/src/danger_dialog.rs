@@ -25,12 +25,14 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Danger {
     DisableAccount,
+    DeleteAccount,
 }
 
 impl Danger {
     fn title(self) -> &'static str {
         match self {
             Self::DisableAccount => "Disable account",
+            Self::DeleteAccount => "Delete account",
         }
     }
 
@@ -40,30 +42,36 @@ impl Danger {
                 "Are you sure that you want to disable your account? This will immediately log you out and make \
                  your account inaccessible to anyone."
             }
+            Self::DeleteAccount => {
+                "Are you sure that you want to delete your account? This will immediately log you out of your \
+                 account and you will not be able to log in again."
+            }
         }
     }
 
     fn label(self) -> &'static str {
         match self {
-            Self::DisableAccount => "Password",
+            Self::DisableAccount | Self::DeleteAccount => "Password",
         }
     }
 
     fn button(self) -> &'static str {
         match self {
             Self::DisableAccount => "Disable Account",
+            Self::DeleteAccount => "Delete Account",
         }
     }
 
     fn missing(self) -> &'static str {
         match self {
-            Self::DisableAccount => "Enter your password to go on.",
+            Self::DisableAccount | Self::DeleteAccount => "Enter your password to go on.",
         }
     }
 
     fn request(self, secret: String) -> AccountRequest {
         match self {
             Self::DisableAccount => AccountRequest::DisableAccount { password: secret },
+            Self::DeleteAccount => AccountRequest::DeleteAccount { password: secret },
         }
     }
 }
@@ -266,5 +274,15 @@ mod tests {
             panic!("wrong request");
         };
         assert_eq!(password, "hunter2");
+    }
+
+    #[test]
+    fn deleting_the_account_sends_the_password_too() {
+        let AccountRequest::DeleteAccount { password } = Danger::DeleteAccount.request("hunter2".into()) else {
+            panic!("wrong request");
+        };
+        assert_eq!(password, "hunter2");
+        assert_eq!(Danger::DeleteAccount.title(), "Delete account");
+        assert!(Danger::DeleteAccount.warning().contains("delete your account"));
     }
 }

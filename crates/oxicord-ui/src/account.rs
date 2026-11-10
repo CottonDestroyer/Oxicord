@@ -52,6 +52,8 @@ pub enum AccountRequest {
     /// Disable the account. It ends the session, so the answer is a sign-out
     /// when it works and [`AccountEvent::DangerDone`] when it does not.
     DisableAccount { password: String },
+    /// Delete the account for good. Ends the session like a disable.
+    DeleteAccount { password: String },
     LoadSessions,
     LogoutOtherSessions,
     LoadNotificationCenter,

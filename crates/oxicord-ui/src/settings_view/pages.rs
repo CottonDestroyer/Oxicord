@@ -339,6 +339,14 @@ impl SettingsView {
                 session_for_disable.update(cx, |_, cx| cx.emit(OpenDanger(Danger::DisableAccount)));
             }),
         );
+        let session_for_delete = self.session.clone();
+        let delete_row = danger_row(
+            "Close your account",
+            "Permanently close your account.",
+            button("delete-account", "Delete Account", Tone::DangerFilled, move |_, _, cx| {
+                session_for_delete.update(cx, |_, cx| cx.emit(OpenDanger(Danger::DeleteAccount)));
+            }),
+        );
         div()
             .flex()
             .flex_col()
@@ -347,7 +355,7 @@ impl SettingsView {
             .child(header)
             .child(group("Display name", vec![name_row]))
             .child(group("Account", contact))
-            .child(group("Account status", vec![disable_row]))
+            .child(group("Account status", vec![disable_row, delete_row]))
             .child(group(
                 "Session",
                 vec![div()

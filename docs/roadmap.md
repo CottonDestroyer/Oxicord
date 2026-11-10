@@ -656,7 +656,26 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Remaining differences: the focused field keeps gpui's border, the
       warning box wraps its text one word earlier than live, and the live page
       lists the disable and delete rows at the very bottom with no heading.
-- [ ] Delete account dialog
+- [x] Delete account dialog, the second kind of the shared `DangerDialog`.
+      The live "Delete account" modal (stable 670026, measured without
+      submitting) has the same 480 by 350 frame and offsets as Disable account
+      with the title "Delete account", the warning "Are you sure that you want
+      to delete your account? This will immediately log you out of your
+      account and you will not be able to log in again." and a red "Delete
+      Account" button. The My Account page's "Account status" group gains the
+      live "Close your account / Permanently close your account." row with the
+      filled red `Tone::DangerFilled` button (#d22d39). Confirm checks a
+      password was typed, then sends `POST /users/@me/delete` with
+      `{password}` (module 631670); success forgets the saved login and returns
+      to sign-in through the same `end_session` path as disable, a failure
+      shows on the dialog. Request kind and wording unit tested, body shared
+      with disable and tested; never sent from the real account (account
+      writes rule). Verified in the port: frame 365 to 715 like the live one,
+      and Confirm on an empty field shows "Enter your password to go on."
+      without sending. Captures: screenshots/reference/delete_account_dialog.png
+      and screenshots/port/delete_account_dialog.png, delete_account_error.png.
+      Remaining differences: the focused field keeps gpui's border, and the
+      warning box wraps its text one word earlier than live.
 
 ## Phase 7: server admin (test server only)
 

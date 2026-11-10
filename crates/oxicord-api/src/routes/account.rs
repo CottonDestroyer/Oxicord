@@ -199,6 +199,19 @@ impl ApiClient {
         .await
     }
 
+    /// Closes the account for good, proven with the password. Gated by the
+    /// account-write rule: built and unit tested, never sent from the real
+    /// account.
+    pub async fn delete_account(&self, password: &str) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            "/users/@me/delete",
+            "POST /users/@me/delete",
+            Some(&proof_body(password)),
+        )
+        .await
+    }
+
     /// Removes a linked connection.
     pub async fn remove_connection(&self, kind: &str, id: &str) -> Result<(), ApiError> {
         self.empty(
@@ -305,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn disabling_the_account_proves_it_with_the_password() {
+    fn disabling_or_deleting_the_account_proves_it_with_the_password() {
         assert_eq!(proof_body("hunter2"), json!({ "password": "hunter2" }));
     }
 

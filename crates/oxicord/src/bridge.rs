@@ -1018,6 +1018,25 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         AdminRequest::DeleteChannel(channel) => check(api.close_channel(channel).await, "delete that channel").await,
     }
 }
+/// What follows disabling or deleting the account: the token is dead, so a
+/// success forgets the saved login and returns to sign-in, and a failure goes
+/// back to the dialog.
+async fn end_session(result: Result<(), ApiError>, events: &Sender<Event>) {
+    match result {
+        Ok(()) => {
+            credentials::clear();
+            let _ = events.send(Event::Account(AccountEvent::DangerDone(Ok(())))).await;
+            let _ = events.send(Event::LoggedOut).await;
+        }
+        Err(err) => {
+            tracing::warn!(?err, "could not end the account");
+            let _ = events
+                .send(Event::Account(AccountEvent::DangerDone(Err(describe_request(&err)))))
+                .await;
+        }
+    }
+}
+
 /// Runs one account request and reports what the screens need to refresh.
 async fn account_request(api: &ApiClient, request: AccountRequest, events: &Sender<Event>) {
     let say = |event| async move {
@@ -1055,14 +1074,12 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
         }
         // The token stops working with the account, so success ends the
         // session here: the saved login goes and the screen returns to sign-in.
-        AccountRequest::DisableAccount { password } => match api.disable_account(&password).await {
-            Ok(()) => {
-                credentials::clear();
-                say(AccountEvent::DangerDone(Ok(()))).await;
-                let _ = events.send(Event::LoggedOut).await;
-            }
-            Err(err) => say(AccountEvent::DangerDone(Err(describe_request(&err)))).await,
-        },
+        AccountRequest::DisableAccount { password } => {
+            end_session(api.disable_account(&password).await, events).await;
+        }
+        AccountRequest::DeleteAccount { password } => {
+            end_session(api.delete_account(&password).await, events).await;
+        }
         // Needs the sign-in channel, so `run` takes it before it gets here.
         AccountRequest::ChangePassword { .. } | AccountRequest::EnableTotp { .. } => {}
         AccountRequest::AuthorizeConnection(kind) => match api.connection_authorize_url(&kind).await {
