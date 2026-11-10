@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{Context, EventEmitter, Pixels, Point};
 use oxicord_gateway::{ClientStatus, ConnectionState, GatewayEvent};
-use oxicord_model::{Channel, InteractionModal, Message, Profile, SavedMessage, SearchPage, Snowflake, ThreadPage, gateway::DispatchEvent};
+use oxicord_model::{AutocompleteChoice, Channel, InteractionModal, Message, Profile, SavedMessage, SearchPage, SlashCommand, Snowflake, ThreadPage, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 
 use crate::{
@@ -46,6 +46,8 @@ pub struct Session {
     pub interaction_modal: Option<InteractionModal>,
     /// The nonce of a modal submit we are waiting on.
     modal_submit: Option<String>,
+    /// Autocomplete requests in flight, by nonce: the channel and option.
+    autocomplete: HashMap<String, (Snowflake, String)>,
     pub connection: ConnectionState,
     /// Channels whose last history request failed, with the reason to show.
     pub history_errors: HashMap<Snowflake, String>,
@@ -263,6 +265,15 @@ pub struct ModalSubmitFinished {
 
 impl EventEmitter<ModalSubmitFinished> for Session {}
 
+/// A bot's answer to an autocomplete request, or the request's failure.
+pub struct AutocompleteDone {
+    pub nonce: String,
+    pub choices: Vec<AutocompleteChoice>,
+    pub failed: bool,
+}
+
+impl EventEmitter<AutocompleteDone> for Session {}
+
 /// Someone wants to edit this channel (name and topic), from its sidebar row.
 pub struct OpenChannelSettings(pub Snowflake);
 
@@ -378,6 +389,7 @@ impl Session {
             interactions: HashMap::new(),
             interaction_modal: None,
             modal_submit: None,
+            autocomplete: HashMap::new(),
             invite_joined: None,            created_invite: Load::Idle,
             previews: HashMap::new(),
             jump_target: None,
@@ -1078,6 +1090,49 @@ impl Session {
         self.fail_modal_submit(nonce, cx);
     }
 
+    /// Asks a bot for the live choices of one option. False when the channel
+    /// has no gateway session to quote.
+    pub fn request_autocomplete(
+        &mut self,
+        backend: &Backend,
+        channel: Snowflake,
+        command: SlashCommand,
+        focused: String,
+        query: String,
+        answers: Vec<(String, u8, serde_json::Value)>,
+        cx: &mut Context<Self>,
+    ) -> Option<String> {
+        let session_id = self.store.session_id().map(str::to_owned)?;
+        let guild = self.store.channel(channel).and_then(|channel| channel.guild_id);
+        let nonce = Snowflake::nonce().to_string();
+        self.autocomplete
+            .insert(nonce.clone(), (channel, focused.clone()));
+        backend.send(Command::Autocomplete {
+            guild,
+            channel,
+            session_id,
+            command,
+            focused,
+            query,
+            answers,
+            nonce: nonce.clone(),
+        });
+        cx.notify();
+        Some(nonce)
+    }
+
+    /// An autocomplete request never reached the app.
+    pub fn apply_autocomplete_failed(&mut self, nonce: &str, cx: &mut Context<Self>) {
+        if self.autocomplete.remove(nonce).is_some() {
+            cx.emit(AutocompleteDone {
+                nonce: nonce.to_owned(),
+                choices: Vec::new(),
+                failed: true,
+            });
+            cx.notify();
+        }
+    }
+
     pub fn handle(&mut self, backend: &Backend, event: GatewayEvent, cx: &mut Context<Self>) {
         match event {
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data })
@@ -1156,10 +1211,33 @@ impl Session {
                 if let Some(nonce) = event.nonce {
                     if self.modal_submit.as_deref() == Some(nonce.as_str()) {
                         self.fail_modal_submit(&nonce, cx);
+                    } else if self.autocomplete.remove(&nonce).is_some() {
+                        eprintln!(
+                            "autocomplete interaction failed: reason={:?} message={:?}",
+                            event.reason_code, event.error_message
+                        );
+                        cx.emit(AutocompleteDone {
+                            nonce,
+                            choices: Vec::new(),
+                            failed: true,
+                        });
+                        cx.notify();
                     } else if let Some(entry) = self.interactions.get_mut(&nonce) {
                         entry.state = InteractionState::Failed;
                         cx.notify();
                     }
+                }
+            }
+            GatewayEvent::Dispatch(DispatchEvent::AutocompleteResponse(response)) => {
+                if let Some(nonce) = response.nonce
+                    && self.autocomplete.remove(&nonce).is_some()
+                {
+                    cx.emit(AutocompleteDone {
+                        nonce,
+                        choices: response.choices,
+                        failed: false,
+                    });
+                    cx.notify();
                 }
             }
             GatewayEvent::Dispatch(DispatchEvent::InteractionModalCreate(modal)) => {

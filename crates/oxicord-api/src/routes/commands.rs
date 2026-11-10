@@ -78,6 +78,71 @@ impl ApiClient {
         self.empty(Method::POST, "/interactions", "POST /interactions", Some(&run_body(run)))
             .await
     }
+
+    /// Asks a bot for an option's live choices.
+    pub async fn autocomplete(&self, request: &AutocompleteRequest) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            "/interactions",
+            "POST /interactions",
+            Some(&autocomplete_body(request)),
+        )
+        .await
+    }
+}
+
+/// A request for the choices of an option a bot fills in live.
+#[derive(Clone, Debug)]
+pub struct AutocompleteRequest {
+    pub guild: Option<Snowflake>,
+    pub channel: Snowflake,
+    pub session_id: String,
+    pub command: SlashCommand,
+    /// The option being typed in.
+    pub focused: String,
+    /// What has been typed there so far.
+    pub query: String,
+    /// The other options already filled in, as name, kind and value.
+    pub answers: Vec<(String, u8, Value)>,
+    pub nonce: String,
+}
+
+/// The request body for an autocomplete request.
+pub fn autocomplete_body(request: &AutocompleteRequest) -> Value {
+    let mut answers = request.answers.clone();
+    if !answers.iter().any(|(name, _, _)| name == &request.focused) {
+        let kind = request
+            .command
+            .options
+            .iter()
+            .find(|option| option.name == request.focused)
+            .map_or(3, |option| option.kind);
+        answers.push((request.focused.clone(), kind, json!(request.query)));
+    }
+    let mut data = json!({
+        "version": request.command.version,
+        "id": request.command.id.to_string(),
+        "name": request.command.root_name,
+        "type": 1,
+        "options": request.command.autocomplete_options(&answers, &request.focused),
+        "application_command": request.command.root,
+    });
+    if let Some(guild) = request.guild {
+        data["guild_id"] = json!(guild.to_string());
+    }
+    let mut body = json!({
+        // Interaction type 4 is an autocomplete request.
+        "type": 4,
+        "application_id": request.command.application_id.to_string(),
+        "channel_id": request.channel.to_string(),
+        "session_id": request.session_id,
+        "data": data,
+        "nonce": request.nonce,
+    });
+    if let Some(guild) = request.guild {
+        body["guild_id"] = json!(guild.to_string());
+    }
+    body
 }
 
 /// Reads the command index answer: the commands, flattened, and who owns them.
@@ -148,6 +213,43 @@ mod tests {
         assert_eq!(body["data"]["name"], "echo");
         assert_eq!(body["data"]["options"][0]["value"], "hello");
         assert_eq!(body["data"]["application_command"]["version"], "7");
+    }
+
+    #[test]
+    fn an_autocomplete_marks_the_typed_option_focused() {
+        let request = AutocompleteRequest {
+            guild: Some(Snowflake(9)),
+            channel: Snowflake(5),
+            session_id: "s".into(),
+            command: SlashCommand::flatten(&json!({
+                "id": "10", "application_id": "20", "name": "help", "description": "d", "version": "7",
+                "options": [{ "type": 3, "name": "command", "autocomplete": true }]
+            }))
+            .remove(0),
+            focused: "command".into(),
+            query: "rai".into(),
+            answers: vec![],
+            nonce: "1".into(),
+        };
+        let body = autocomplete_body(&request);
+        assert_eq!(body["type"], 4);
+        assert_eq!(body["application_id"], "20");
+        assert_eq!(body["guild_id"], "9");
+        assert_eq!(body["data"]["name"], "help");
+        assert_eq!(body["data"]["guild_id"], "9");
+        assert_eq!(body["data"]["options"][0]["name"], "command");
+        assert_eq!(body["data"]["options"][0]["value"], "rai");
+        assert_eq!(body["data"]["options"][0]["focused"], true);
+        assert_eq!(body["data"]["application_command"]["version"], "7");
+
+        // The other filled options travel too, in the order the form holds them.
+        let request = AutocompleteRequest {
+            answers: vec![("text".into(), 3, json!("hi"))],
+            ..request
+        };
+        let body = autocomplete_body(&request);
+        assert_eq!(body["data"]["options"][0]["name"], "text");
+        assert_eq!(body["data"]["options"][1]["focused"], true);
     }
 
     #[test]

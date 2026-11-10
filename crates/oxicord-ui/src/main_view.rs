@@ -1353,6 +1353,10 @@ impl MainView {
                         .update(cx, |view, cx| view.fail(cx));
                 }
             }
+            DevCommand::Form(name) => {
+                self.chat
+                    .update(cx, |chat, cx| chat.open_named_form(&name, window, cx));
+            }
         }
     }
 

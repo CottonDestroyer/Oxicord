@@ -400,9 +400,26 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       live in-flight and error presentation are unverified; the port's error
       banner is styled from Discord's critical feedback colours and captured in
       screenshots/port/interaction_modal_failed.png.
-- [ ] Slash option autocomplete request (interaction type 4) while typing
-- [ ] Autocomplete results list from
-      `APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE`
+- [x] Slash option autocomplete request (interaction type 4) while typing.
+      Typing in an option the bot marks `autocomplete` sends `POST
+      /interactions` type 4 with a fresh nonce, the other filled options and
+      the typed one marked `focused`, and `guild_id` in `data` as the web
+      client's module 721768 does (without it the bot failed the request).
+      Body unit tested. Verified live in the Dyno DM: typing "rai" into
+      `/help command` is answered by the bot. A failed request or an
+      INTERACTION_FAILURE for the nonce shows "Couldn't load options.".
+- [x] Autocomplete results list from
+      `APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE`. The event (choices, nonce)
+      parses to `DispatchEvent::AutocompleteResponse`; the form shows an
+      "Options matching <query>" list under the field and a row puts its name
+      in the box and keeps its value for the run (no second request fires).
+      Stale answers are dropped by nonce. Verified at 1296 x 808 against the
+      live Dyno DM: screenshots/port/autocomplete_dm_results.png and
+      autocomplete_dm_picked.png, reference
+      screenshots/reference/autocomplete-live.png. Remaining differences: the
+      web list floats above the composer and the option shows as an inline
+      chip, the port keeps the form's own field. Run was not pressed (it
+      would send a command to the bot).
 
 ## Phase 5: DMs, inbox, events
 

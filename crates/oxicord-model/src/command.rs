@@ -1,6 +1,7 @@
 //! Slash commands as bots register them. Parsing is forgiving, a command or
 //! option we cannot read is dropped instead of failing the whole list.
 
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::Snowflake;
@@ -24,6 +25,24 @@ pub mod kind {
 pub struct Choice {
     pub name: String,
     pub value: Value,
+}
+
+/// One row of a bot's live autocomplete answer.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct AutocompleteChoice {
+    #[serde(default)]
+    pub name: String,
+    /// The name in the reader's language, when the bot sent one.
+    #[serde(default)]
+    pub name_localized: Option<String>,
+    #[serde(default)]
+    pub value: Value,
+}
+
+impl AutocompleteChoice {
+    pub fn display_name(&self) -> &str {
+        self.name_localized.as_deref().unwrap_or(&self.name)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -146,6 +165,26 @@ impl SlashCommand {
         }
         options
     }
+
+    /// The `options` array of an autocomplete interaction: the same answers,
+    /// with the option being typed marked `focused`.
+    pub fn autocomplete_options(&self, answers: &[(String, u8, Value)], focused: &str) -> Value {
+        let mut options: Value = answers
+            .iter()
+            .map(|(name, kind, value)| {
+                let mut option = json!({ "type": kind, "name": name, "value": value });
+                if name == focused {
+                    option["focused"] = json!(true);
+                }
+                option
+            })
+            .collect::<Vec<_>>()
+            .into();
+        for (name, kind) in self.path.iter().rev() {
+            options = json!([{ "type": kind, "name": name, "options": options }]);
+        }
+        options
+    }
 }
 
 /// Splits sub commands out: a command with sub commands is only a folder.
@@ -224,5 +263,32 @@ mod tests {
             json!([{ "type": 2, "name": "log", "options": [
                 { "type": 1, "name": "channel", "options": [{ "type": 7, "name": "where", "value": "55" }] } ] }])
         );
+    }
+
+    #[test]
+    fn an_autocomplete_names_the_focused_option() {
+        let flat = SlashCommand::flatten(&json!({
+            "id": "1", "application_id": "2", "name": "help", "description": "Help",
+            "options": [{ "type": 3, "name": "command", "autocomplete": true }]
+        }));
+        let options = flat[0].autocomplete_options(
+            &[("command".into(), 3, json!("rai"))],
+            "command",
+        );
+        assert_eq!(
+            options,
+            json!([{ "type": 3, "name": "command", "value": "rai", "focused": true }])
+        );
+    }
+
+    #[test]
+    fn autocomplete_choices_prefer_the_localized_name() {
+        let choice: AutocompleteChoice =
+            serde_json::from_value(json!({ "name": "raid", "name_localized": "raid (fr)", "value": "raid" }))
+                .unwrap();
+        assert_eq!(choice.display_name(), "raid (fr)");
+        let plain: AutocompleteChoice =
+            serde_json::from_value(json!({ "name": "afk", "value": "afk" })).unwrap();
+        assert_eq!(plain.display_name(), "afk");
     }
 }

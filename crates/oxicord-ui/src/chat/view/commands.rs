@@ -4,10 +4,11 @@
 use gpui_kit::{
     AnyElement, AppContext as _, ClickEvent, Context, Entity, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Window, div, px, rgb,
-    component::input::{Input, InputState},
+    Subscription, Window, div, px, rgb,
+    component::input::{Input, InputEvent, InputState},
 };
-use oxicord_model::{CommandOption, SlashCommand, command::kind};
+use oxicord_model::{AutocompleteChoice, CommandOption, SlashCommand, command::kind};
+use serde_json::{Value, json};
 
 use super::ChatView;
 use crate::{
@@ -18,8 +19,20 @@ use crate::{
         command_form::{self, Entry},
     },
     icons::icon,
-    search_query, theme,
+    search_query,
+    session::AutocompleteDone,
+    theme,
 };
+
+/// The choices a bot gave for one option, or why it did not answer.
+struct AutoState {
+    /// The text the request was made for, so typing the same text again does
+    /// not ask twice.
+    query: String,
+    nonce: String,
+    choices: Vec<AutocompleteChoice>,
+    failed: bool,
+}
 
 /// One option's input in the form.
 pub(super) struct FormField {
@@ -27,6 +40,10 @@ pub(super) struct FormField {
     entry: Entry,
     /// Text options have a box, boolean and choice ones do not.
     input: Option<Entity<InputState>>,
+    /// The live choices under an autocomplete option.
+    autocomplete: Option<AutoState>,
+    /// Keeps the input's change events alive while the form is open.
+    _subscription: Option<Subscription>,
 }
 
 pub(super) struct CommandForm {
@@ -65,22 +82,204 @@ impl ChatView {
             _ => None,
         };
         let Some(command) = command else { return };
+        self.open_form_for(command, window, cx);
+    }
 
+    /// Builds the form for a command, whether it came from the live list or a
+    /// fixture.
+    fn open_form_for(
+        &mut self,
+        command: SlashCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let fields = command
             .options
             .iter()
-            .map(|option| FormField {
-                option: option.clone(),
-                entry: command_form::default_entry(option),
-                input: (option.choices.is_empty() && option.kind != kind::BOOLEAN).then(|| {
+            .enumerate()
+            .map(|(index, option)| {
+                let input = (option.choices.is_empty() && option.kind != kind::BOOLEAN).then(|| {
                     let hint = option.description.clone();
                     cx.new(|cx| InputState::new(window, cx).placeholder(hint))
-                }),
+                });
+                let subscription = input.as_ref().filter(|_| option.autocomplete).map(|input| {
+                    cx.subscribe(input, move |this, _, event: &InputEvent, cx| {
+                        if matches!(event, InputEvent::Change) {
+                            this.autocomplete_field(index, cx);
+                        }
+                    })
+                });
+                FormField {
+                    option: option.clone(),
+                    entry: command_form::default_entry(option),
+                    input,
+                    autocomplete: None,
+                    _subscription: subscription,
+                }
             })
             .collect();
         self.command_form = Some(CommandForm { command, fields, error: None });
         self.input.update(cx, |input, cx| input.set_value("", window, cx));
         self.suggestions.clear();
+        cx.notify();
+    }
+
+    /// Opens the form of a command by name, for the debug driver. The channel's
+    /// command list has to be loaded already.
+    pub fn open_named_form(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let command = match self.session.read(cx).commands.get(&channel) {
+            Some(Load::Ready(list)) => list
+                .commands
+                .iter()
+                .find(|command| command.name == name)
+                .cloned(),
+            _ => None,
+        };
+        let command = command.or_else(|| {
+            // The fixture keeps the debug driver working while the live command
+            // list is still being built.
+            let text = std::fs::read_to_string("fixtures/dyno-help-command.json").ok()?;
+            let root: Value = serde_json::from_str(&text).ok()?;
+            SlashCommand::flatten(&root).into_iter().next()
+        });
+        if let Some(command) = command {
+            self.open_form_for(command, window, cx);
+        } else {
+            let backend = self.backend.clone();
+            self.session
+                .update(cx, |session, _| session.ensure_commands(&backend, channel));
+        }
+    }
+
+    /// Asks the bot for choices as an autocomplete option is typed in.
+    fn autocomplete_field(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let Some(form) = self.command_form.as_ref() else { return };
+        let Some(field) = form.fields.get(index) else { return };
+        let Some(input) = &field.input else { return };
+        let query = input.read(cx).value().to_string();
+        if field
+            .autocomplete
+            .as_ref()
+            .is_some_and(|state| state.query == query)
+        {
+            return;
+        }
+        let answers: Vec<(String, u8, Value)> = form
+            .fields
+            .iter()
+            .enumerate()
+            .filter(|(other, _)| *other != index)
+            .filter_map(|(_, field)| match &field.entry {
+                Entry::Choice(choice) => field
+                    .option
+                    .choices
+                    .get(*choice)
+                    .map(|choice| (field.option.name.clone(), field.option.kind, choice.value.clone())),
+                Entry::Bool(on) => {
+                    Some((field.option.name.clone(), field.option.kind, json!(on)))
+                }
+                Entry::Picked { value, .. } => {
+                    Some((field.option.name.clone(), field.option.kind, value.clone()))
+                }
+                Entry::Text(text)
+                    if !text.trim().is_empty()
+                        && matches!(
+                            field.option.kind,
+                            kind::STRING | kind::INTEGER | kind::NUMBER
+                        ) =>
+                {
+                    Some((field.option.name.clone(), field.option.kind, json!(text)))
+                }
+                _ => None,
+            })
+            .collect();
+        let command = form.command.clone();
+        let focused = field.option.name.clone();
+        let backend = self.backend.clone();
+        let nonce = self.session.update(cx, |session, cx| {
+            session.request_autocomplete(
+                &backend,
+                channel,
+                command,
+                focused,
+                query.clone(),
+                answers,
+                cx,
+            )
+        });
+        let Some(nonce) = nonce else { return };
+        if let Some(field) = self
+            .command_form
+            .as_mut()
+            .and_then(|form| form.fields.get_mut(index))
+        {
+            // Typing after a pick makes the box the answer again.
+            field.entry = Entry::Text(query.clone());
+            field.autocomplete = Some(AutoState {
+                query,
+                nonce,
+                choices: Vec::new(),
+                failed: false,
+            });
+        }
+        cx.notify();
+    }
+
+    /// The bot answered, or did not. Stale answers are dropped by nonce.
+    pub(super) fn on_autocomplete(&mut self, done: &AutocompleteDone, cx: &mut Context<Self>) {
+        let Some(field) = self.command_form.as_mut().and_then(|form| {
+            form.fields
+                .iter_mut()
+                .find(|field| {
+                    field
+                        .autocomplete
+                        .as_ref()
+                        .is_some_and(|state| state.nonce == done.nonce)
+                })
+        }) else {
+            return;
+        };
+        let Some(state) = field.autocomplete.as_mut() else { return };
+        state.choices = done.choices.clone();
+        state.failed = done.failed;
+        cx.notify();
+    }
+
+    /// Puts a choice's name in the box and keeps its value for the run.
+    fn pick_autocomplete(
+        &mut self,
+        field_index: usize,
+        choice_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(choice) = self
+            .command_form
+            .as_ref()
+            .and_then(|form| form.fields.get(field_index))
+            .and_then(|field| field.autocomplete.as_ref())
+            .and_then(|state| state.choices.get(choice_index))
+            .cloned()
+        else {
+            return;
+        };
+        let text = choice.display_name().to_owned();
+        if let Some(field) = self
+            .command_form
+            .as_mut()
+            .and_then(|form| form.fields.get_mut(field_index))
+        {
+            if let Some(input) = &field.input {
+                input.update(cx, |input, cx| input.set_value(text.clone(), window, cx));
+            }
+            field.entry = Entry::Picked {
+                text,
+                value: choice.value,
+            };
+            field.autocomplete = None;
+        }
         cx.notify();
     }
 
@@ -99,6 +298,11 @@ impl ChatView {
             .iter()
             .map(|f| match (&f.input, &f.entry) {
                 (Some(input), Entry::Text(_)) => Entry::Text(input.read(cx).value().to_string()),
+                (Some(input), Entry::Picked { text, value })
+                    if input.read(cx).value() != text.as_str() =>
+                {
+                    Entry::Text(input.read(cx).value().to_string())
+                }
                 (_, other) => other.clone(),
             })
             .collect();
@@ -228,14 +432,81 @@ impl ChatView {
                 }
                 chips.into_any_element()
             };
-            card = card.child(
-                div()
+            let autocomplete: Option<AnyElement> = field.autocomplete.as_ref().and_then(|state| {
+                if state.failed {
+                    return Some(
+                        div()
+                            .px(px(8.))
+                            .text_size(px(14.))
+                            .text_color(rgb(theme::DANGER))
+                            .child("Couldn't load options.")
+                            .into_any_element(),
+                    );
+                }
+                if state.choices.is_empty() {
+                    return None;
+                }
+                let title = if state.query.is_empty() {
+                    "Options".to_owned()
+                } else {
+                    format!("Options matching {}", state.query)
+                };
+                let mut panel = div()
+                    .id(SharedString::from(format!("cmd-auto-list-{index}")))
+                    .w_full()
+                    .max_h(px(288.))
+                    .overflow_y_scroll()
+                    .rounded(px(5.))
+                    .border_1()
+                    .border_color(rgb(theme::BORDER_OVERLAY))
+                    .bg(rgb(theme::BG_PANEL))
+                    .p(px(8.))
                     .flex()
                     .flex_col()
-                    .gap_1()
-                    .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(label))
-                    .child(control),
-            );
+                    .child(
+                        div()
+                            .px(px(4.))
+                            .py(px(4.))
+                            .text_size(px(14.))
+                            .line_height(px(18.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(title),
+                    );
+                for (choice_index, choice) in state.choices.iter().enumerate() {
+                    panel = panel.child(
+                        div()
+                            .id(SharedString::from(format!("cmd-auto-{index}-{choice_index}")))
+                            .h(px(36.))
+                            .px(px(8.))
+                            .flex()
+                            .items_center()
+                            .rounded(px(3.))
+                            .cursor_pointer()
+                            .text_size(px(14.))
+                            .line_height(px(16.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .hover(|s| s.bg(rgb(theme::AUTOCOMPLETE_HOVER)))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.pick_autocomplete(index, choice_index, window, cx)
+                            }))
+                            .child(choice.display_name().to_owned()),
+                    );
+                }
+                Some(panel.into_any_element())
+            });
+            let mut field_column = div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(label))
+                .child(control);
+            if let Some(autocomplete) = autocomplete {
+                field_column = field_column.child(autocomplete);
+            }
+            card = card.child(field_column);
         }
 
         if let Some(error) = &form.error {

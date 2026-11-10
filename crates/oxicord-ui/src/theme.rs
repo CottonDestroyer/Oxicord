@@ -60,6 +60,8 @@ pub const ACCENT_HOVER: u32 = 0x4452bb;
 pub const SECONDARY: u32 = 0x1b1b1e;
 /// control-secondary-background-hover over the dialog background.
 pub const SECONDARY_HOVER: u32 = 0x262629;
+/// The live autocomplete row hover, rgba(150,151,159,0.12) over `BG_PANEL`.
+pub const AUTOCOMPLETE_HOVER: u32 = 0x1b1b1d;
 /// border-subtle over the dialog background, rgba(150,151,159,0.24).
 pub const BORDER_OVERLAY: u32 = 0x2c2c2e;
 /// The modal frame: border-subtle at 0.2 over `BG_PANEL`.

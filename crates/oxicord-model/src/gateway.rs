@@ -466,6 +466,17 @@ pub struct InteractionEvent {
     pub kind: u8,
     #[serde(default)]
     pub reason_code: Option<u32>,
+    #[serde(default)]
+    pub error_message: Option<String>,
+}
+
+/// A bot's answer to an autocomplete request.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AutocompleteResponse {
+    #[serde(default)]
+    pub choices: Vec<crate::AutocompleteChoice>,
+    #[serde(default)]
+    pub nonce: Option<String>,
 }
 
 /// Dispatch events the client reacts to. Anything else is kept as `Unknown`
@@ -518,6 +529,7 @@ pub enum DispatchEvent {
     InteractionCreate(InteractionEvent),
     InteractionSuccess(InteractionEvent),
     InteractionFailure(InteractionEvent),
+    AutocompleteResponse(AutocompleteResponse),
     InteractionModalCreate(Box<crate::InteractionModal>),
     Unknown { name: String, data: Value },
 }
@@ -584,6 +596,9 @@ impl DispatchEvent {
             "INTERACTION_CREATE" => Self::InteractionCreate(de(data)?),
             "INTERACTION_SUCCESS" => Self::InteractionSuccess(de(data)?),
             "INTERACTION_FAILURE" => Self::InteractionFailure(de(data)?),
+            "APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE" => {
+                Self::AutocompleteResponse(de(data)?)
+            }
             "INTERACTION_MODAL_CREATE" => Self::InteractionModalCreate(Box::new(de(data)?)),
             _ => Self::Unknown {
                 name: name.to_owned(),
@@ -849,6 +864,28 @@ mod tests {
 
         let succeeded = DispatchEvent::parse("INTERACTION_SUCCESS", json!({ "nonce": "22" })).unwrap();
         assert!(matches!(succeeded, DispatchEvent::InteractionSuccess(_)));
+    }
+
+    #[test]
+    fn autocomplete_choices_keep_the_nonce_and_value() {
+        let parsed = DispatchEvent::parse(
+            "APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE",
+            json!({
+                "nonce": "77",
+                "choices": [
+                    { "name": "raid", "name_localized": "raid (fr)", "value": "raid" },
+                    { "name": "afk", "value": "afk" }
+                ]
+            }),
+        )
+        .unwrap();
+        let DispatchEvent::AutocompleteResponse(response) = parsed else {
+            panic!("not an autocomplete answer");
+        };
+        assert_eq!(response.nonce.as_deref(), Some("77"));
+        assert_eq!(response.choices.len(), 2);
+        assert_eq!(response.choices[0].display_name(), "raid (fr)");
+        assert_eq!(response.choices[1].value, json!("afk"));
     }
 
 }

@@ -12,6 +12,8 @@ pub enum Entry {
     Bool(bool),
     /// Index into the option's choices.
     Choice(usize),
+    /// A live autocomplete pick: what the box shows and the value to send.
+    Picked { text: String, value: Value },
 }
 
 /// Looks a typed name up as an id, for users, roles and channels. Gets the
@@ -27,7 +29,11 @@ pub fn answers(
 ) -> Result<Vec<(String, u8, Value)>, String> {
     let mut out = Vec::new();
     for (option, entry) in options.iter().zip(entries) {
-        let blank = matches!(entry, Entry::Text(t) if t.trim().is_empty());
+        let blank = match entry {
+            Entry::Text(t) => t.trim().is_empty(),
+            Entry::Picked { text, .. } => text.trim().is_empty(),
+            _ => false,
+        };
         if blank {
             if option.required {
                 return Err(format!("{} is required.", option.name));
@@ -35,6 +41,7 @@ pub fn answers(
             continue;
         }
         let value = match (option.kind, entry) {
+            (_, Entry::Picked { value, .. }) => value.clone(),
             (_, Entry::Choice(i)) => option
                 .choices
                 .get(*i)
@@ -147,6 +154,21 @@ mod tests {
         o.choices = vec![Choice { name: "Fast".into(), value: json!("f") }, Choice { name: "Slow".into(), value: json!("s") }];
         let got = answers(&[o], &[Entry::Choice(1)], &none).unwrap();
         assert_eq!(got[0].2, json!("s"));
+    }
+
+    #[test]
+    fn a_live_pick_sends_its_value_while_the_box_shows_its_name() {
+        let o = option(kind::STRING, "command", true);
+        let got = answers(
+            &[o],
+            &[Entry::Picked { text: "raid".into(), value: json!("raid") }],
+            &none,
+        )
+        .unwrap();
+        assert_eq!(got[0].2, json!("raid"));
+        let picked = Entry::Picked { text: "Raid".into(), value: json!("raid") };
+        let got = answers(&[option(kind::STRING, "command", true)], &[picked], &none).unwrap();
+        assert_eq!(got[0].2, json!("raid"));
     }
 
     #[test]

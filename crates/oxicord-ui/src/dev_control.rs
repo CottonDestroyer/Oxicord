@@ -23,7 +23,7 @@ use std::path::PathBuf;
 
 use oxicord_model::Snowflake;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DevCommand {
     Goto(Snowflake),
     Join(Snowflake),
@@ -44,6 +44,8 @@ pub enum DevCommand {
     Modal,
     /// The bot modal's failure state, without waiting for an app to time out.
     ModalFail,
+    /// Open the option form of a slash command by name in the current channel.
+    Form(String),
     Close,
     Resize(u32, u32),
 }
@@ -93,6 +95,10 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         }
         "modal" => Some(DevCommand::Modal),
         "modal-fail" => Some(DevCommand::ModalFail),
+        "form" => {
+            let name = words.clone().collect::<Vec<_>>().join(" ");
+            (!name.is_empty()).then_some(DevCommand::Form(name))
+        }
         "leave" => Some(DevCommand::Leave),
         "mute" => Some(DevCommand::Mute),
         "deafen" => Some(DevCommand::Deafen),
@@ -130,6 +136,7 @@ mod tests {
         assert_eq!(parse("tab servers"), Some(DevCommand::Tab(3)));
         assert_eq!(parse("tab nowhere"), None);
         assert_eq!(parse("close"), Some(DevCommand::Close));
+        assert_eq!(parse("form help"), Some(DevCommand::Form("help".into())));
     }
 
     #[test]

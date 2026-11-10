@@ -140,6 +140,7 @@ impl Store {
             | DispatchEvent::InteractionSuccess(_)
             | DispatchEvent::InteractionFailure(_)
             | DispatchEvent::InteractionModalCreate(_)
+            | DispatchEvent::AutocompleteResponse(_)
             | DispatchEvent::Unknown { .. } => {}
         }
         changes

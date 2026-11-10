@@ -218,6 +218,21 @@ pub enum Command {
     /// Fetch the slash commands usable in a channel. The answer arrives as
     /// [`Event::Commands`].
     LoadCommands(Snowflake),
+    /// Ask a bot for an option's live choices. The answer arrives as
+    /// [`Event::Gateway`] with `APPLICATION_COMMAND_AUTOCOMPLETE_RESPONSE`;
+    /// a failed request is [`Event::AutocompleteFailed`].
+    Autocomplete {
+        guild: Option<Snowflake>,
+        channel: Snowflake,
+        session_id: String,
+        command: oxicord_model::SlashCommand,
+        /// The option being typed in.
+        focused: String,
+        query: String,
+        /// The other options already filled in.
+        answers: Vec<(String, u8, serde_json::Value)>,
+        nonce: String,
+    },
     /// Run a slash command. A failure is reported as [`Event::Notice`].
     RunCommand {
         guild: Option<Snowflake>,
@@ -459,6 +474,8 @@ pub enum Event {
     },
     /// The submit request never reached the app; the modal can be retried.
     ModalSubmitFailed { nonce: String },
+    /// An autocomplete request never reached the app.
+    AutocompleteFailed { nonce: String },
     InvitePreview(Result<oxicord_model::InvitePreview, String>),
     InviteCreated(Result<String, String>),
     InviteJoined(Result<(), String>),

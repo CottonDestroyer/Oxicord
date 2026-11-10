@@ -178,6 +178,10 @@ impl AppView {
                 self.session
                     .update(cx, |session, cx| session.apply_modal_submit_failed(&nonce, cx));
             }
+            Event::AutocompleteFailed { nonce } => {
+                self.session
+                    .update(cx, |session, cx| session.apply_autocomplete_failed(&nonce, cx));
+            }
             Event::InvitePreview(result) => {
                 self.session.update(cx, |session, cx| session.apply_invite_preview(result, cx));
             }

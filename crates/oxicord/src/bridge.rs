@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use async_channel::{Receiver, Sender};
 use oxicord_api::{
     ApiClient, ApiError, Credentials,
-    routes::{AllowedMentions, CommandRun, ComponentClick, IndexOutcome, MessagePage, ModalSubmit, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
+    routes::{AllowedMentions, AutocompleteRequest, CommandRun, ComponentClick, IndexOutcome, MessagePage, ModalSubmit, ReplyTarget, SearchOutcome, SearchScope, SendMessage, Upload},
     super_props::SuperProperties,
 };
 use oxicord_browser_login::{Capture, Identity, Outcome};
@@ -508,6 +508,24 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
             tokio::spawn(async move {
                 let result = load_commands(&api, channel).await;
                 let _ = events.send(Event::Commands { channel, result }).await;
+            });
+        }
+        Command::Autocomplete { guild, channel, session_id, command, focused, query, answers, nonce } => {
+            tokio::spawn(async move {
+                let request = AutocompleteRequest {
+                    guild,
+                    channel,
+                    session_id,
+                    command,
+                    focused,
+                    query,
+                    answers,
+                    nonce: nonce.clone(),
+                };
+                if let Err(err) = api.autocomplete(&request).await {
+                    tracing::debug!(?err, "could not ask for autocomplete choices");
+                    let _ = events.send(Event::AutocompleteFailed { nonce }).await;
+                }
             });
         }
         Command::RunCommand { guild, channel, session_id, command, answers } => {

@@ -36,7 +36,7 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenRulesScreening, OpenUserMenu, PanelKind, Session},
+    session::{AutocompleteDone, MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenRulesScreening, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -163,6 +163,9 @@ impl ChatView {
             }),
             cx.subscribe(&session, |this, _, changes: &Changes, cx| {
                 this.on_changes(changes, cx)
+            }),
+            cx.subscribe(&session, |this, _, done: &AutocompleteDone, cx| {
+                this.on_autocomplete(done, cx)
             }),
             cx.subscribe_in(&session, window, |this, _, mention: &MentionUser, window, cx| {
                 this.insert_mention(mention.0, window, cx);
