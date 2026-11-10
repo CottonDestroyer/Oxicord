@@ -12,6 +12,13 @@ struct SettingsResponse {
 }
 
 #[derive(Deserialize)]
+struct PasswordAnswer {
+    /// The sign-in token that replaces the one the old password made.
+    #[serde(default)]
+    token: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct AuthorizeResponse {
     url: String,
 }
@@ -152,6 +159,16 @@ impl ApiClient {
         Ok(answer.url)
     }
 
+    /// Changes our password. The answer carries the token that replaces the
+    /// old one, which the password change signs out. Gated by the account-write
+    /// rule: built and unit tested, never sent from the real account.
+    pub async fn change_password(&self, current: &str, new: &str) -> Result<Option<String>, ApiError> {
+        let answer: PasswordAnswer = self
+            .json(Method::PATCH, "/users/@me", "PATCH /users/@me", Some(&password_body(current, new)))
+            .await?;
+        Ok(answer.token)
+    }
+
     /// Removes a linked connection.
     pub async fn remove_connection(&self, kind: &str, id: &str) -> Result<(), ApiError> {
         self.empty(
@@ -188,6 +205,10 @@ impl ApiClient {
     }
 }
 
+fn password_body(current: &str, new: &str) -> serde_json::Value {
+    json!({ "password": current, "new_password": new })
+}
+
 fn decoration_body(sku: Option<&str>) -> serde_json::Value {
     json!({
         "avatar_decoration_data": sku.map(|sku| json!({ "sku_id": sku })),
@@ -222,6 +243,18 @@ mod tests {
             json!({ "profile_frame_sku_id": "1556809649808736266" })
         );
         assert_eq!(profile_frame_body(None), json!({ "profile_frame_sku_id": null }));
+    }
+
+    #[test]
+    fn a_password_change_names_both_passwords_and_returns_a_token() {
+        assert_eq!(
+            password_body("old", "new"),
+            json!({ "password": "old", "new_password": "new" })
+        );
+        let answer: PasswordAnswer = serde_json::from_str(r#"{"id":"1","token":"fresh"}"#).unwrap();
+        assert_eq!(answer.token.as_deref(), Some("fresh"));
+        let none: PasswordAnswer = serde_json::from_str(r#"{"id":"1"}"#).unwrap();
+        assert!(none.token.is_none());
     }
 
     #[test]

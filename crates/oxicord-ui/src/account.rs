@@ -44,6 +44,8 @@ pub enum AccountRequest {
     /// Start linking an outside account. The answer arrives as
     /// [`AccountEvent::ConnectionUrl`] and is opened in the browser.
     AuthorizeConnection(String),
+    /// Change our password. The answer arrives as [`AccountEvent::PasswordChanged`].
+    ChangePassword { current: String, new: String },
     LoadSessions,
     LogoutOtherSessions,
     LoadNotificationCenter,
@@ -65,6 +67,7 @@ pub enum AccountEvent {
     Connections(Result<Vec<Connection>, String>),
     /// Where to send the person to link an outside account.
     ConnectionUrl(String),
+    PasswordChanged(Result<(), String>),
     Sessions(Result<Vec<LoginSession>, String>),
     NotificationCenter(Result<Vec<serde_json::Value>, String>),
 }
@@ -77,6 +80,8 @@ pub struct AccountState {
     pub connections: Load<Vec<Connection>>,
     pub sessions: Load<Vec<LoginSession>>,
     pub notification_center: Load<Vec<serde_json::Value>>,
+    /// Where the change password dialog stands. `Ready` closes it.
+    pub password: Load<()>,
 }
 
 impl AccountState {
@@ -96,6 +101,7 @@ impl AccountState {
             AccountEvent::Connections(r) => self.connections = Load::from_result(r),
             // The session opens it, there is nothing to keep.
             AccountEvent::ConnectionUrl(_) => {}
+            AccountEvent::PasswordChanged(r) => self.password = Load::from_result(r),
             AccountEvent::Sessions(r) => self.sessions = Load::from_result(r),
             AccountEvent::NotificationCenter(r) => self.notification_center = Load::from_result(r),
         }

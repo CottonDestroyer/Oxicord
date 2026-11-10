@@ -211,6 +211,11 @@ pub struct OpenCreateServer;
 
 impl EventEmitter<OpenCreateServer> for Session {}
 
+/// The account page's Edit button next to the password.
+pub struct OpenChangePassword;
+
+impl EventEmitter<OpenChangePassword> for Session {}
+
 pub struct OpenPollVoters {
     pub channel: Snowflake,
     pub message: Snowflake,
@@ -945,6 +950,7 @@ impl Session {
             AccountRequest::LoadConnections => self.account.connections = Load::Loading,
             AccountRequest::LoadSessions => self.account.sessions = Load::Loading,
             AccountRequest::LoadNotificationCenter => self.account.notification_center = Load::Loading,
+            AccountRequest::ChangePassword { .. } => self.account.password = Load::Loading,
             AccountRequest::SetAvatar(_)
             | AccountRequest::SetBanner(_)
             | AccountRequest::SetDecoration(_)

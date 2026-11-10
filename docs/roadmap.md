@@ -569,7 +569,30 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Nitro Rewards promo banner is not drawn, the empty state sits closer to
       the grid than the live one, and a linked account row is still the old
       plain row because this account has none to compare.
-- [ ] Change password dialog
+- [x] Change password dialog, as the live "Update your password" modal draws
+      it (measured through the logged in web client at 1920 x 1080, stable
+      670026): a 480 wide frame (radius 12, 1 px rgba(151,151,159,0.2) border,
+      8 top and 16 bottom padding), a 16 / 24 / 8 header with the 20 / 24
+      weight 600 title and the 16 / 20 muted line, three 40 high fields 20
+      apart with 16 / 20 weight 500 labels, a red asterisk and an eye toggle,
+      a 40 by 40 close at 8 from the top right, and Cancel and Done at 211 by
+      40, 8 apart and 24 under the last field. An Edit button on the My Account
+      page opens it. Done checks all three fields are filled and the new ones
+      match before anything is sent, then sends `PATCH /users/@me` with
+      `{password, new_password}` (module 631670). The answer carries the token
+      that replaces the old one, so a success signs in again with it under the
+      saved identity and closes the dialog; a server error is shown on the
+      dialog. Request body and answer unit tested, never sent from the real
+      account (account writes rule). Verified in the port: the frame, title,
+      labels, fields and buttons sit within a pixel of the live offsets, and
+      Done on empty fields shows "All three passwords are required." without
+      sending. Captures: screenshots/reference/change_password_dialog.png and
+      screenshots/port/change_password_dialog.png, change_password_error.png.
+      Remaining differences: the focused field keeps gpui's border instead of
+      the brand coloured one, field errors are one line under the fields rather
+      than under each field, the settings page has no live "Password &
+      Security" section (an Edit row sits in the Account group), and the
+      re-login after a success was not exercised.
 - [ ] Enable 2FA: QR code and backup codes screens
 - [ ] Disable 2FA dialog
 - [ ] Disable account dialog

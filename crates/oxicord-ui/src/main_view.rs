@@ -24,6 +24,7 @@ use crate::{
     ban_dialog::{CloseBan, BanDialog},
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
+    password_dialog::{ClosePassword, PasswordDialog},
     decoration_dialog::{CloseDecorationDialog, DecorationDialog},
     effect_dialog::{CloseEffectDialog, EffectDialog},
     edit_profile_modal::{CloseEditProfileModal, EditProfileModal, OpenDecoration, OpenEffect, OpenFrame, OpenNameplate},
@@ -52,7 +53,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{OpenChangePassword, DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -203,6 +204,8 @@ pub struct MainView {
     ban_dialog_open: bool,
     create_server_dialog: Entity<CreateServerDialog>,
     create_server_open: bool,
+    password_dialog: Entity<PasswordDialog>,
+    password_open: bool,
     pub poll_voters_open: bool,
     pub poll_voters: Vec<oxicord_model::User>,
     create_poll_dialog: Entity<CreatePollDialog>,
@@ -330,6 +333,10 @@ impl MainView {
         let create_server_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| CreateServerDialog::new(session, backend, window, cx))
+        };
+        let password_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| PasswordDialog::new(session, backend, window, cx))
         };
         let create_poll_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -572,6 +579,15 @@ impl MainView {
             }),
             cx.subscribe(&create_server_dialog, |this, _, _: &CloseCreateServer, cx| {
                 this.create_server_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&password_dialog, |this, _, _: &ClosePassword, cx| {
+                this.password_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, _: &OpenChangePassword, window, cx| {
+                this.password_open = true;
+                this.password_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
                 cx.notify();
             }),
             cx.subscribe(&create_poll_dialog, |this, _, _: &CloseCreatePoll, cx| {
@@ -844,6 +860,8 @@ impl MainView {
             ban_dialog_open: false,
             create_server_dialog,
             create_server_open: false,
+            password_dialog,
+            password_open: false,
             poll_voters_open: false,
             poll_voters: Vec::new(),
             create_poll_dialog,
@@ -4356,6 +4374,7 @@ impl Render for MainView {
         let friend_nick = self.friend_nick_open.then(|| self.friend_nick.clone());
         let ban_dialog = self.ban_dialog_open.then(|| self.ban_dialog.clone());
         let create_server_dialog = self.create_server_open.then(|| self.create_server_dialog.clone());
+        let password_dialog = self.password_open.then(|| self.password_dialog.clone());
         let poll_voters_modal = self.poll_voters_open.then(|| {
             let users = self.poll_voters.clone();
             let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -4498,6 +4517,8 @@ impl Render for MainView {
             .children(inbox)
             .children(channel_status_modal)
             .children(settings)
+            // Opened from the settings page, so above it.
+            .children(password_dialog)
             // Last, so it stays usable above any dialog.
             .child(title_bar::title_bar(title, window))
     }

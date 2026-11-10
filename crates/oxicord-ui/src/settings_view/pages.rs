@@ -18,6 +18,7 @@ use crate::{
     backend::Command,
     icons::icon,
     media::avatar,
+    session::OpenChangePassword,
     theme,
 };
 
@@ -220,6 +221,24 @@ impl SettingsView {
                     "Two-factor authentication",
                     if d.mfa_enabled { "On" } else { "Off" }.into(),
                 ));
+                let session_for_password = self.session.clone();
+                contact.push(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap_3()
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(theme::TEXT_MUTED))
+                                .child("Password"),
+                        )
+                        .child(button("edit-password", "Edit", Tone::Plain, move |_, _, cx| {
+                            session_for_password.update(cx, |_, cx| cx.emit(OpenChangePassword));
+                        }))
+                        .into_any_element(),
+                );
                 contact.push(
                     div()
                         .child(button(

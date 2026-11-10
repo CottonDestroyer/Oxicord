@@ -66,6 +66,11 @@ async fn run(
                             open_browser(signins.clone(), events.clone());
                         }
                     }
+                    Command::Account(AccountRequest::ChangePassword { current, new }) => {
+                        if let Some(live) = &live {
+                            change_password(live.api.clone(), current, new, signins.clone(), events.clone());
+                        }
+                    }
                     Command::FetchImage(url) => fetch_image(&fetcher, url, events.clone()),
                     Command::Notify { title, body } => show_notification(title, body),
                     Command::SaveSettings(settings) => {
@@ -92,6 +97,25 @@ async fn run(
             }
         }
     }
+}
+
+/// Changes the password in the background. The old token ends with the old
+/// password, so a success signs in again with the token the answer carries,
+/// under the identity saved for this login.
+fn change_password(api: ApiClient, current: String, new: String, signins: Sender<Capture>, events: Sender<Event>) {
+    tokio::spawn(async move {
+        let answer = match api.change_password(&current, &new).await {
+            Ok(token) => {
+                if let Some(token) = token {
+                    let identity = credentials::load().and_then(|saved| saved.identity);
+                    let _ = signins.send(Capture { token, identity }).await;
+                }
+                Ok(())
+            }
+            Err(err) => Err(describe_request(&err)),
+        };
+        let _ = events.send(Event::Account(AccountEvent::PasswordChanged(answer))).await;
+    });
 }
 
 /// Downloads a picture in the background and reports it back. A failure is
@@ -1005,6 +1029,8 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             }
             say(AccountEvent::Connections(api.connections().await.map_err(text))).await;
         }
+        // Needs the sign-in channel, so `run` takes it before it gets here.
+        AccountRequest::ChangePassword { .. } => {}
         AccountRequest::AuthorizeConnection(kind) => match api.connection_authorize_url(&kind).await {
             Ok(url) => say(AccountEvent::ConnectionUrl(url)).await,
             Err(err) => notify(events, "start linking that account", &err).await,
