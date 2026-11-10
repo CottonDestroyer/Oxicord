@@ -16,6 +16,7 @@ use crate::{
     AccountRequest, Settings,
     account::Load,
     backend::Command,
+    danger_dialog::{Danger, OpenDanger},
     icons::icon,
     media::avatar,
     session::{OpenChangePassword, OpenTotpSetup},
@@ -38,6 +39,24 @@ const CONNECTION_SERVICES: [&str; 22] = [
     "playstation", "spotify", "xbox", "amazon-music", "bungie", "domain", "epicgames", "facebook", "github", "roblox",
     "twitch", "youtube",
 ];
+
+/// A line on the account page that explains a drastic action beside its button.
+fn danger_row(title: &'static str, line: &'static str, action: AnyElement) -> AnyElement {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(title))
+                .child(div().text_size(px(14.)).text_color(rgb(theme::TEXT_MUTED)).child(line)),
+        )
+        .child(action)
+        .into_any_element()
+}
 
 /// Flips one friend request source in the stored bit mask.
 pub(super) fn toggle_friend_source(flags: u32, source: u32) -> u32 {
@@ -312,6 +331,14 @@ impl SettingsView {
             .into_any_element();
 
         let backend = self.backend.clone();
+        let session_for_disable = self.session.clone();
+        let disable_row = danger_row(
+            "Disable your account",
+            "Temporarily disable your account.",
+            button("disable-account", "Disable Account", Tone::Danger, move |_, _, cx| {
+                session_for_disable.update(cx, |_, cx| cx.emit(OpenDanger(Danger::DisableAccount)));
+            }),
+        );
         div()
             .flex()
             .flex_col()
@@ -320,6 +347,7 @@ impl SettingsView {
             .child(header)
             .child(group("Display name", vec![name_row]))
             .child(group("Account", contact))
+            .child(group("Account status", vec![disable_row]))
             .child(group(
                 "Session",
                 vec![div()

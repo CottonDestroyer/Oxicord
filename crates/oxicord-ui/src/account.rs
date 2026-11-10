@@ -49,6 +49,9 @@ pub enum AccountRequest {
     /// Turn the authenticator app on with the key that was scanned and its
     /// first code. The answer arrives as [`AccountEvent::TotpEnabled`].
     EnableTotp { secret: String, code: String },
+    /// Disable the account. It ends the session, so the answer is a sign-out
+    /// when it works and [`AccountEvent::DangerDone`] when it does not.
+    DisableAccount { password: String },
     LoadSessions,
     LogoutOtherSessions,
     LoadNotificationCenter,
@@ -73,6 +76,8 @@ pub enum AccountEvent {
     PasswordChanged(Result<(), String>),
     /// The backup codes the server made when the authenticator went on.
     TotpEnabled(Result<Vec<oxicord_model::BackupCode>, String>),
+    /// How a disable, delete or two-factor removal went, for the dialog.
+    DangerDone(Result<(), String>),
     Sessions(Result<Vec<LoginSession>, String>),
     NotificationCenter(Result<Vec<serde_json::Value>, String>),
 }
@@ -89,6 +94,9 @@ pub struct AccountState {
     pub password: Load<()>,
     /// Where turning the authenticator on stands. `Ready` holds the backup codes.
     pub totp: Load<Vec<oxicord_model::BackupCode>>,
+    /// Where a disable, delete or two-factor removal stands. `Ready` closes
+    /// the dialog.
+    pub danger: Load<()>,
 }
 
 impl AccountState {
@@ -110,6 +118,7 @@ impl AccountState {
             AccountEvent::ConnectionUrl(_) => {}
             AccountEvent::PasswordChanged(r) => self.password = Load::from_result(r),
             AccountEvent::TotpEnabled(r) => self.totp = Load::from_result(r),
+            AccountEvent::DangerDone(r) => self.danger = Load::from_result(r),
             AccountEvent::Sessions(r) => self.sessions = Load::from_result(r),
             AccountEvent::NotificationCenter(r) => self.notification_center = Load::from_result(r),
         }

@@ -24,6 +24,7 @@ use crate::{
     ban_dialog::{CloseBan, BanDialog},
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
+    danger_dialog::{CloseDanger, DangerDialog, OpenDanger},
     password_dialog::{ClosePassword, PasswordDialog},
     totp_dialog::{CloseTotp, TotpDialog},
     decoration_dialog::{CloseDecorationDialog, DecorationDialog},
@@ -209,6 +210,8 @@ pub struct MainView {
     password_open: bool,
     totp_dialog: Entity<TotpDialog>,
     totp_open: bool,
+    danger_dialog: Entity<DangerDialog>,
+    danger_open: bool,
     pub poll_voters_open: bool,
     pub poll_voters: Vec<oxicord_model::User>,
     create_poll_dialog: Entity<CreatePollDialog>,
@@ -344,6 +347,10 @@ impl MainView {
         let totp_dialog = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| TotpDialog::new(session, media, backend, window, cx))
+        };
+        let danger_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|cx| DangerDialog::new(session, backend, window, cx))
         };
         let create_poll_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -604,6 +611,15 @@ impl MainView {
             cx.subscribe_in(&session, window, |this, _, _: &OpenTotpSetup, window, cx| {
                 this.totp_open = true;
                 this.totp_dialog.update(cx, |dialog, cx| dialog.opened(window, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&danger_dialog, |this, _, _: &CloseDanger, cx| {
+                this.danger_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, open: &OpenDanger, window, cx| {
+                this.danger_open = true;
+                this.danger_dialog.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
                 cx.notify();
             }),
             cx.subscribe(&create_poll_dialog, |this, _, _: &CloseCreatePoll, cx| {
@@ -880,6 +896,8 @@ impl MainView {
             password_open: false,
             totp_dialog,
             totp_open: false,
+            danger_dialog,
+            danger_open: false,
             poll_voters_open: false,
             poll_voters: Vec::new(),
             create_poll_dialog,
@@ -4399,6 +4417,7 @@ impl Render for MainView {
         let create_server_dialog = self.create_server_open.then(|| self.create_server_dialog.clone());
         let password_dialog = self.password_open.then(|| self.password_dialog.clone());
         let totp_dialog = self.totp_open.then(|| self.totp_dialog.clone());
+        let danger_dialog = self.danger_open.then(|| self.danger_dialog.clone());
         let poll_voters_modal = self.poll_voters_open.then(|| {
             let users = self.poll_voters.clone();
             let on_close = cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -4544,6 +4563,7 @@ impl Render for MainView {
             // Opened from the settings page, so above it.
             .children(password_dialog)
             .children(totp_dialog)
+            .children(danger_dialog)
             // Last, so it stays usable above any dialog.
             .child(title_bar::title_bar(title, window))
     }

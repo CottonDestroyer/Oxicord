@@ -1053,6 +1053,16 @@ async fn account_request(api: &ApiClient, request: AccountRequest, events: &Send
             }
             say(AccountEvent::Connections(api.connections().await.map_err(text))).await;
         }
+        // The token stops working with the account, so success ends the
+        // session here: the saved login goes and the screen returns to sign-in.
+        AccountRequest::DisableAccount { password } => match api.disable_account(&password).await {
+            Ok(()) => {
+                credentials::clear();
+                say(AccountEvent::DangerDone(Ok(()))).await;
+                let _ = events.send(Event::LoggedOut).await;
+            }
+            Err(err) => say(AccountEvent::DangerDone(Err(describe_request(&err)))).await,
+        },
         // Needs the sign-in channel, so `run` takes it before it gets here.
         AccountRequest::ChangePassword { .. } | AccountRequest::EnableTotp { .. } => {}
         AccountRequest::AuthorizeConnection(kind) => match api.connection_authorize_url(&kind).await {

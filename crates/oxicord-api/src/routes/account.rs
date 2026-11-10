@@ -185,6 +185,20 @@ impl ApiClient {
         .await
     }
 
+    /// Disables the account until the next sign-in. The password is the only
+    /// proof it asks for, and the token stops working at once. Gated by the
+    /// account-write rule: built and unit tested, never sent from the real
+    /// account.
+    pub async fn disable_account(&self, password: &str) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            "/users/@me/disable",
+            "POST /users/@me/disable",
+            Some(&proof_body(password)),
+        )
+        .await
+    }
+
     /// Removes a linked connection.
     pub async fn remove_connection(&self, kind: &str, id: &str) -> Result<(), ApiError> {
         self.empty(
@@ -219,6 +233,11 @@ impl ApiClient {
         self.empty(Method::POST, "/auth/sessions/logout", "POST /auth/sessions/logout", None)
             .await
     }
+}
+
+/// What disabling or deleting the account sends: the password and nothing else.
+fn proof_body(password: &str) -> serde_json::Value {
+    json!({ "password": password })
 }
 
 fn totp_body(secret: &str, code: &str) -> serde_json::Value {
@@ -283,6 +302,11 @@ mod tests {
             totp_body("NJYGYR6P", "123456"),
             json!({ "secret": "NJYGYR6P", "code": "123456" })
         );
+    }
+
+    #[test]
+    fn disabling_the_account_proves_it_with_the_password() {
+        assert_eq!(proof_body("hunter2"), json!({ "password": "hunter2" }));
     }
 
     #[test]

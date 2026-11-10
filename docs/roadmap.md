@@ -632,7 +632,30 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       field keeps gpui's border, and the Security Keys section and the
       breadcrumbed Multi-Factor page are not built.
 - [ ] Disable 2FA dialog
-- [ ] Disable account dialog
+- [x] Disable account dialog, as the live "Disable account" modal draws it
+      (opened from the Account page's Disable Account button and measured
+      without submitting, stable 670026, 1920 x 1080): a 480 by 350 frame
+      (radius 12, 8 top and 16 bottom padding) with the 20 / 24 weight 600
+      title, an amber warning box 24 under it (430 wide, 10 padding, radius 8,
+      rgba(250,166,26,0.08), text #ce8000 at 16 / 20), a required Password
+      field 20 under that with the eye toggle, and Cancel beside a 211 by 40
+      red button (#d22d39, 1 px rgba(255,255,255,0.08) border) 44 under the
+      field. One shared `DangerDialog` in `danger_dialog.rs` draws it and will
+      take the delete and two-factor dialogs. The My Account page gains an
+      "Account status" group with a "Disable your account" row and its button.
+      Confirm checks a password was typed, then sends `POST
+      /users/@me/disable` with `{password}` (module 631670); on success the
+      saved login is cleared and the app returns to sign-in, a failure shows on
+      the dialog. Request body unit tested; never sent from the real account
+      (account writes rule). Verified in the port: the frame is 350 high from
+      365 to 715 like the live one, the title, box, field, buttons and close
+      sit at the live offsets, and Confirm on an empty field shows "Enter your
+      password to go on." without sending. Captures:
+      screenshots/reference/disable_account_dialog.png and
+      screenshots/port/disable_account_dialog.png, disable_account_error.png.
+      Remaining differences: the focused field keeps gpui's border, the
+      warning box wraps its text one word earlier than live, and the live page
+      lists the disable and delete rows at the very bottom with no heading.
 - [ ] Delete account dialog
 
 ## Phase 7: server admin (test server only)

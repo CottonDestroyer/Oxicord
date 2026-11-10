@@ -13,6 +13,7 @@ mod context_menu;
 mod dm_picker;mod create_channel_dialog;
 mod create_poll_dialog;
 mod create_server_dialog;
+mod danger_dialog;
 mod password_dialog;
 mod totp;
 mod totp_dialog;
