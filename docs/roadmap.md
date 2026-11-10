@@ -467,8 +467,21 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       a locally injected spam channel: each tab shows exactly its own row,
       screenshots/port/spam_tab_*.png. The official page module was never
       captured, so tab layout is our own, like the page itself.
-- [ ] Scheduled events fixture from `GET /guilds/:id/scheduled-events`
-- [ ] Scheduled events list and event card
+- [x] Scheduled events fixture and model. The web client never calls
+      `GET /guilds/:id/scheduled-events`: the events ride on each guild in
+      READY and `GUILD_CREATE` as `guild_scheduled_events`, and
+      `GET /users/@me/scheduled-events?guild_ids=` only returns our own
+      RSVPs (an empty list here). RSVP totals come from
+      `GET /guilds/:id/scheduled-events/:id/users/counts` (answer
+      `{guild_scheduled_event_count, guild_scheduled_event_exception_counts}`).
+      fixtures/scheduled-events.json holds SCP | Roleplay's 4 events, read from
+      the live READY. `ScheduledEvent` parses id, guild, channel, name,
+      description, start and end, status, entity type, location, image hash
+      and recurrence, and `Guild.scheduled_events` keeps them (a bad event is
+      dropped, not the guild). Unit tests on the fixture and the guild.
+- [ ] Scheduled events list and event card. Reference:
+      screenshots/reference/events_modal.png (the "4 Events" row opens a
+      modal with one card per event)
 - [ ] Event details modal
 - [ ] RSVP (interested) and its count (confirm endpoint)
 - [ ] Live updates: `GUILD_SCHEDULED_EVENT_CREATE`, `_UPDATE`, `_DELETE`,

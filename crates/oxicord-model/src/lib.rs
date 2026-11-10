@@ -29,6 +29,7 @@ pub mod presence;
 pub mod read_state;
 pub mod relationship;
 pub mod role;
+pub mod scheduled_event;
 pub mod search;
 pub mod snowflake;
 pub mod user;
@@ -70,6 +71,7 @@ pub use presence::{Activity, ActivityTimestamps, ActivityType, Status};
 pub use read_state::ReadState;
 pub use relationship::{Relationship, RelationshipKind, RelationshipRemove};
 pub use role::Role;
+pub use scheduled_event::{EventPlace, EventStatus, ScheduledEvent};
 pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
 pub use user::{

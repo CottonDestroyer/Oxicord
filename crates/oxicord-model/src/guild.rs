@@ -29,6 +29,8 @@ pub struct Guild {
     pub members: Vec<Member>,
     /// Who sits in each voice channel when the payload arrives.
     pub voice_states: Vec<crate::VoiceState>,
+    /// Events the server has planned or is running.
+    pub scheduled_events: Vec<crate::ScheduledEvent>,
 }
 
 #[derive(Deserialize)]
@@ -62,6 +64,8 @@ struct RawGuild {
     members: Vec<Member>,
     #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
     voice_states: Vec<crate::VoiceState>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
+    guild_scheduled_events: Vec<crate::ScheduledEvent>,
 }
 
 #[derive(Default, Deserialize)]
@@ -103,6 +107,7 @@ impl From<RawGuild> for Guild {
                 .unwrap_or(0),
             members: raw.members,
             voice_states: raw.voice_states,
+            scheduled_events: raw.guild_scheduled_events,
         }
     }
 }
@@ -151,6 +156,18 @@ mod tests {
         .unwrap();
         assert_eq!(g.stickers.len(), 1);
         assert_eq!(g.stickers[0].name, "wave");
+    }
+
+    #[test]
+    fn scheduled_events_are_read_and_a_bad_one_does_not_sink_the_guild() {
+        let g: Guild = serde_json::from_str(
+            r#"{"id":"1","guild_scheduled_events":[
+                {"id":"2","guild_id":"1","name":"a","scheduled_start_time":"2026-11-10T19:00:00+00:00"},
+                {"name":"no id"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(g.scheduled_events.len(), 1);
+        assert_eq!(g.scheduled_events[0].name, "a");
     }
 
     #[test]
