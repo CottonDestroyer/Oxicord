@@ -533,8 +533,21 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       against the web client because its button lives in a lazy chunk and a
       live click would write to the account, recurring events skip the
       occurrence picker, and the Interested tab does not list people yet.
-- [ ] Live updates: `GUILD_SCHEDULED_EVENT_CREATE`, `_UPDATE`, `_DELETE`,
-      `_USER_ADD`, `_USER_REMOVE`
+- [x] Live updates: `GUILD_SCHEDULED_EVENT_CREATE`, `_UPDATE`, `_DELETE`,
+      `_USER_ADD`, `_USER_REMOVE`. Payloads read from the web client's
+      gateway handlers (web bundle line 382133): create, update and delete
+      carry the whole event, and the two user events carry `user_id`,
+      `guild_id`, `guild_scheduled_event_id` and `response`. The first three
+      parse to `DispatchEvent::ScheduledEventUpsert` and `ScheduledEventDelete`
+      and the store replaces, adds or drops the event in its guild, marking
+      the channel list so the "N Events" row follows. The user events stay
+      `Unknown` and `session.rs` moves the interested total once we know it,
+      and our own pressed button when the user is us, without counting the echo
+      of our own click twice. Reducer test for create, update, delete and the
+      quiet misses, and unit tests for the count movement. Unverified live: no
+      event changed in a server while the app ran, so only the tests exercise
+      it. Not handled: `GUILD_SCHEDULED_EVENT_EXCEPTION_*` (recurring event
+      occurrences).
 
 ## Phase 6: account (UI and request building only, see the rule at the top)
 

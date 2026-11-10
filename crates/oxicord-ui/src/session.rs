@@ -1234,6 +1234,22 @@ impl Session {
                     }
                 }
             }
+            // Somebody answered an event, or took their answer back.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data })
+                if name == "GUILD_SCHEDULED_EVENT_USER_ADD" || name == "GUILD_SCHEDULED_EVENT_USER_REMOVE" =>
+            {
+                if let Ok(change) = serde_json::from_value::<oxicord_model::EventUserChange>(data) {
+                    let me = self.store.me().map(|user| user.id);
+                    move_interest(
+                        &mut self.event_counts,
+                        &mut self.interested_events,
+                        me,
+                        change,
+                        name == "GUILD_SCHEDULED_EVENT_USER_ADD",
+                    );
+                    cx.notify();
+                }
+            }
             // The app is working on a click, answered it, or never answered.
             GatewayEvent::Dispatch(DispatchEvent::InteractionCreate(event)) => {
                 if let Some(entry) = event.nonce.as_ref().and_then(|nonce| self.interactions.get_mut(nonce)) {
@@ -1395,5 +1411,79 @@ impl Session {
         };
         cx.emit(changes);
         cx.notify();
+    }
+}
+
+/// Applies someone's answer to an event: our own moves the pressed button,
+/// anyone's moves the total once we know it. Our own answer arrives again as
+/// an echo of a click we already showed, which must not count twice.
+fn move_interest(
+    counts: &mut HashMap<Snowflake, u64>,
+    interested: &mut HashSet<Snowflake>,
+    me: Option<Snowflake>,
+    change: oxicord_model::EventUserChange,
+    added: bool,
+) {
+    if !change.is_interested() {
+        return;
+    }
+    let event = change.guild_scheduled_event_id;
+    if me == Some(change.user_id) {
+        let changed = if added { interested.insert(event) } else { interested.remove(&event) };
+        if !changed {
+            return;
+        }
+    }
+    if let Some(count) = counts.get_mut(&event) {
+        *count = if added { *count + 1 } else { count.saturating_sub(1) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn change(user: u64, response: Option<u8>) -> oxicord_model::EventUserChange {
+        serde_json::from_value(serde_json::json!({
+            "user_id": user.to_string(), "guild_scheduled_event_id": "10", "response": response,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn other_people_move_the_total() {
+        let mut counts = HashMap::from([(Snowflake(10), 5)]);
+        let mut mine = HashSet::new();
+        move_interest(&mut counts, &mut mine, Some(Snowflake(1)), change(2, Some(1)), true);
+        assert_eq!(counts[&Snowflake(10)], 6);
+        move_interest(&mut counts, &mut mine, Some(Snowflake(1)), change(2, Some(1)), false);
+        move_interest(&mut counts, &mut mine, Some(Snowflake(1)), change(3, None), false);
+        assert_eq!(counts[&Snowflake(10)], 4);
+        assert!(mine.is_empty());
+    }
+
+    #[test]
+    fn our_echo_does_not_count_twice() {
+        let mut counts = HashMap::from([(Snowflake(10), 5)]);
+        let mut mine = HashSet::from([Snowflake(10)]);
+        // The click already showed us interested and added one.
+        move_interest(&mut counts, &mut mine, Some(Snowflake(1)), change(1, Some(1)), true);
+        assert_eq!(counts[&Snowflake(10)], 5);
+        // Another device answers first: the button and the total follow.
+        mine.clear();
+        move_interest(&mut counts, &mut mine, Some(Snowflake(1)), change(1, Some(1)), true);
+        assert!(mine.contains(&Snowflake(10)));
+        assert_eq!(counts[&Snowflake(10)], 6);
+    }
+
+    #[test]
+    fn not_interested_answers_and_unknown_totals_are_left_alone() {
+        let mut counts = HashMap::from([(Snowflake(10), 5)]);
+        let mut mine = HashSet::new();
+        move_interest(&mut counts, &mut mine, None, change(2, Some(0)), true);
+        assert_eq!(counts[&Snowflake(10)], 5);
+        counts.clear();
+        move_interest(&mut counts, &mut mine, None, change(2, Some(1)), true);
+        assert!(counts.is_empty());
     }
 }

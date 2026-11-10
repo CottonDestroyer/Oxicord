@@ -63,6 +63,24 @@ pub struct EventUserCounts {
     pub guild_scheduled_event_count: u64,
 }
 
+/// `GUILD_SCHEDULED_EVENT_USER_ADD` and `_USER_REMOVE`: somebody answered an
+/// event, or took their answer back.
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct EventUserChange {
+    pub user_id: Snowflake,
+    pub guild_scheduled_event_id: Snowflake,
+    /// 1 interested, 0 not interested. Left out, it means interested.
+    #[serde(default)]
+    pub response: Option<u8>,
+}
+
+impl EventUserChange {
+    /// Whether this moves the interested total.
+    pub fn is_interested(&self) -> bool {
+        self.response.unwrap_or(1) == 1
+    }
+}
+
 /// One entry of `GET /users/@me/scheduled-events`: an event we answered.
 #[derive(Clone, Copy, Debug, Deserialize)]
 pub struct EventRsvp {
