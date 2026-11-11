@@ -11,8 +11,9 @@ use gpui_kit::{
 };
 use oxicord_media::cdn;
 use oxicord_model::{
-    ChannelType, Permissions, Snowflake,
+    ChannelType, Permissions, Snowflake, WelcomeChannel, WelcomeScreen,
     admin::{AutoModRule, IntegrationEntry, WebhookEntry, action_name, keyword_rule_body, parse_keywords},
+    welcome::MAX_WELCOME_CHANNELS,
 };
 use serde_json::json;
 
@@ -53,6 +54,7 @@ enum Page {
     Integrations,
     AutoMod,
     EnableCommunity,
+    WelcomeScreen,
     BoostPerks,
     Stickers,
     Soundboard,
@@ -73,8 +75,8 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 25] =
-        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Engagement, Page::ServerTemplate, Page::Widget, Page::SafetySetup, Page::ServerInsights, Page::PartnerProgram, Page::Monetization, Page::Discovery, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 26] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::WelcomeScreen, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Engagement, Page::ServerTemplate, Page::Widget, Page::SafetySetup, Page::ServerInsights, Page::PartnerProgram, Page::Monetization, Page::Discovery, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
@@ -86,6 +88,7 @@ impl Page {
             Page::Integrations => "Integrations",
             Page::AutoMod => "AutoMod",
             Page::EnableCommunity => "Enable Community",
+            Page::WelcomeScreen => "Welcome Screen",
             Page::BoostPerks => "Boost Perks",
             Page::Stickers => "Stickers",
             Page::Soundboard => "Soundboard",
@@ -109,7 +112,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights | Page::PartnerProgram | Page::Monetization | Page::Discovery => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::WelcomeScreen | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights | Page::PartnerProgram | Page::Monetization | Page::Discovery => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -282,6 +285,12 @@ pub struct ServerSettings {
     rule_name: Entity<InputState>,
     rule_words: Entity<InputState>,
     rule: Option<Snowflake>,
+    /// The Welcome Screen draft, its description input, one input per featured
+    /// channel and whether the channel menu is open.
+    welcome: Option<WelcomeScreen>,
+    welcome_description: Entity<InputState>,
+    welcome_inputs: Vec<Entity<InputState>>,
+    welcome_menu: bool,
     role: Option<Snowflake>,
     role_perms: Permissions,
     role_hoist: bool,
@@ -326,6 +335,10 @@ impl ServerSettings {
             rule_name: input(cx, window, "Rule name"),
             rule_words: input(cx, window, "Words to block, separated by commas"),
             rule: None,
+            welcome: None,
+            welcome_description: input(cx, window, "Tell newcomers what the server is about"),
+            welcome_inputs: Vec::new(),
+            welcome_menu: false,
             session,
             media,
             backend,
@@ -387,10 +400,13 @@ impl ServerSettings {
         self.webhook = None;
         self.rule = None;
         self.channel_menu = false;
+        self.welcome = None;
+        self.welcome_menu = false;
         let Some(guild) = self.guild else { return };
         let request = match page {
             Page::Integrations => Some(AdminRequest::LoadWebhooks(guild)),
             Page::AutoMod => Some(AdminRequest::LoadAutomod(guild)),
+            Page::WelcomeScreen => Some(AdminRequest::LoadWelcome(guild)),
             Page::Invites => Some(AdminRequest::LoadInvites(guild)),
             Page::Bans => Some(AdminRequest::LoadBans(guild)),
             Page::AuditLog => Some(AdminRequest::LoadAudit(guild)),
@@ -1176,6 +1192,200 @@ impl ServerSettings {
                 vec![widgets::info_row("Server Name", name)],
             ))
             .into_any_element()
+    }
+
+    /// Copies the loaded welcome screen into the draft the first time it is on
+    /// screen, with an input for the description and one for each channel.
+    fn seed_welcome(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != Page::WelcomeScreen || self.welcome.is_some() {
+            return;
+        }
+        let Load::Ready(screen) = self.session.read(cx).admin.welcome.clone() else { return };
+        let text = screen.description.clone().unwrap_or_default();
+        self.welcome_description.update(cx, |i, cx| i.set_value(text, window, cx));
+        let inputs: Vec<_> = screen.welcome_channels.iter().map(|c| self.welcome_input(&c.description, window, cx)).collect();
+        self.welcome_inputs = inputs;
+        self.welcome = Some(screen);
+    }
+
+    fn welcome_input(&self, text: &str, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+        let text = text.to_owned();
+        cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("What can they do here?");
+            state.set_value(text, window, cx);
+            state
+        })
+    }
+
+    /// The draft with what is typed into its inputs.
+    fn welcome_current(&self, cx: &Context<Self>) -> Option<WelcomeScreen> {
+        let mut screen = self.welcome.clone()?;
+        screen.description = Some(self.welcome_description.read(cx).value().to_string());
+        for (channel, input) in screen.welcome_channels.iter_mut().zip(&self.welcome_inputs) {
+            channel.description = input.read(cx).value().to_string();
+        }
+        Some(screen)
+    }
+
+    /// One featured channel: its name, what it is for and a way to drop it.
+    fn welcome_row(&mut self, index: usize, channel: &WelcomeChannel, cx: &mut Context<Self>) -> AnyElement {
+        let name = self
+            .session
+            .read(cx)
+            .store
+            .channel(channel.channel_id)
+            .and_then(|c| c.name.clone())
+            .unwrap_or_else(|| "unknown-channel".to_owned());
+        let mut row = div()
+            .p_3()
+            .flex()
+            .items_center()
+            .gap_3()
+            .rounded(px(theme::RADIUS))
+            .bg(rgb(theme::BG_PANEL))
+            .child(
+                div()
+                    .w(px(180.))
+                    .flex_none()
+                    .truncate()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(format!("#{name}")),
+            );
+        if let Some(input) = self.welcome_inputs.get(index) {
+            row = row.child(div().flex_1().child(Input::new(input)));
+        }
+        row.child(button(("welcome-remove", index as u64), "Remove", Tone::Danger, {
+            let view = cx.weak_entity();
+            move |_, _, cx| {
+                view.update(cx, |this, cx| {
+                    if let Some(mut screen) = this.welcome_current(cx) {
+                        screen.welcome_channels.remove(index);
+                        this.welcome_inputs.remove(index);
+                        this.welcome = Some(screen);
+                        cx.notify();
+                    }
+                })
+                .ok();
+            }
+        }))
+        .into_any_element()
+    }
+
+    /// The channels not featured yet that the screen can point to.
+    fn welcome_choices(&self, guild: Snowflake, featured: &[WelcomeChannel], cx: &Context<Self>) -> Vec<(Snowflake, String)> {
+        self.session
+            .read(cx)
+            .store
+            .channel_groups(guild)
+            .into_iter()
+            .flat_map(|g| g.channels)
+            .filter(|c| matches!(c.kind, ChannelType::GuildText | ChannelType::GuildAnnouncement))
+            .filter(|c| !featured.iter().any(|f| f.channel_id == c.id))
+            .map(|c| (c.id, c.name.clone().unwrap_or_default()))
+            .collect()
+    }
+
+    fn welcome_screen(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let header = div().flex().flex_col().gap_3().child(title("Welcome Screen")).child(widgets::blurb(
+            "Greet new members with a short note about your server and a few channels to start in.",
+        ));
+        let loaded = match self.session.read(cx).admin.welcome.clone() {
+            Load::Ready(screen) => screen,
+            Load::Failed(error) => return header.child(status_line("circle-alert", error, theme::DANGER)).into_any_element(),
+            _ => return header.child(status_line("loader", "Loading the welcome screen...".into(), theme::TEXT_MUTED)).into_any_element(),
+        };
+        let Some(current) = self.welcome_current(cx) else { return header.into_any_element() };
+        let changed = current.body() != loaded.body();
+        let label = |text: &'static str| div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(text);
+
+        let mut channels = div().flex().flex_col().gap_2();
+        for (index, channel) in current.welcome_channels.iter().enumerate() {
+            channels = channels.child(self.welcome_row(index, channel, cx));
+        }
+        if current.welcome_channels.len() < MAX_WELCOME_CHANNELS {
+            channels = channels.child(div().flex().child(button("welcome-add", "Add Channel", Tone::Plain, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        this.welcome_menu = !this.welcome_menu;
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            })));
+        }
+        if self.welcome_menu {
+            let mut menu = div()
+                .id("welcome-channel-menu")
+                .max_h(px(200.))
+                .overflow_y_scroll()
+                .flex()
+                .flex_col()
+                .rounded(px(theme::RADIUS))
+                .border_1()
+                .border_color(rgb(theme::BORDER))
+                .bg(rgb(theme::BG_CHAT));
+            for (option, name) in self.welcome_choices(guild, &current.welcome_channels, cx) {
+                menu = menu.child(
+                    div()
+                        .id(("welcome-channel-option", option.0))
+                        .h(px(32.))
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .text_color(rgb(theme::TEXT))
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                            this.welcome_menu = false;
+                            if let Some(mut screen) = this.welcome_current(cx)
+                                && screen.add_channel(option)
+                            {
+                                let input = this.welcome_input("", window, cx);
+                                this.welcome_inputs.push(input);
+                                this.welcome = Some(screen);
+                            }
+                            cx.notify();
+                        }))
+                        .child(format!("#{name}")),
+                );
+            }
+            channels = channels.child(menu);
+        }
+
+        let mut page = header
+            .child(widgets::switch_row("welcome-enabled", "Enable the welcome screen", None, current.enabled, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        if let Some(mut screen) = this.welcome_current(cx) {
+                            screen.enabled = !screen.enabled;
+                            this.welcome = Some(screen);
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            }))
+            .child(div().flex().flex_col().gap_2().child(label("Server description")).child(Input::new(&self.welcome_description)))
+            .child(div().flex().flex_col().gap_2().child(label("Recommended channels")).child(channels));
+        if changed {
+            page = page.child(div().flex().child(button("save-welcome", "Save Changes", Tone::Primary, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        if let Some(screen) = this.welcome_current(cx) {
+                            this.welcome = None;
+                            this.send(AdminRequest::SaveWelcome { guild, body: screen.body() }, cx);
+                        }
+                    })
+                    .ok();
+                }
+            })));
+        }
+        page.into_any_element()
     }
 
     fn boost_perks(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -2191,8 +2401,9 @@ fn heading_static(heading: &str) -> &'static str {
 }
 
 impl Render for ServerSettings {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(guild) = self.guild else { return div().into_any_element() };
+        self.seed_welcome(window, cx);
         let (name, perms) = {
             let s = self.session.read(cx);
             (s.store.guild(guild).map(|g| g.name.clone()).unwrap_or_default(), s.store.guild_permissions(guild))
@@ -2228,6 +2439,7 @@ impl Render for ServerSettings {
             Page::Integrations => self.integrations(cx),
             Page::AutoMod => self.automod(cx),
             Page::EnableCommunity => self.enable_community(cx),
+            Page::WelcomeScreen => self.welcome_screen(cx),
             Page::BoostPerks => self.boost_perks(cx),
             Page::Stickers => self.stickers(cx),
             Page::Soundboard => self.soundboard(cx),

@@ -833,7 +833,20 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       the card layout is a best guess, Twitch and YouTube sync, enable and
       subscriber role settings are not built, there is no per integration
       page, and the Channels Followed card still has no Learn More button.
-- [ ] Welcome screen setup
+- [x] Welcome screen setup. A Welcome Screen page sits after Enable Community
+      for accounts with Manage Server. It loads `GET /guilds/{id}/welcome-screen`
+      and edits a draft: an enable switch, the server description, and up to
+      five featured text or announcement channels, each with its own
+      description, added from a channel menu and dropped with Remove. Save
+      Changes (shown only when the draft differs) sends `PATCH
+      /guilds/{id}/welcome-screen` with `enabled`, `description` and
+      `welcome_channels`, the body from the web client's module 225315, and
+      shows what the server answers. Unit tested: the body (trimmed text, blank
+      description as null, emoji fields) and the add rules (no duplicates, five
+      at most). Never sent from the real account and NOT seen on screen: the
+      layout and wording are a best guess and the live page was not measured.
+      Missing: channel emoji cannot be picked (a loaded one is kept), the page
+      is listed even for servers without Community, and there is no preview.
 - [ ] Onboarding setup
 - [ ] Server templates
 - [ ] Prune members: count preview and confirm

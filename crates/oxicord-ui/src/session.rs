@@ -939,6 +939,10 @@ impl Session {
                 self.admin.switch_to(*g);
                 self.admin.automod = Load::Loading;
             }
+            R::LoadWelcome(g) | R::SaveWelcome { guild: g, .. } => {
+                self.admin.switch_to(*g);
+                self.admin.welcome = Load::Loading;
+            }
             R::LoadAudit(g) => {
                 self.admin.switch_to(*g);
                 self.admin.audit = Load::Loading;

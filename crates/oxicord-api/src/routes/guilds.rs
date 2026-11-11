@@ -123,6 +123,22 @@ impl ApiClient {
         .await
     }
 
+    /// Saves the welcome screen from `WelcomeScreen::body`. The server answers
+    /// with the screen as it now stands.
+    pub async fn edit_welcome_screen(
+        &self,
+        guild: Snowflake,
+        body: &Value,
+    ) -> Result<oxicord_model::WelcomeScreen, ApiError> {
+        self.json(
+            Method::PATCH,
+            &format!("/guilds/{guild}/welcome-screen"),
+            "PATCH /guilds/:id/welcome-screen",
+            Some(body),
+        )
+        .await
+    }
+
     /// The server's onboarding questions, channels and roles.
     pub async fn onboarding(
         &self,

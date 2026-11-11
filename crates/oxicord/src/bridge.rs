@@ -1060,6 +1060,12 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
             check(api.delete_automod_rule(guild, rule).await, "delete that AutoMod rule").await;
             say(AdminEvent::Automod(guild, api.automod_rules(guild).await.map_err(text))).await;
         }
+        AdminRequest::LoadWelcome(guild) => {
+            say(AdminEvent::Welcome(guild, api.welcome_screen(guild).await.map_err(text))).await;
+        }
+        AdminRequest::SaveWelcome { guild, body } => {
+            say(AdminEvent::Welcome(guild, api.edit_welcome_screen(guild, &body).await.map_err(text))).await;
+        }
         AdminRequest::LoadIntegrations(guild) => {
             say(AdminEvent::Integrations(guild, api.guild_integrations(guild).await.map_err(text))).await;
         }
