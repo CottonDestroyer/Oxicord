@@ -1469,8 +1469,13 @@ impl ChatView {
                     .children(message.author.bot.then(crate::member_list::app_badge))
                     .child(
                         div()
+                            .id(("message-time", message.id.0))
                             .text_size(px(12.))
                             .text_color(rgb(theme::CHAT_TEXT_MUTED))
+                            .tooltip({
+                                let text = format::full_time(message.timestamp, offset, prefs.hour12);
+                                move |_, cx| cx.new(|_| Tip(text.clone())).into()
+                            })
                             .child(format::message_time(message.timestamp, Utc::now(), offset, prefs.hour12)),
                     ),
             );

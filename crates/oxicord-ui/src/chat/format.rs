@@ -2,7 +2,6 @@
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 
-/// "Today at 14:05", "Yesterday at 14:05", or the full date beyond that.
 /// Clock format for the reader's 12 or 24 hour preference.
 fn clock(hour12: bool) -> &'static str {
     if hour12 { "%-I:%M %p" } else { "%H:%M" }
@@ -13,6 +12,9 @@ pub fn clock_time(at: DateTime<Utc>, offset: FixedOffset, hour12: bool) -> Strin
     at.with_timezone(&offset).format(clock(hour12)).to_string()
 }
 
+/// The row header time. Today is just the clock, since the day divider above
+/// already names the date, yesterday says so, and older days carry the short
+/// US date ("8/19/26, 9:17 PM") the web client prints.
 pub fn message_time(at: DateTime<Utc>, now: DateTime<Utc>, offset: FixedOffset, hour12: bool) -> String {
     let local = at.with_timezone(&offset);
     let today = now.with_timezone(&offset).date_naive();
@@ -20,12 +22,18 @@ pub fn message_time(at: DateTime<Utc>, now: DateTime<Utc>, offset: FixedOffset, 
     let time = local.format(clock(hour12));
 
     if day == today {
-        format!("Today at {time}")
+        time.to_string()
     } else if today.pred_opt() == Some(day) {
         format!("Yesterday at {time}")
     } else {
-        format!("{} {time}", local.format("%d/%m/%Y"))
+        format!("{}, {time}", local.format("%-m/%-d/%y"))
     }
+}
+
+/// The hover text of a row time: "Wednesday, November 11, 2026 at 5:33 PM".
+pub fn full_time(at: DateTime<Utc>, offset: FixedOffset, hour12: bool) -> String {
+    let local = at.with_timezone(&offset);
+    format!("{} at {}", local.format("%A, %B %-d, %Y"), local.format(clock(hour12)))
 }
 
 pub fn day_label(day: NaiveDate) -> String {
@@ -91,16 +99,16 @@ mod tests {
     #[test]
     fn recent_messages_are_relative() {
         let now = at("2024-05-10T12:00:00Z");
-        assert_eq!(message_time(at("2024-05-10T09:05:00Z"), now, utc(), false), "Today at 09:05");
+        assert_eq!(message_time(at("2024-05-10T09:05:00Z"), now, utc(), false), "09:05");
         assert_eq!(message_time(at("2024-05-09T23:59:00Z"), now, utc(), false), "Yesterday at 23:59");
-        assert_eq!(message_time(at("2024-05-01T08:00:00Z"), now, utc(), false), "01/05/2024 08:00");
+        assert_eq!(message_time(at("2024-05-01T08:00:00Z"), now, utc(), false), "5/1/24, 08:00");
     }
 
     #[test]
     fn twelve_hour_clock_drops_the_leading_zero() {
         let now = at("2024-05-10T12:00:00Z");
-        assert_eq!(message_time(at("2024-05-10T09:05:00Z"), now, utc(), true), "Today at 9:05 AM");
-        assert_eq!(message_time(at("2024-05-10T21:30:00Z"), now, utc(), true), "Today at 9:30 PM");
+        assert_eq!(message_time(at("2024-05-10T09:05:00Z"), now, utc(), true), "9:05 AM");
+        assert_eq!(message_time(at("2024-05-10T21:30:00Z"), now, utc(), true), "9:30 PM");
         assert_eq!(timestamp(1_700_000_000, 't', now, utc(), true), "10:13 PM");
     }
 
@@ -146,6 +154,14 @@ mod tests {
     #[test]
     fn nonsense_timestamps_do_not_panic() {
         assert_eq!(timestamp(i64::MAX, 'f', at("2023-11-14T22:13:20Z"), utc(), false), "invalid date");
+    }
+
+    #[test]
+    fn the_hover_text_spells_out_the_day() {
+        assert_eq!(
+            full_time(at("2026-11-11T17:33:02Z"), utc(), true),
+            "Wednesday, November 11, 2026 at 5:33 PM"
+        );
     }
 
     #[test]

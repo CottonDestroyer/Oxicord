@@ -1054,10 +1054,19 @@ the build moves.
       the plus menu lacks Create Thread and Schedule Message and uses our
       shared popup, which puts glyphs on the right and is 220px wide where
       live is content sized with glyphs on the left; the restyle is the last Phase 8 item.
-- [ ] Message timestamps in the live format: time only ("5:33 PM") on today's
+- [x] Message timestamps in the live format: time only ("5:33 PM") on today's
       rows with the full date in the tooltip, then "Yesterday at" and the date
       for older rows, following the 12 hour or 24 hour setting. Ours writes
       "Today at 17:44" on every row. Confirm the live rule before copying it.
+      Done: live checked in #yap-yap (today rows read "5:33 PM", tooltip
+      "Wednesday, November 11, 2026 at 5:33 PM") and the Gabriel DM (older rows
+      read "8/19/26, 9:17 PM"). Ours now matches: time only today, short US
+      date plus time for older days, hover tooltip with the full date. Remaining:
+      the "Yesterday at" form is unverified (no yesterday row on the account;
+      the live bundle has no such string, so it may be the short date too),
+      and the date shape is fixed to the US short form while live follows the
+      browser locale. The 12 hour or 24 hour clock follows the account setting,
+      so our window shows 24 hour where the live browser shows 12 hour.
 - [ ] Blocked and ignored messages collapse into "N blocked messages - Show"
       rows (the live client groups consecutive ones). Verify what ours does.
 - [ ] Search box in the channel header: placeholder "Search <server name>",
