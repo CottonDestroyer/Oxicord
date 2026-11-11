@@ -34,7 +34,13 @@ impl Store {
             DispatchEvent::ReactionRemove(e) => self.on_reaction(&e, false, &mut changes),
             DispatchEvent::ReactionBatch(b) => self.on_reaction_batch(b, &mut changes),
             DispatchEvent::MemberChunk(chunk) => {
-                self.add_users(chunk.members.into_iter().map(|m| m.user).collect());
+                let guild = chunk.guild_id;
+                let mut users = Vec::new();
+                for member in chunk.members {
+                    self.learn_member(guild, member.user.id, member.nick, member.roles);
+                    users.push(member.user);
+                }
+                self.add_users(users);
                 // Names show in message text, so any open list may change.
                 return Changes::full();
             }
@@ -167,6 +173,7 @@ impl Store {
         let received = page.len();
         for message in &page {
             self.users.insert(message.author.id, message.author.clone());
+            self.learn_from_message(message);
         }
         page.sort_by_key(|m| m.id);
 
@@ -196,6 +203,7 @@ impl Store {
     pub fn show_window(&mut self, channel: Snowflake, page: Vec<Message>) -> Changes {
         for message in &page {
             self.users.insert(message.author.id, message.author.clone());
+            self.learn_from_message(message);
         }
         let mut timeline = Timeline::default();
         for message in page {
@@ -327,9 +335,21 @@ impl Store {
         }
     }
 
+    /// A message from a server carries its author's nickname and roles.
+    fn learn_from_message(&mut self, message: &Message) {
+        let Some(member) = &message.member else { return };
+        let guild = message
+            .guild_id
+            .or_else(|| self.channels.get(&message.channel_id).and_then(|c| c.guild_id));
+        if let Some(guild) = guild {
+            self.learn_member(guild, message.author.id, member.nick.clone(), member.roles.clone());
+        }
+    }
+
     fn on_message_create(&mut self, message: Message, changes: &mut Changes) {
         let channel_id = message.channel_id;
         self.users.insert(message.author.id, message.author.clone());
+        self.learn_from_message(&message);
         for user in &message.mentions {
             self.users.entry(user.id).or_insert_with(|| user.clone());
         }
@@ -651,6 +671,10 @@ impl Store {
     }
 
     fn on_member_update(&mut self, update: GuildMemberUpdate, changes: &mut Changes) {
+        if self.learn_member(update.guild_id, update.user.id, update.nick.clone(), update.roles.clone()) {
+            // Names and colors show on every message they wrote.
+            changes.messages.extend(self.timelines.keys().copied());
+        }
         if Some(update.user.id) != self.my_id() {
             return;
         }

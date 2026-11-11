@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use oxicord_markdown::Block;
 use oxicord_media::cdn;
-use oxicord_model::{ChannelType, Emoji, Message, MessageType, Permissions, Snowflake};
+use oxicord_model::{ChannelType, Emoji, Message, MessageType, Permissions, Snowflake, User};
 use oxicord_settings::Key;
 use oxicord_store::Changes;
 
@@ -88,6 +88,8 @@ pub struct ChatView {
     /// People mentioned on screen whose names we do not have yet. Filled while
     /// drawing, so it sits behind a cell.
     unknown_users: std::cell::RefCell<HashSet<Snowflake>>,
+    /// Authors drawn without their nickname and roles, to ask the server for.
+    unknown_members: std::cell::RefCell<HashSet<Snowflake>>,
     /// The option form of the slash command being filled in.
     command_form: Option<commands::CommandForm>,
     /// What the word being typed could become, and which one is highlighted.
@@ -226,6 +228,7 @@ impl ChatView {
             open_menu: None,
             highlight: None,
             unknown_users: std::cell::RefCell::new(HashSet::new()),
+            unknown_members: std::cell::RefCell::new(HashSet::new()),
             command_form: None,
             suggestions: Vec::new(),
             suggest_start: 0,
@@ -1218,7 +1221,18 @@ impl ChatView {
                 .find(|u| u.id == id)
                 .map(|u| u.display_name().to_owned())
                 .or_else(|| store.user(id).map(|u| u.display_name().to_owned()));
-            match name {
+            // Inside a server a mention reads as the person's nickname there.
+            let nick = match guild {
+                Some(guild) => {
+                    let info = store.member_info(guild.id, id);
+                    if info.is_none() && name.is_some() {
+                        self.unknown_members.borrow_mut().insert(id);
+                    }
+                    info.and_then(|i| i.nick)
+                }
+                None => None,
+            };
+            match nick.or(name) {
                 Some(name) => {
                     names.users.insert(id, name);
                 }
@@ -1241,15 +1255,35 @@ impl ChatView {
         names
     }
 
+    /// The name a person's messages carry here and the color of their top
+    /// role. Inside a server that is their nickname there, which we may have
+    /// to ask for, outside it their account name.
+    fn author_look(&self, user: &User, message_guild: Option<Snowflake>, cx: &App) -> (String, Option<u32>) {
+        let Some(guild) = message_guild.or_else(|| self.guild(cx)) else {
+            return (user.display_name().to_owned(), None);
+        };
+        let store = &self.session.read(cx).store;
+        if store.member_info(guild, user.id).is_none() {
+            self.unknown_members.borrow_mut().insert(user.id);
+        }
+        store.member_look(guild, user)
+    }
+
     /// Looks up the people drawing found mentioned but couldn't name.
     fn fetch_unknown_users(&mut self, cx: &mut Context<Self>) {
         let ids: Vec<Snowflake> = self.unknown_users.borrow_mut().drain().collect();
-        if ids.is_empty() {
+        let members: Vec<Snowflake> = self.unknown_members.borrow_mut().drain().collect();
+        if ids.is_empty() && members.is_empty() {
             return;
         }
         let backend = self.backend.clone();
         let guild = self.guild(cx);
-        self.session.update(cx, |session, _| session.request_users(&backend, guild, ids));
+        self.session.update(cx, |session, _| {
+            if let Some(guild) = guild {
+                session.request_member_looks(&backend, guild, members);
+            }
+            session.request_users(&backend, guild, ids);
+        });
     }
 
     fn render_row(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -1300,7 +1334,11 @@ impl ChatView {
                 .is_some_and(|c| !c.kind.is_thread());
 
         let prefs = self.view_prefs(cx);
-        let author = message.author.display_name().to_owned();
+        let (author, name_color) = self.author_look(&message.author, message.guild_id, cx);
+        let reply_look = message
+            .referenced_message
+            .as_ref()
+            .map(|original| self.author_look(&original.author, message.guild_id, cx));
         let url = cdn::user_avatar(message.author.id, message.author.avatar.as_deref(), 64);
 
         let left: AnyElement = if grouped {
@@ -1367,7 +1405,7 @@ impl ChatView {
                                 move |this, event: &ClickEvent, _, cx| this.open_profile(user, Some(event.position()), cx)
                             }))
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .text_color(rgb(name_color.unwrap_or(theme::TEXT_BRIGHT)))
                             .child(author),
                     )
                     .children(message.author.bot.then(crate::member_list::app_badge))
@@ -1385,7 +1423,7 @@ impl ChatView {
                 this.focus_message(original, cx);
             }
         });
-        if let Some(reply) = reply_line(&message, open_original) {
+        if let Some(reply) = reply_line(&message, reply_look, open_original) {
             body = body.child(reply);
         }
         body = body.child(self.render_content(&message, window, cx));
@@ -2142,13 +2180,15 @@ impl ChatView {
     fn typing_line(&self, cx: &App) -> Option<String> {
         let channel = self.channel?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
-        let names: Vec<String> = self
-            .session
-            .read(cx)
-            .store
+        let guild = self.guild(cx);
+        let store = &self.session.read(cx).store;
+        let names: Vec<String> = store
             .typing_users(channel, now)
             .into_iter()
-            .map(|u| u.display_name().to_owned())
+            .map(|u| match guild {
+                Some(guild) => store.member_look(guild, &u).0,
+                None => u.display_name().to_owned(),
+            })
             .collect();
         typing_text(&names)
     }
@@ -2457,6 +2497,7 @@ fn divider(day: NaiveDate) -> impl IntoElement {
 /// The quoted line above a reply: who it answers and what they said.
 fn reply_line(
     message: &Message,
+    look: Option<(String, Option<u32>)>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Option<AnyElement> {
     if message.kind != MessageType::Reply && message.referenced_message.is_none() {
@@ -2464,7 +2505,9 @@ fn reply_line(
     }
 
     let content = match &message.referenced_message {
-        Some(original) => div()
+        Some(original) => {
+            let (name, color) = look.unwrap_or_else(|| (original.author.display_name().to_owned(), None));
+            div()
             .flex()
             .items_center()
             .gap_1()
@@ -2472,10 +2515,12 @@ fn reply_line(
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(format!("@{}", original.author.display_name())),
+                    .text_color(rgb(color.unwrap_or(theme::TEXT_MUTED)))
+                    .child(format!("@{name}")),
             )
             .child(div().truncate().child(snippet(&original.content)))
-            .into_any_element(),
+            .into_any_element()
+        }
         None => div()
             .italic()
             .child("Original message was deleted")

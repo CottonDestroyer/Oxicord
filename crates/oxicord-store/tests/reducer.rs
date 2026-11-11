@@ -1,4 +1,4 @@
-use oxicord_model::{Message, RelationshipKind, Snowflake, Status, gateway::DispatchEvent};
+use oxicord_model::{Message, RelationshipKind, Snowflake, Status, User, gateway::DispatchEvent};
 use oxicord_store::{Changes, Store};
 use serde_json::{Value, json};
 
@@ -1265,4 +1265,43 @@ fn scheduled_events_follow_the_gateway() {
     stranger["guild_id"] = json!("555");
     store.apply(event("GUILD_SCHEDULED_EVENT_CREATE", stranger));
     assert_eq!(store.guild(id(GUILD)).unwrap().scheduled_events.len(), 1);
+}
+
+#[test]
+fn an_author_reads_by_server_nickname_in_the_color_of_their_top_role() {
+    let mut ready = ready_json();
+    ready["guilds"][0]["roles"] = json!([
+        { "id": "100", "name": "@everyone", "permissions": perm(1 << 10) },
+        { "id": "200", "name": "blue", "color": 0x0000ff, "position": 3 }
+    ]);
+    let mut store = Store::new();
+    store.apply(event("READY", ready));
+    let user: User = serde_json::from_value(json!({ "id": "777", "username": "zed", "global_name": "Zephyr" })).unwrap();
+
+    // Nobody told us about them yet: the account name, uncolored.
+    assert_eq!(store.member_look(id(GUILD), &user), ("Zephyr".to_owned(), None));
+
+    // A member request answers with their nickname and roles.
+    store.apply(event(
+        "GUILD_MEMBERS_CHUNK",
+        json!({
+            "guild_id": "100", "chunk_index": 0, "chunk_count": 1,
+            "members": [{ "user": { "id": "777", "username": "zed" }, "nick": "Marshmallow", "roles": ["200"] }],
+        }),
+    ));
+    assert_eq!(store.member_look(id(GUILD), &user), ("Marshmallow".to_owned(), Some(0x0000ff)));
+
+    // A member update changes the nickname and drops the role.
+    let changes = store.apply(event(
+        "GUILD_MEMBER_UPDATE",
+        json!({ "guild_id": "100", "user": { "id": "777", "username": "zed" }, "nick": "", "roles": [] }),
+    ));
+    assert_eq!(store.member_look(id(GUILD), &user), ("Zephyr".to_owned(), None));
+    drop(changes);
+
+    // A message that carries the member teaches the store too.
+    let mut message = message_json(60, 9001, 777);
+    message["member"] = json!({ "nick": "Zeph", "roles": ["200"] });
+    store.apply(event("MESSAGE_CREATE", message));
+    assert_eq!(store.member_look(id(GUILD), &user), ("Zeph".to_owned(), Some(0x0000ff)));
 }

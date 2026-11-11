@@ -252,6 +252,10 @@ pub struct MemberChunk {
 #[derive(Clone, Debug, Deserialize)]
 pub struct ChunkMember {
     pub user: User,
+    #[serde(default)]
+    pub nick: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<Snowflake>,
 }
 
 /// VOICE_CHANNEL_STATUS_UPDATE. An empty or missing status clears it.

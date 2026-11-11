@@ -13,5 +13,5 @@ mod timeline;
 
 pub use changes::Changes;
 pub use member_list::{Entry, MemberListState};
-pub use state::{ChannelGroup, Store, Unread};
+pub use state::{ChannelGroup, MemberInfo, Store, Unread};
 pub use timeline::Timeline;

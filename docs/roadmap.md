@@ -991,12 +991,20 @@ the build moves.
 
 ### Messages and chat
 
-- [ ] Server nickname and role colour on author names. Ours prints the global
-      name in white ("Zephyr" where the live client prints the server nickname
-      "Marshmallow" in the role colour). `Message::member` is parsed but the
-      row uses `author.display_name()` (chat/view.rs). Use the member nick,
-      then the global name, and colour by the top coloured role. Same names in
-      reply lines, mentions, the typing line and the member list.
+- [x] Server nickname and role colour on author names. The store keeps a
+      nickname and role list per server and person (`Store::member_info`),
+      learned from messages that carry a member, `GUILD_MEMBERS_CHUNK`
+      (now parsing `nick` and `roles`), `GUILD_MEMBER_UPDATE` for anyone, and
+      the member list as a fallback. `Store::member_look` gives the name
+      (nickname, else global name) and the top role colour. The row, the
+      reply line, mentions and the typing line use it; an author we have no
+      info for is asked for once through the existing member request. Tested
+      in the store (chunk, update and message paths). Checked at 1920 x 1080
+      on Low iq gaymers #yap-yap: "Marshmallow" blue, "Gabriel" and "Cotton"
+      red, "Mervo" magenta in the reply line, matching the live client.
+      Remaining differences: gradient and holographic role styles draw as the
+      flat role colour; the member list still reads its own entries; reply
+      line text, server tag chips and timestamps are their own items below.
 - [ ] Reply line as the live client draws it: a 16 px avatar, the author in the
       role colour, the server tag chip, then the text with mentions, custom
       emoji and timestamps resolved. Ours prints raw markup

@@ -42,6 +42,13 @@ pub struct ChannelGroup<'a> {
     pub channels: Vec<&'a Channel>,
 }
 
+/// What a server knows about one of its members that shows in the chat.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MemberInfo {
+    pub nick: Option<String>,
+    pub roles: Vec<Snowflake>,
+}
+
 #[derive(Default)]
 pub struct Store {
     pub(crate) me: Option<User>,
@@ -71,6 +78,9 @@ pub struct Store {
     pub(crate) activities: HashMap<Snowflake, Vec<Activity>>,
     /// The member list the server last sent for each guild we subscribed to.
     pub(crate) member_lists: HashMap<Snowflake, MemberListState>,
+    /// Nickname and roles of people seen in a server, learned from messages,
+    /// member requests and member updates, keyed by server then person.
+    pub(crate) member_infos: HashMap<(Snowflake, Snowflake), MemberInfo>,
     /// Channel to user to the unix second the indicator expires.
     pub(crate) typing: HashMap<Snowflake, HashMap<Snowflake, u64>>,
     /// Friends, requests and blocks, keyed by the other person.
@@ -403,6 +413,42 @@ impl Store {
             .filter(|r| r.color != 0 && roles.contains(&r.id))
             .max_by_key(|r| r.position)
             .map(|r| r.color)
+    }
+
+    /// Remembers a member's nickname and roles, so their messages can be
+    /// drawn the way the server shows them.
+    /// True when that differs from what we knew.
+    pub(crate) fn learn_member(&mut self, guild: Snowflake, user: Snowflake, nick: Option<String>, roles: Vec<Snowflake>) -> bool {
+        let nick = nick.filter(|n| !n.is_empty());
+        let info = MemberInfo { nick, roles };
+        self.member_infos.insert((guild, user), info.clone()).as_ref() != Some(&info)
+    }
+
+    /// Nickname and roles of `user` in `guild`: what a message, a member
+    /// request or an update told us, else the member list if it showed them.
+    pub fn member_info(&self, guild: Snowflake, user: Snowflake) -> Option<MemberInfo> {
+        if let Some(info) = self.member_infos.get(&(guild, user)) {
+            return Some(info.clone());
+        }
+        let list = self.member_lists.get(&guild)?;
+        list.entries().iter().flatten().find_map(|entry| match entry {
+            Entry::Member { user: u, nick, roles } if *u == user => {
+                Some(MemberInfo { nick: nick.clone(), roles: roles.clone() })
+            }
+            _ => None,
+        })
+    }
+
+    /// The name a message from `user` carries in `guild`: their nickname
+    /// there, else their account name. The color is that of their top role.
+    pub fn member_look(&self, guild: Snowflake, user: &User) -> (String, Option<u32>) {
+        match self.member_info(guild, user.id) {
+            Some(info) => (
+                info.nick.unwrap_or_else(|| user.display_name().to_owned()),
+                self.member_color(guild, &info.roles),
+            ),
+            None => (user.display_name().to_owned(), None),
+        }
     }
 
     /// A member's server nickname and their roles, highest first, as far as

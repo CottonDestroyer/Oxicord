@@ -97,6 +97,8 @@ pub struct Session {
     pub gif_query: Option<String>,
     /// People already looked up, so each is asked about once.
     users_requested: HashSet<Snowflake>,
+    /// People whose nickname and roles in a server we already asked for.
+    members_requested: HashSet<(Snowflake, Snowflake)>,
     /// Posts whose preview was already asked for.
     preview_requested: HashSet<Snowflake>,
     /// The status we last chose, which the server won't echo back to us.
@@ -417,6 +419,7 @@ impl Session {
             gifs: Load::Idle,
             gif_query: None,
             users_requested: HashSet::new(),
+            members_requested: HashSet::new(),
             preview_requested: HashSet::new(),
             status: ClientStatus::default(),
             profiles: HashMap::new(),
@@ -796,6 +799,19 @@ impl Session {
         match guild {
             Some(guild) => backend.send(Command::RequestMembers { guild, ids: fresh }),
             None => backend.send(Command::FetchUsers(fresh)),
+        }
+    }
+
+    /// Asks the server for the nickname and roles of people whose messages
+    /// we draw, once each. The answer teaches the store, which redraws.
+    pub fn request_member_looks(&mut self, backend: &Backend, guild: Snowflake, ids: Vec<Snowflake>) {
+        let fresh: Vec<Snowflake> = ids
+            .into_iter()
+            .filter(|id| self.store.member_info(guild, *id).is_none() && self.members_requested.insert((guild, *id)))
+            .take(100)
+            .collect();
+        if !fresh.is_empty() {
+            backend.send(Command::RequestMembers { guild, ids: fresh });
         }
     }
 
