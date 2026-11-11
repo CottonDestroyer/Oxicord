@@ -68,6 +68,10 @@ pub(crate) enum Command {
     SetInputDevice(Option<String>),
     SetOutputDevice(Option<String>),
     SetInputVolume(u8),
+    /// Whether the microphone opens only while the talk key is held.
+    SetPushToTalk(bool),
+    /// The talk key went down or up.
+    SetTalkKey(bool),
     SetUserVolume { user: u64, percent: u16 },
     Leave,
 }
@@ -106,6 +110,17 @@ impl VoiceHandle {
     /// Plays this person at this percent of how loud they were sent, 0 to 200.
     pub fn set_user_volume(&self, user: u64, percent: u16) {
         let _ = self.tx.send(Command::SetUserVolume { user, percent });
+    }
+
+    /// With push to talk on, the microphone is sent only while the talk key
+    /// is held, whatever the voice activity gate hears.
+    pub fn set_push_to_talk(&self, on: bool) {
+        let _ = self.tx.send(Command::SetPushToTalk(on));
+    }
+
+    /// Whether the talk key is down right now.
+    pub fn set_talk_key(&self, down: bool) {
+        let _ = self.tx.send(Command::SetTalkKey(down));
     }
 
     pub fn leave(&self) {

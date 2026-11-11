@@ -928,7 +928,22 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       checkbox for a person, and the slider is not offered from the voice list
       in the sidebar. The 0 to 200 range and the label are from memory of the
       web client, not the reference.)
-- [ ] Push to talk with a configurable key
+- [x] Push to talk with a configurable key (the Voice & Video page has an
+      Input Mode group: a Push to talk switch and a Shortcut button that waits
+      for the next key, Escape cancels, and the key is kept in the local
+      settings file. With it on, the microphone is sent only while the key is
+      held and the voice activity gate is skipped; the key is polled every 8
+      ms with GetAsyncKeyState so it works while another program has the
+      focus, on Windows only. Turning it on with no usable key changes
+      nothing. The key and switch are sent again on every join. Unit tests
+      cover the send decision, the key names and the settings rule. Seen on
+      screen: the page, the Press a key state, F8 landing in the settings
+      file. Not tried in a live call and the held key itself was not
+      exercised, so whether the mic really opens on the key is unverified.
+      Missing: modifier keys and mouse buttons as the key, key combinations,
+      the release delay and the sound the official client plays, other
+      platforms. Only letters, digits, function keys, space, arrows and a few
+      others can be picked.)
 - [ ] Resume a call after the voice websocket drops (voice resume opcode)
 - [ ] Pop out the call into its own window
 - [ ] Noise suppression toggle (Krisp is proprietary: use RNNoise and note

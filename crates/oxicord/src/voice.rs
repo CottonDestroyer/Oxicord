@@ -2,7 +2,11 @@
 //! a channel, the gateway answers with the voice server to connect to, and
 //! the voice crate runs the call. This keeps those in step.
 
-use std::{collections::HashMap, sync::{Arc, Mutex, MutexGuard}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, MutexGuard, atomic::{AtomicBool, Ordering}},
+    time::Duration,
+};
 
 use async_channel::Sender;
 use oxicord_gateway::GatewayHandle;
@@ -48,6 +52,12 @@ struct Inner {
     input_volume: u8,
     /// How loud each person is played, 0 to 200, by user id.
     user_volumes: HashMap<u64, u16>,
+    /// The push to talk key, while push to talk is on.
+    talk_key: Option<String>,
+    /// Whether that key is held, for a call that starts while it is.
+    talk_key_down: bool,
+    /// Tells the thread watching the key to stop.
+    watcher: Option<Arc<AtomicBool>>,
 }
 
 #[derive(Clone)]
@@ -72,6 +82,9 @@ impl Voice {
                 output_device: None,
                 input_volume: 100,
                 user_volumes: HashMap::new(),
+                talk_key: None,
+                talk_key_down: false,
+                watcher: None,
             })),
             gateway,
             events,
@@ -128,6 +141,8 @@ impl Voice {
         for (user, percent) in &inner.user_volumes {
             handle.set_user_volume(*user, *percent);
         }
+        handle.set_push_to_talk(inner.talk_key.is_some());
+        handle.set_talk_key(inner.talk_key_down);
         handle.set_deafened(inner.deafen);
         handle.set_muted(inner.mute || inner.deafen);
         inner.call = Some(handle);
@@ -275,9 +290,56 @@ impl Voice {
         }
     }
 
+    /// Turns push to talk on with this key, or off for `None`. The key is
+    /// watched even while another program has the focus.
+    pub fn set_push_to_talk(&self, key: Option<String>) {
+        let mut inner = self.lock();
+        if inner.talk_key == key {
+            return;
+        }
+        if let Some(stop) = inner.watcher.take() {
+            stop.store(true, Ordering::Relaxed);
+        }
+        inner.talk_key = key.clone();
+        inner.talk_key_down = false;
+        if let Some(call) = &inner.call {
+            call.set_push_to_talk(key.is_some());
+            call.set_talk_key(false);
+        }
+        let Some(code) = key.as_deref().and_then(oxicord_ui::talk_key::virtual_key) else { return };
+        let stop = Arc::new(AtomicBool::new(false));
+        inner.watcher = Some(stop.clone());
+        drop(inner);
+
+        let this = self.clone();
+        std::thread::spawn(move || {
+            let mut held = false;
+            while !stop.load(Ordering::Relaxed) {
+                let down = crate::hotkey::is_down(code);
+                if down != held {
+                    held = down;
+                    this.set_talk_key_down(down);
+                }
+                std::thread::sleep(Duration::from_millis(8));
+            }
+        });
+    }
+
+    fn set_talk_key_down(&self, down: bool) {
+        let mut inner = self.lock();
+        inner.talk_key_down = down;
+        if let Some(call) = &inner.call {
+            call.set_talk_key(down);
+        }
+    }
+
     /// Ends the call without telling anyone, for when the session goes away.
     pub fn shutdown(&self) {
         let mut inner = self.lock();
+        if let Some(stop) = inner.watcher.take() {
+            stop.store(true, Ordering::Relaxed);
+        }
+        inner.talk_key = None;
         inner.generation += 1;
         inner.want = None;
         if let Some(call) = inner.call.take() {

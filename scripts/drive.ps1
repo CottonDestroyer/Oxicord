@@ -6,7 +6,7 @@
 #   powershell -File scripts/drive.ps1 -Dir <outdir> -Attach -Steps "cmd:goto 123/mute/join 456;wait:5;shot:call"
 #
 # Steps are separated by ; and are: wait:s  click:x,y  rclick:x,y  move:x,y  wheel:x,y,delta
-# type:text  enter  shot:name  cmd:line/line  (cmd writes the debug control file, see
+# type:text  key:v (or key:f8)  enter  shot:name  cmd:line/line  (cmd writes the debug control file, see
 # crates/oxicord-ui/src/dev_control.rs: goto <channel>, join <channel>, leave, mute, deafen).
 # Coordinates are window pixels. Screenshots are of the app window only.
 
@@ -56,6 +56,10 @@ try {
         [W]::PostMessage($h, 0x20A, $w, $l) | Out-Null
       }
       'type' { foreach ($ch in $v.ToCharArray()) { [W]::PostMessage($h, 0x102, [IntPtr][int]$ch, [IntPtr]1) | Out-Null; Start-Sleep -Milliseconds 40 } }
+      'key' {
+        $vk = if ($v -match '^f(\d+)$') { 0x6F + [int]$Matches[1] } else { [int][char]$v.ToUpper() }
+        [W]::PostMessage($h, 0x100, [IntPtr]$vk, [IntPtr]1) | Out-Null; Start-Sleep -Milliseconds 60; [W]::PostMessage($h, 0x101, [IntPtr]$vk, [IntPtr]1) | Out-Null
+      }
       'enter' { [W]::PostMessage($h, 0x100, [IntPtr]13, [IntPtr]1) | Out-Null; Start-Sleep -Milliseconds 60; [W]::PostMessage($h, 0x102, [IntPtr]13, [IntPtr]1) | Out-Null; Start-Sleep -Milliseconds 60; [W]::PostMessage($h, 0x101, [IntPtr]13, [IntPtr]1) | Out-Null }
       'shot' {
         $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null

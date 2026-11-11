@@ -6,7 +6,7 @@ mod pages;
 pub(crate) mod widgets;
 
 use gpui_kit::{
-    AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
+    AppContext as _, ClickEvent, Context, Entity, EventEmitter, FocusHandle, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, StatefulInteractiveElement as _,
     Styled as _, Subscription, Window, div, px, rgb,
     component::{input::{Input, InputState}, slider::{SliderEvent, SliderState}},
@@ -114,7 +114,7 @@ impl Page {
             Page::Devices => "sessions logged in locations",
             Page::Connections => "linked accounts steam github twitch spotify",
             Page::Appearance => "time format 12 hour 24 hour clock members list layout theme",
-            Page::VoiceVideo => "microphone input volume mic sound audio",
+            Page::VoiceVideo => "microphone input volume mic sound audio push to talk key",
             Page::Chat => "embeds link previews images attachments reactions media",
             Page::Notifications => "desktop toast mentions alerts",
             Page::Keybinds => "keyboard shortcuts hotkeys keys",
@@ -148,6 +148,9 @@ pub struct SettingsView {
     display_name: Entity<InputState>,
     /// The Voice & Video page's Input Volume slider, 0 to 100.
     input_volume: Entity<SliderState>,
+    /// Push to talk: the key button waiting for the next key to be pressed.
+    capturing_key: bool,
+    key_focus: FocusHandle,
     /// Whether the profile inputs have been filled from the server yet, so a
     /// refresh doesn't overwrite what the user is typing.
     filled: bool,
@@ -192,6 +195,8 @@ impl SettingsView {
             search,
             display_name,
             input_volume,
+            capturing_key: false,
+            key_focus: cx.focus_handle(),
             filled: false,
             reveal_contact: false,
             confirm_revoke: None,

@@ -1,5 +1,5 @@
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _,
+    AnyElement, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, StatefulInteractiveElement as _,
     Styled as _, div, px, rgb, rgba,
     component::{input::{Input, }, slider::Slider},
 };
@@ -864,6 +864,81 @@ impl SettingsView {
                     .child(format!("{percent}%")),
             )
             .into_any_element();
+        let (on, key) = {
+            let settings = &self.session.read(cx).settings;
+            (settings.push_to_talk, settings.push_to_talk_key.clone())
+        };
+        let toggle = switch_row(
+            "ptt-enabled",
+            "Push to talk",
+            Some("Your microphone is sent only while you hold the key, even when another program has the focus."),
+            on,
+            cx.listener(|this, _: &ClickEvent, _, cx| {
+                let backend = this.backend.clone();
+                this.session.update(cx, |s, cx| s.change_settings(&backend, |st| st.push_to_talk = !st.push_to_talk, cx));
+            }),
+        );
+        let capturing = self.capturing_key;
+        let shown = if capturing {
+            "Press a key".to_owned()
+        } else if key.is_empty() {
+            "Not set".to_owned()
+        } else {
+            crate::talk_key::label(&key)
+        };
+        let key_button = div()
+            .id("ptt-key")
+            .track_focus(&self.key_focus)
+            .h(px(32.))
+            .min_w(px(96.))
+            .px_3()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(if capturing { theme::ACCENT } else { theme::BG_ACTIVE }))
+            .bg(rgb(theme::BG_ACTIVE))
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .cursor_pointer()
+            .hover(|s| s.opacity(0.85))
+            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                this.capturing_key = true;
+                window.focus(&this.key_focus, cx);
+                cx.notify();
+            }))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if !this.capturing_key {
+                    return;
+                }
+                let name = event.keystroke.key.as_str();
+                let usable = crate::talk_key::virtual_key(name).is_some();
+                if usable {
+                    let name = name.to_owned();
+                    let backend = this.backend.clone();
+                    this.session.update(cx, |s, cx| s.change_settings(&backend, |st| st.push_to_talk_key = name, cx));
+                }
+                // Escape gives up, any key that cannot be used is ignored.
+                if usable || name == "escape" {
+                    this.capturing_key = false;
+                    cx.stop_propagation();
+                    cx.notify();
+                }
+            }))
+            .child(shown);
+        let shortcut = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .child(
+                div()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child("Shortcut"),
+            )
+            .child(key_button)
+            .into_any_element();
         div()
             .flex()
             .flex_col()
@@ -871,6 +946,10 @@ impl SettingsView {
             .child(title("Voice & Video"))
             .child(group("Input Volume", vec![slider]))
             .child(blurb("How loud your microphone is for everyone in the call."))
+            .child(group("Input Mode", vec![toggle, shortcut]))
+            .child(blurb(
+                "Push to talk needs a shortcut. Any letter, number or function key works. Escape cancels.",
+            ))
             .into_any_element()
     }
 

@@ -116,6 +116,9 @@ struct Call {
     input_volume: u8,
     /// How loud each person is played, by user id. Missing means 100.
     user_volumes: HashMap<u64, u16>,
+    /// Push to talk: the microphone is open only while the key is down.
+    push_to_talk: bool,
+    key_down: bool,
     /// Whether we are currently sending speech.
     talking: bool,
     /// Every frame heard from the microphone, sent or not. It sets the RTP
@@ -164,6 +167,8 @@ async fn serve(
         gate: Gate::default(),
         input_volume: 100,
         user_volumes: HashMap::new(),
+        push_to_talk: false,
+        key_down: false,
         talking: false,
         heard: 0,
         sequence: 0,
@@ -245,6 +250,8 @@ async fn serve(
                 Some(Command::SetInputDevice(device)) => call.set_input_device(device),
                 Some(Command::SetOutputDevice(device)) => call.set_output_device(device),
                 Some(Command::SetInputVolume(percent)) => call.set_input_volume(percent),
+                Some(Command::SetPushToTalk(on)) => call.set_push_to_talk(on, &mut out),
+                Some(Command::SetTalkKey(down)) => call.set_talk_key(down, &mut out),
                 Some(Command::SetUserVolume { user, percent }) => {
                     call.user_volumes.insert(user, percent.min(MAX_USER_VOLUME));
                 }
@@ -290,6 +297,26 @@ impl Call {
     /// How loud the microphone is sent, 0 to 100.
     fn set_input_volume(&mut self, percent: u8) {
         self.input_volume = percent.min(100);
+    }
+
+    fn set_push_to_talk(&mut self, on: bool, out: &mut Vec<Out>) {
+        self.push_to_talk = on;
+        // Turning it on with the key up closes the microphone at once.
+        if !self.mic_open() {
+            self.stop_talking(out);
+        }
+    }
+
+    fn set_talk_key(&mut self, down: bool, out: &mut Vec<Out>) {
+        self.key_down = down;
+        if !self.mic_open() {
+            self.stop_talking(out);
+        }
+    }
+
+    /// Whether push to talk lets the microphone through right now.
+    fn mic_open(&self) -> bool {
+        sends(self.push_to_talk, self.key_down, || true)
     }
 
     /// Switches speakers, keeping whatever was deafened.
@@ -348,7 +375,9 @@ impl Call {
         if self.muted || frame.len() != FRAME {
             return;
         }
-        if self.gate.passes(frame) {
+        // Holding the key sends everything, so the gate is not asked.
+        let sending = sends(self.push_to_talk, self.key_down, || self.gate.passes(frame));
+        if sending {
             if !self.talking {
                 self.talking = true;
                 out.push(self.speaking(true));
@@ -620,9 +649,23 @@ fn id(value: &Value) -> Option<u64> {
     value.as_str().and_then(|s| s.parse().ok()).or_else(|| value.as_u64())
 }
 
+/// Whether a frame from the microphone goes out. Push to talk sends while the
+/// key is down and ignores the gate, which is only asked otherwise.
+fn sends(push_to_talk: bool, key_down: bool, gate: impl FnOnce() -> bool) -> bool {
+    if push_to_talk { key_down } else { gate() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn push_to_talk_sends_only_while_the_key_is_down() {
+        assert!(sends(true, true, || false), "held key beats a quiet gate");
+        assert!(!sends(true, false, || true), "loud room, key up: nothing");
+        assert!(sends(false, false, || true), "off: the gate decides");
+        assert!(!sends(false, true, || false));
+    }
 
     #[test]
     fn someone_is_talking_from_their_first_packet_until_the_hangover_passes() {

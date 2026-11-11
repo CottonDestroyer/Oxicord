@@ -62,6 +62,7 @@ mod status_dialog;
 mod timeout_dialog;
 mod roles_dialog;
 mod settings;
+pub mod talk_key;
 mod user_menu;
 mod widget_picker;
 mod switcher;

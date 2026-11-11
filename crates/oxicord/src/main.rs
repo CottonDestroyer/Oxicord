@@ -9,6 +9,7 @@ mod logging;
 // Only the debug build installs a subscriber.
 #[cfg(not(debug_assertions))]
 use tracing_subscriber as _;
+mod hotkey;
 mod settings;
 mod voice;
 
