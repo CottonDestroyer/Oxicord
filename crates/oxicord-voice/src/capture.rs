@@ -38,6 +38,13 @@ impl Gate {
     }
 }
 
+/// The input volume setting scaled onto a frame: 100 leaves it alone, 0
+/// silences it. Like the official client's slider it only turns the mic down.
+pub fn with_volume(frame: &[i16], percent: u8) -> Vec<i16> {
+    let percent = i32::from(percent.min(100));
+    frame.iter().map(|&s| (i32::from(s) * percent / 100) as i16).collect()
+}
+
 /// Turns whatever the device delivers into 20 ms mono frames at 48 kHz:
 /// channels are averaged and the rate is converted by linear interpolation.
 pub struct Framer {
@@ -205,6 +212,15 @@ mod tests {
         let mut framer = Framer::new(1, 96_000);
         let frames = collect(&mut framer, &vec![0.25; 1920]);
         assert_eq!(frames.len(), 1);
+    }
+
+    #[test]
+    fn the_input_volume_scales_the_frame() {
+        let frame = vec![1000i16, -1000, 32767, -32768];
+        assert_eq!(with_volume(&frame, 100), frame);
+        assert_eq!(with_volume(&frame, 50), vec![500, -500, 16383, -16384]);
+        assert_eq!(with_volume(&frame, 0), vec![0; 4]);
+        assert_eq!(with_volume(&frame, 250), frame, "above 100 is capped");
     }
 
     #[test]

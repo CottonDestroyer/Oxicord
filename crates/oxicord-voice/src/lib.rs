@@ -67,6 +67,7 @@ pub(crate) enum Command {
     SetMuted(bool),
     SetInputDevice(Option<String>),
     SetOutputDevice(Option<String>),
+    SetInputVolume(u8),
     Leave,
 }
 
@@ -94,6 +95,11 @@ impl VoiceHandle {
     /// Plays on these speakers, or the default ones for `None`.
     pub fn set_output_device(&self, device: Option<String>) {
         let _ = self.tx.send(Command::SetOutputDevice(device));
+    }
+
+    /// Sends the microphone at this percent of its level, 0 to 100.
+    pub fn set_input_volume(&self, percent: u8) {
+        let _ = self.tx.send(Command::SetInputVolume(percent));
     }
 
     pub fn leave(&self) {

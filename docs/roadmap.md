@@ -898,7 +898,21 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
 - [x] Live call check
 - [x] Call UI matched to the web client
 - [x] Floating user card across the rail and list
-- [ ] Input volume slider
+- [x] Input volume slider (a new Voice & Video page in app settings, after
+      Appearance, with an Input Volume slider from 0 to 100 and the percent
+      beside it, default 100 like the web client. Dragging changes the live
+      call at once, letting go saves it to the local settings file, and the
+      saved value is sent to every call on join. The microphone frames are
+      scaled after the voice gate, so the gate still reacts to the raw mic.
+      Like the web client's slider it only turns the mic down. Unit tested:
+      the frame scaling and its cap, the default for an old settings file.
+      Seen on screen: the page, dragging, the percent label and the value
+      landing in the settings file. Not checked in a live call, so the effect
+      on what others hear is unverified. Missing: the rest of the web page
+      (input and output device pickers, output volume, mic test, camera),
+      which come with the later voice items, and the slider's own wording and
+      spacing are a best guess because the settings chunk is not in the
+      reference.)
 - [ ] Per-user volume (local gain) from the user's right click menu
 - [ ] Push to talk with a configurable key
 - [ ] Resume a call after the voice websocket drops (voice resume opcode)

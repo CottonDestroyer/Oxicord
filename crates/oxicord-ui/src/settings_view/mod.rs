@@ -9,7 +9,7 @@ use gpui_kit::{
     AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, StatefulInteractiveElement as _,
     Styled as _, Subscription, Window, div, px, rgb,
-    component::input::{Input, InputState},
+    component::{input::{Input, InputState}, slider::{SliderEvent, SliderState}},
 };
 use oxicord_model::Snowflake;
 use oxicord_settings::{Key, Value};
@@ -34,6 +34,7 @@ enum Page {
     Devices,
     Connections,
     Appearance,
+    VoiceVideo,
     Chat,
     Notifications,
     Keybinds,
@@ -57,6 +58,7 @@ impl Page {
             "App settings",
             &[
                 Page::Appearance,
+                Page::VoiceVideo,
                 Page::Chat,
                 Page::Notifications,
                 Page::Keybinds,
@@ -74,6 +76,7 @@ impl Page {
             Page::Devices => "Devices",
             Page::Connections => "Connections",
             Page::Appearance => "Appearance",
+            Page::VoiceVideo => "Voice & Video",
             Page::Chat => "Chat",
             Page::Notifications => "Notifications",
             Page::Keybinds => "Keybinds",
@@ -91,6 +94,7 @@ impl Page {
             Page::Devices => "laptop",
             Page::Connections => "link",
             Page::Appearance => "palette",
+            Page::VoiceVideo => "mic",
             Page::Chat => "message-circle",
             Page::Notifications => "bell",
             Page::Keybinds => "keyboard",
@@ -110,6 +114,7 @@ impl Page {
             Page::Devices => "sessions logged in locations",
             Page::Connections => "linked accounts steam github twitch spotify",
             Page::Appearance => "time format 12 hour 24 hour clock members list layout theme",
+            Page::VoiceVideo => "microphone input volume mic sound audio",
             Page::Chat => "embeds link previews images attachments reactions media",
             Page::Notifications => "desktop toast mentions alerts",
             Page::Keybinds => "keyboard shortcuts hotkeys keys",
@@ -141,6 +146,8 @@ pub struct SettingsView {
     page: Page,
     search: Entity<InputState>,
     display_name: Entity<InputState>,
+    /// The Voice & Video page's Input Volume slider, 0 to 100.
+    input_volume: Entity<SliderState>,
     /// Whether the profile inputs have been filled from the server yet, so a
     /// refresh doesn't overwrite what the user is typing.
     filled: bool,
@@ -160,10 +167,22 @@ impl SettingsView {
     ) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
         let display_name = cx.new(|cx| InputState::new(window, cx).placeholder("Display name"));
+        let volume = f32::from(session.read(cx).settings.input_volume);
+        let input_volume = cx.new(|_| SliderState::new().min(0.).max(100.).step(1.).default_value(volume));
         let subscriptions = vec![
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
             cx.observe(&search, |_, _, cx| cx.notify()),
+            cx.subscribe(&input_volume, |this, _, event: &SliderEvent, cx| {
+                // Dragging changes the call live, letting go saves the file.
+                let (value, save) = match event {
+                    SliderEvent::Change(value) => (value, false),
+                    SliderEvent::Release(value) => (value, true),
+                };
+                let percent = value.start().round().clamp(0., 100.) as u8;
+                let backend = this.backend.clone();
+                this.session.update(cx, |s, cx| s.set_input_volume(&backend, percent, save, cx));
+            }),
         ];
         Self {
             session,
@@ -172,6 +191,7 @@ impl SettingsView {
             page: Page::Account,
             search,
             display_name,
+            input_volume,
             filled: false,
             reveal_contact: false,
             confirm_revoke: None,
@@ -247,6 +267,15 @@ impl SettingsView {
     fn toggle_pref(&mut self, key: Key, cx: &mut Context<Self>) {
         let on = self.pref(key, cx).as_bool();
         self.set_pref(key, Value::Bool(!on), cx);
+    }
+
+    /// Puts the slider where the saved volume is, for when something else
+    /// changed it, like resetting the app settings.
+    fn sync_volume(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let saved = f32::from(self.session.read(cx).settings.input_volume);
+        if self.input_volume.read(cx).value().start().round() != saved {
+            self.input_volume.update(cx, |slider, cx| slider.set_value(saved, window, cx));
+        }
     }
 
     /// Copies the account's name and bio into the editors the first time
@@ -391,6 +420,7 @@ impl SettingsView {
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.fill_inputs(window, cx);
+        self.sync_volume(window, cx);
         let sidebar = self.render_sidebar(cx);
         let title = self.page.label();
         // About 40px of air around it, up to the size of the official one.

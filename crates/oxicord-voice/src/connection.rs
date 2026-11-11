@@ -19,7 +19,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
     Command, VoiceEvent, VoiceParams,
-    capture::{Capture, Gate},
+    capture::{Capture, Gate, with_volume},
     dave::{self, Dave, Out},
     opus::{Decoder, Encoder, FRAME},
     playback::Playback,
@@ -112,6 +112,8 @@ struct Call {
     output_device: Option<String>,
     encoder: Option<Encoder>,
     gate: Gate,
+    /// The input volume slider, 0 to 100.
+    input_volume: u8,
     /// Whether we are currently sending speech.
     talking: bool,
     /// Every frame heard from the microphone, sent or not. It sets the RTP
@@ -158,6 +160,7 @@ async fn serve(
         output_device: None,
         encoder: None,
         gate: Gate::default(),
+        input_volume: 100,
         talking: false,
         heard: 0,
         sequence: 0,
@@ -238,6 +241,7 @@ async fn serve(
                 Some(Command::SetMuted(muted)) => call.set_muted(muted, &mut out),
                 Some(Command::SetInputDevice(device)) => call.set_input_device(device),
                 Some(Command::SetOutputDevice(device)) => call.set_output_device(device),
+                Some(Command::SetInputVolume(percent)) => call.set_input_volume(percent),
                 Some(Command::Leave) | None => {
                     let _ = sink.send(Message::Close(None)).await;
                     return Ok(());
@@ -275,6 +279,11 @@ impl Call {
         self.input_device = device;
         self.capture = None;
         self.sync_capture();
+    }
+
+    /// How loud the microphone is sent, 0 to 100.
+    fn set_input_volume(&mut self, percent: u8) {
+        self.input_volume = percent.min(100);
     }
 
     /// Switches speakers, keeping whatever was deafened.
@@ -338,7 +347,8 @@ impl Call {
                 self.talking = true;
                 out.push(self.speaking(true));
             }
-            let Some(packet) = self.encoder.as_mut().and_then(|encoder| encoder.encode(frame)) else { return };
+            let scaled = with_volume(frame, self.input_volume);
+            let Some(packet) = self.encoder.as_mut().and_then(|encoder| encoder.encode(&scaled)) else { return };
             self.send_opus(&packet);
         } else {
             self.stop_talking(out);

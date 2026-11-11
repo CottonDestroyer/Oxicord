@@ -445,6 +445,8 @@ impl Session {
             deafened: self.voice.deafened,
             ..VoiceCall::default()
         };
+        // The saved slider position, which the call has not heard of yet.
+        backend.send(Command::SetInputVolume(self.settings.input_volume));
         backend.send(Command::JoinVoice { guild, channel });
         cx.notify();
     }
@@ -1040,6 +1042,18 @@ impl Session {
     ) {
         change(&mut self.settings);
         backend.send(Command::SaveSettings(self.settings.clone()));
+        backend.send(Command::SetInputVolume(self.settings.input_volume));
+        cx.notify();
+    }
+
+    /// The Input Volume slider moved. The call hears it at once, the file is
+    /// written only when `save` is set, which is when the drag ends.
+    pub fn set_input_volume(&mut self, backend: &Backend, percent: u8, save: bool, cx: &mut Context<Self>) {
+        self.settings.input_volume = percent.min(100);
+        backend.send(Command::SetInputVolume(self.settings.input_volume));
+        if save {
+            backend.send(Command::SaveSettings(self.settings.clone()));
+        }
         cx.notify();
     }
 

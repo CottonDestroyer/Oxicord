@@ -1,7 +1,7 @@
 use gpui_kit::{
     AnyElement, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _,
     Styled as _, div, px, rgb, rgba,
-    component::input::{Input, },
+    component::{input::{Input, }, slider::Slider},
 };
 use oxicord_media::cdn;
 use oxicord_settings::{Key, Value};
@@ -98,6 +98,7 @@ impl SettingsView {
             Page::Devices => self.devices_page(cx),
             Page::Connections => self.connections_page(cx),
             Page::Appearance => self.appearance_page(cx),
+            Page::VoiceVideo => self.voice_page(cx),
             Page::Chat => self.chat_page(cx),
             Page::Notifications => self.notifications_page(cx),
             Page::Keybinds => keybinds_page(),
@@ -845,6 +846,32 @@ impl SettingsView {
             .child(group("Links and media", embeds))
             .child(group("Show spoiler content", spoiler_rows));
         page.into_any_element()
+    }
+
+    fn voice_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let percent = self.session.read(cx).settings.input_volume;
+        let slider = div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(div().flex_1().child(Slider::new(&self.input_volume).accessibility_label("Input Volume")))
+            .child(
+                div()
+                    .w(px(48.))
+                    .flex_none()
+                    .text_right()
+                    .text_color(rgb(theme::TEXT))
+                    .child(format!("{percent}%")),
+            )
+            .into_any_element();
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(title("Voice & Video"))
+            .child(group("Input Volume", vec![slider]))
+            .child(blurb("How loud your microphone is for everyone in the call."))
+            .into_any_element()
     }
 
     fn notifications_page(&mut self, cx: &mut Context<Self>) -> AnyElement {

@@ -412,6 +412,8 @@ pub enum Command {
     SetVoiceFlags { mute: bool, deafen: bool },
     /// The microphone and speakers to use, by name. `None` is the default.
     SetAudioDevices { input: Option<String>, output: Option<String> },
+    /// The Input Volume setting, 0 to 100 percent of the microphone.
+    SetInputVolume(u8),
 }
 
 /// How the call we are in is doing.

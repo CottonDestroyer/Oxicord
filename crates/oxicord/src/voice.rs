@@ -44,6 +44,8 @@ struct Inner {
     /// The microphone and speakers chosen, the system defaults when `None`.
     input_device: Option<String>,
     output_device: Option<String>,
+    /// The Input Volume setting, 0 to 100.
+    input_volume: u8,
 }
 
 #[derive(Clone)]
@@ -66,6 +68,7 @@ impl Voice {
                 deafen: false,
                 input_device: None,
                 output_device: None,
+                input_volume: 100,
             })),
             gateway,
             events,
@@ -118,6 +121,7 @@ impl Voice {
             input_device: inner.input_device.clone(),
             output_device: inner.output_device.clone(),
         });
+        handle.set_input_volume(inner.input_volume);
         handle.set_deafened(inner.deafen);
         handle.set_muted(inner.mute || inner.deafen);
         inner.call = Some(handle);
@@ -242,6 +246,16 @@ impl Voice {
             if output_changed {
                 call.set_output_device(output);
             }
+        }
+    }
+
+    /// Sends the microphone at this percent of its level, for this call and
+    /// the next ones.
+    pub fn set_input_volume(&self, percent: u8) {
+        let mut inner = self.lock();
+        inner.input_volume = percent.min(100);
+        if let Some(call) = &inner.call {
+            call.set_input_volume(inner.input_volume);
         }
     }
 
