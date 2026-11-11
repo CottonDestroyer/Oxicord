@@ -943,6 +943,10 @@ impl Session {
                 self.admin.switch_to(*g);
                 self.admin.welcome = Load::Loading;
             }
+            R::LoadOnboardingSetup(g) | R::SaveOnboardingSetup { guild: g, .. } => {
+                self.admin.switch_to(*g);
+                self.admin.onboarding = Load::Loading;
+            }
             R::LoadAudit(g) => {
                 self.admin.switch_to(*g);
                 self.admin.audit = Load::Loading;

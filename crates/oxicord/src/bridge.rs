@@ -1066,6 +1066,12 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         AdminRequest::SaveWelcome { guild, body } => {
             say(AdminEvent::Welcome(guild, api.edit_welcome_screen(guild, &body).await.map_err(text))).await;
         }
+        AdminRequest::LoadOnboardingSetup(guild) => {
+            say(AdminEvent::OnboardingSetup(guild, api.onboarding(guild).await.map_err(text))).await;
+        }
+        AdminRequest::SaveOnboardingSetup { guild, body } => {
+            say(AdminEvent::OnboardingSetup(guild, api.edit_onboarding(guild, &body).await.map_err(text))).await;
+        }
         AdminRequest::LoadIntegrations(guild) => {
             say(AdminEvent::Integrations(guild, api.guild_integrations(guild).await.map_err(text))).await;
         }

@@ -8,6 +8,11 @@ use serde_repr::Deserialize_repr;
 
 use crate::{Emoji, Snowflake};
 
+/// Most questions a server can ask in onboarding.
+pub const MAX_ONBOARDING_PROMPTS: usize = 5;
+/// Most answers one question can offer.
+pub const MAX_ONBOARDING_OPTIONS: usize = 50;
+
 /// How onboarding is presented.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize_repr)]
 #[repr(u8)]
@@ -30,7 +35,7 @@ pub enum PromptType {
     Unknown = 255,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 pub struct Onboarding {
     pub guild_id: Snowflake,
     #[serde(default)]
@@ -48,7 +53,7 @@ pub struct Onboarding {
 }
 
 /// One question, with the answers it offers.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct OnboardingPrompt {
     pub id: Snowflake,
     #[serde(default)]
@@ -68,7 +73,7 @@ pub struct OnboardingPrompt {
 }
 
 /// One answer: a title, a description and the channels and roles it opens.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct OnboardingOption {
     pub id: Snowflake,
     #[serde(default)]
@@ -84,7 +89,7 @@ pub struct OnboardingOption {
 }
 
 /// What we picked for a prompt.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct OnboardingResponse {
     pub prompt_id: Snowflake,
     #[serde(default)]
@@ -111,7 +116,102 @@ pub struct OnboardingUpdate {
     pub onboarding_responses_seen: BTreeMap<Snowflake, u64>,
 }
 
+impl OnboardingPrompt {
+    /// Offers another answer, unless the question is full. `id` only has to be
+    /// unique among this question's options: the server assigns the real one.
+    pub fn add_option(&mut self, id: u64) -> bool {
+        if self.options.len() >= MAX_ONBOARDING_OPTIONS {
+            return false;
+        }
+        self.options.push(OnboardingOption {
+            id: Snowflake(id),
+            title: String::new(),
+            description: String::new(),
+            emoji: None,
+            role_ids: Vec::new(),
+            channel_ids: Vec::new(),
+        });
+        true
+    }
+}
+
 impl Onboarding {
+    /// Asks another question, unless the limit is reached. `id` is a
+    /// throwaway, as the web client uses the time in milliseconds.
+    pub fn add_prompt(&mut self, id: u64) -> bool {
+        if self.prompts.iter().filter(|p| p.in_onboarding).count() >= MAX_ONBOARDING_PROMPTS {
+            return false;
+        }
+        self.prompts.push(OnboardingPrompt {
+            id: Snowflake(id),
+            title: String::new(),
+            options: Vec::new(),
+            single_select: false,
+            disabled: false,
+            required: false,
+            in_onboarding: true,
+            kind: PromptType::MultipleChoice,
+        });
+        true
+    }
+
+    /// Adds a channel everyone lands in, or removes it when it is there.
+    pub fn toggle_default_channel(&mut self, channel: Snowflake) {
+        match self.default_channel_ids.iter().position(|c| *c == channel) {
+            Some(at) => {
+                self.default_channel_ids.remove(at);
+            }
+            None => self.default_channel_ids.push(channel),
+        }
+    }
+
+    /// The `PUT /guilds/:id/onboarding` body, shaped as the web client sends
+    /// it. A question or answer with no title is left out.
+    pub fn edit_body(&self) -> serde_json::Value {
+        let ids = |ids: &[Snowflake]| ids.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let prompts = self
+            .prompts
+            .iter()
+            .filter(|prompt| !prompt.title.trim().is_empty())
+            .map(|prompt| {
+                let options = prompt
+                    .options
+                    .iter()
+                    .filter(|option| !option.title.trim().is_empty())
+                    .map(|option| {
+                        let emoji = option.emoji.as_ref();
+                        serde_json::json!({
+                            "id": option.id.to_string(),
+                            "title": option.title.trim(),
+                            "description": option.description.trim(),
+                            "channel_ids": ids(&option.channel_ids),
+                            "role_ids": ids(&option.role_ids),
+                            "emoji_id": emoji.and_then(|e| e.id).map(|e| e.to_string()),
+                            "emoji_name": emoji.and_then(|e| e.name.clone()),
+                            "emoji_animated": emoji.is_some_and(|e| e.animated),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                serde_json::json!({
+                    "id": prompt.id.to_string(),
+                    "title": prompt.title.trim(),
+                    "options": options,
+                    "single_select": prompt.single_select,
+                    "disabled": prompt.disabled,
+                    "required": prompt.required,
+                    "in_onboarding": prompt.in_onboarding,
+                    "type": if prompt.kind == PromptType::Dropdown { 1 } else { 0 },
+                })
+            })
+            .collect::<Vec<_>>();
+        serde_json::json!({
+            "enabled": self.enabled,
+            "mode": if self.mode == OnboardingMode::Advanced { 1 } else { 0 },
+            "default_channel_ids": ids(&self.default_channel_ids),
+            "prompts": prompts,
+        })
+    }
+
     /// Builds the update from the prompts that are part of onboarding and the
     /// options picked for them. `now` is the time the guide was shown, in
     /// milliseconds, as the client sends it.
@@ -168,6 +268,56 @@ mod tests {
         assert_eq!(emoji.id, Some(Snowflake(609_164_124_831_875_114)));
         assert_eq!(emoji.name.as_deref(), Some("Yes"));
         assert!(!emoji.animated);
+    }
+
+    #[test]
+    fn the_edit_body_matches_what_the_web_client_sends() {
+        let text = include_str!("../../../fixtures/onboarding.json");
+        let onboarding: Onboarding = serde_json::from_str(text).unwrap();
+        let body = onboarding.edit_body();
+        assert_eq!(body["enabled"], true);
+        assert_eq!(body["mode"], 0);
+        assert_eq!(body["default_channel_ids"].as_array().unwrap().len(), 19);
+        let prompt = &body["prompts"][0];
+        assert_eq!(prompt["id"], "1496185137216356375");
+        assert_eq!(prompt["single_select"], true);
+        assert_eq!(prompt["type"], 0);
+        let option = &prompt["options"][0];
+        assert_eq!(option["title"], "Yes!");
+        assert_eq!(option["role_ids"][0], "1496183796121342212");
+        assert_eq!(option["emoji_id"], "609164124831875114");
+        assert_eq!(option["emoji_name"], "Yes");
+        assert_eq!(option["emoji_animated"], false);
+    }
+
+    #[test]
+    fn untitled_questions_and_answers_are_not_sent() {
+        let mut onboarding = Onboarding::default();
+        assert!(onboarding.add_prompt(1));
+        assert!(onboarding.add_prompt(2));
+        onboarding.prompts[0].title = "  Pick one  ".into();
+        assert!(onboarding.prompts[0].add_option(10));
+        assert!(onboarding.prompts[0].add_option(11));
+        onboarding.prompts[0].options[0].title = " Yes ".into();
+        let body = onboarding.edit_body();
+        assert_eq!(body["prompts"].as_array().unwrap().len(), 1, "the blank question is dropped");
+        assert_eq!(body["prompts"][0]["title"], "Pick one");
+        assert_eq!(body["prompts"][0]["options"].as_array().unwrap().len(), 1, "so is the blank answer");
+        assert_eq!(body["prompts"][0]["options"][0]["title"], "Yes");
+    }
+
+    #[test]
+    fn questions_are_capped_and_default_channels_toggle() {
+        let mut onboarding = Onboarding::default();
+        for id in 0..MAX_ONBOARDING_PROMPTS as u64 {
+            assert!(onboarding.add_prompt(id));
+        }
+        assert!(!onboarding.add_prompt(99), "the sixth question is refused");
+
+        onboarding.toggle_default_channel(Snowflake(4));
+        onboarding.toggle_default_channel(Snowflake(5));
+        onboarding.toggle_default_channel(Snowflake(4));
+        assert_eq!(onboarding.default_channel_ids, vec![Snowflake(5)]);
     }
 
     #[test]

@@ -58,6 +58,9 @@ pub enum AdminRequest {
     LoadWelcome(Snowflake),
     /// A body as `WelcomeScreen::body` builds it.
     SaveWelcome { guild: Snowflake, body: Value },
+    LoadOnboardingSetup(Snowflake),
+    /// A body as `Onboarding::edit_body` builds it.
+    SaveOnboardingSetup { guild: Snowflake, body: Value },
     LoadWebhooks(Snowflake),
     CreateWebhook { guild: Snowflake, channel: Snowflake, name: String },
     EditWebhook { guild: Snowflake, webhook: Snowflake, name: String, channel: Snowflake },
@@ -73,6 +76,7 @@ pub enum AdminEvent {
     Integrations(Snowflake, Result<Vec<IntegrationEntry>, String>),
     Automod(Snowflake, Result<Vec<AutoModRule>, String>),
     Welcome(Snowflake, Result<oxicord_model::WelcomeScreen, String>),
+    OnboardingSetup(Snowflake, Result<oxicord_model::Onboarding, String>),
     Audit(Snowflake, Result<AuditLog, String>),
     MemberVerification(Snowflake, Box<Result<oxicord_model::VerificationInfo, String>>),
     /// How answering the screening form went.
@@ -89,6 +93,7 @@ pub struct AdminState {
     pub integrations: Load<Vec<IntegrationEntry>>,
     pub automod: Load<Vec<AutoModRule>>,
     pub welcome: Load<oxicord_model::WelcomeScreen>,
+    pub onboarding: Load<oxicord_model::Onboarding>,
     pub audit: Load<AuditLog>,
 }
 
@@ -108,6 +113,7 @@ impl AdminState {
             AdminEvent::Integrations(g, r) if self.guild == Some(g) => self.integrations = Load::from_result(r),
             AdminEvent::Automod(g, r) if self.guild == Some(g) => self.automod = Load::from_result(r),
             AdminEvent::Welcome(g, r) if self.guild == Some(g) => self.welcome = Load::from_result(r),
+            AdminEvent::OnboardingSetup(g, r) if self.guild == Some(g) => self.onboarding = Load::from_result(r),
             AdminEvent::Audit(g, r) if self.guild == Some(g) => self.audit = Load::from_result(r),
             AdminEvent::MemberVerification(..) | AdminEvent::Verified(..) => {}
             _ => {}

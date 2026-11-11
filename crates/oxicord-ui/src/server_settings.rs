@@ -11,7 +11,8 @@ use gpui_kit::{
 };
 use oxicord_media::cdn;
 use oxicord_model::{
-    ChannelType, Permissions, Snowflake, WelcomeChannel, WelcomeScreen,
+    ChannelType, MAX_ONBOARDING_OPTIONS, Onboarding, OnboardingOption, OnboardingPrompt, Permissions, Snowflake,
+    WelcomeChannel, WelcomeScreen,
     admin::{AutoModRule, IntegrationEntry, WebhookEntry, action_name, keyword_rule_body, parse_keywords},
     welcome::MAX_WELCOME_CHANNELS,
 };
@@ -44,6 +45,17 @@ use crate::{
     theme,
 };
 
+/// The inputs of one onboarding question: its title and each answer's.
+struct PromptInputs {
+    title: Entity<InputState>,
+    options: Vec<OptionInputs>,
+}
+
+struct OptionInputs {
+    title: Entity<InputState>,
+    description: Entity<InputState>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Overview,
@@ -55,6 +67,7 @@ enum Page {
     AutoMod,
     EnableCommunity,
     WelcomeScreen,
+    Onboarding,
     BoostPerks,
     Stickers,
     Soundboard,
@@ -75,8 +88,8 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 26] =
-        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::WelcomeScreen, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Engagement, Page::ServerTemplate, Page::Widget, Page::SafetySetup, Page::ServerInsights, Page::PartnerProgram, Page::Monetization, Page::Discovery, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
+    const ALL: [Page; 27] =
+        [Page::Overview, Page::ServerProfile, Page::ServerTag, Page::Members, Page::Access, Page::Integrations, Page::AutoMod, Page::EnableCommunity, Page::WelcomeScreen, Page::Onboarding, Page::BoostPerks, Page::Stickers, Page::Soundboard, Page::Engagement, Page::ServerTemplate, Page::Widget, Page::SafetySetup, Page::ServerInsights, Page::PartnerProgram, Page::Monetization, Page::Discovery, Page::Roles, Page::Channels, Page::Emoji, Page::Invites, Page::Bans, Page::AuditLog];
 
     fn label(self) -> &'static str {
         match self {
@@ -89,6 +102,7 @@ impl Page {
             Page::AutoMod => "AutoMod",
             Page::EnableCommunity => "Enable Community",
             Page::WelcomeScreen => "Welcome Screen",
+            Page::Onboarding => "Onboarding",
             Page::BoostPerks => "Boost Perks",
             Page::Stickers => "Stickers",
             Page::Soundboard => "Soundboard",
@@ -112,7 +126,7 @@ impl Page {
     /// What lets someone open the page.
     fn needs(self) -> Permissions {
         match self {
-            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::WelcomeScreen | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights | Page::PartnerProgram | Page::Monetization | Page::Discovery => Permissions::MANAGE_GUILD,
+            Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::WelcomeScreen | Page::Onboarding | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights | Page::PartnerProgram | Page::Monetization | Page::Discovery => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
             Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
@@ -291,6 +305,12 @@ pub struct ServerSettings {
     welcome_description: Entity<InputState>,
     welcome_inputs: Vec<Entity<InputState>>,
     welcome_menu: bool,
+    /// The onboarding draft, the inputs of each question, whether the default
+    /// channel menu is open and a counter for throwaway ids.
+    onboarding: Option<Onboarding>,
+    onboarding_inputs: Vec<PromptInputs>,
+    onboarding_menu: bool,
+    onboarding_seq: u64,
     role: Option<Snowflake>,
     role_perms: Permissions,
     role_hoist: bool,
@@ -339,6 +359,10 @@ impl ServerSettings {
             welcome_description: input(cx, window, "Tell newcomers what the server is about"),
             welcome_inputs: Vec::new(),
             welcome_menu: false,
+            onboarding: None,
+            onboarding_inputs: Vec::new(),
+            onboarding_menu: false,
+            onboarding_seq: 0,
             session,
             media,
             backend,
@@ -402,11 +426,14 @@ impl ServerSettings {
         self.channel_menu = false;
         self.welcome = None;
         self.welcome_menu = false;
+        self.onboarding = None;
+        self.onboarding_menu = false;
         let Some(guild) = self.guild else { return };
         let request = match page {
             Page::Integrations => Some(AdminRequest::LoadWebhooks(guild)),
             Page::AutoMod => Some(AdminRequest::LoadAutomod(guild)),
             Page::WelcomeScreen => Some(AdminRequest::LoadWelcome(guild)),
+            Page::Onboarding => Some(AdminRequest::LoadOnboardingSetup(guild)),
             Page::Invites => Some(AdminRequest::LoadInvites(guild)),
             Page::Bans => Some(AdminRequest::LoadBans(guild)),
             Page::AuditLog => Some(AdminRequest::LoadAudit(guild)),
@@ -1379,6 +1406,306 @@ impl ServerSettings {
                         if let Some(screen) = this.welcome_current(cx) {
                             this.welcome = None;
                             this.send(AdminRequest::SaveWelcome { guild, body: screen.body() }, cx);
+                        }
+                    })
+                    .ok();
+                }
+            })));
+        }
+        page.into_any_element()
+    }
+
+    /// Copies the loaded onboarding setup into the draft the first time it is
+    /// on screen, with an input for each question and answer.
+    fn seed_onboarding(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != Page::Onboarding || self.onboarding.is_some() {
+            return;
+        }
+        let Load::Ready(setup) = self.session.read(cx).admin.onboarding.clone() else { return };
+        self.onboarding_inputs = setup
+            .prompts
+            .iter()
+            .map(|prompt| PromptInputs {
+                title: self.onboarding_input(&prompt.title, "Write a question", window, cx),
+                options: prompt.options.iter().map(|o| self.option_inputs(o, window, cx)).collect(),
+            })
+            .collect();
+        self.onboarding = Some(setup);
+    }
+
+    fn onboarding_input(&self, text: &str, hint: &'static str, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+        let text = text.to_owned();
+        cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder(hint);
+            state.set_value(text, window, cx);
+            state
+        })
+    }
+
+    fn option_inputs(&self, option: &OnboardingOption, window: &mut Window, cx: &mut Context<Self>) -> OptionInputs {
+        OptionInputs {
+            title: self.onboarding_input(&option.title, "Answer", window, cx),
+            description: self.onboarding_input(&option.description, "Description (optional)", window, cx),
+        }
+    }
+
+    /// The draft with what is typed into its inputs.
+    fn onboarding_current(&self, cx: &Context<Self>) -> Option<Onboarding> {
+        let mut setup = self.onboarding.clone()?;
+        for (prompt, inputs) in setup.prompts.iter_mut().zip(&self.onboarding_inputs) {
+            prompt.title = inputs.title.read(cx).value().to_string();
+            for (option, inputs) in prompt.options.iter_mut().zip(&inputs.options) {
+                option.title = inputs.title.read(cx).value().to_string();
+                option.description = inputs.description.read(cx).value().to_string();
+            }
+        }
+        Some(setup)
+    }
+
+    /// Changes the draft, keeping what is typed, and redraws.
+    fn edit_onboarding(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut Self, &mut Onboarding, &mut Context<Self>)) {
+        if let Some(mut setup) = self.onboarding_current(cx) {
+            change(self, &mut setup, cx);
+            self.onboarding = Some(setup);
+        }
+        cx.notify();
+    }
+
+    /// A throwaway id for a new question or answer, as the web client makes
+    /// them from the clock. The server replaces it on save.
+    fn fresh_id(&mut self) -> u64 {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        self.onboarding_seq += 1;
+        now + self.onboarding_seq
+    }
+
+    fn onboarding_switch(
+        &self,
+        id: &'static str,
+        label: &'static str,
+        on: bool,
+        cx: &mut Context<Self>,
+        flip: impl Fn(&mut Onboarding) + 'static,
+    ) -> AnyElement {
+        let view = cx.weak_entity();
+        widgets::switch_row(id, label, None, on, move |_, _, cx| {
+            view.update(cx, |this, cx| this.edit_onboarding(cx, |_, setup, _| flip(setup))).ok();
+        })
+    }
+
+    /// One question: its title, how it is answered and each answer.
+    fn onboarding_prompt(&mut self, p: usize, prompt: &OnboardingPrompt, cx: &mut Context<Self>) -> AnyElement {
+        let label = |text: &'static str| div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(text);
+        let mut card = div().p_3().flex().flex_col().gap_3().rounded(px(theme::RADIUS)).bg(rgb(theme::BG_PANEL));
+        if let Some(inputs) = self.onboarding_inputs.get(p) {
+            card = card.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(div().flex_1().child(Input::new(&inputs.title)))
+                    .child(button(("onboarding-prompt-remove", p as u64), "Remove", Tone::Danger, {
+                        let view = cx.weak_entity();
+                        move |_, _, cx| {
+                            view.update(cx, |this, cx| {
+                                this.edit_onboarding(cx, |this, setup, cx| {
+                                    setup.prompts.remove(p);
+                                    this.onboarding_inputs.remove(p);
+                                });
+                            })
+                            .ok();
+                        }
+                    })),
+            );
+        }
+        let on_flag = |id: &'static str, label: &'static str, on: bool, cx: &mut Context<Self>, flip: fn(&mut OnboardingPrompt)| {
+            let view = cx.weak_entity();
+            widgets::switch_row(id, label, None, on, move |_, _, cx| {
+                view.update(cx, |this, cx| {
+                    this.edit_onboarding(cx, |_, setup, _| {
+                        if let Some(prompt) = setup.prompts.get_mut(p) {
+                            flip(prompt);
+                        }
+                    });
+                })
+                .ok();
+            })
+        };
+        card = card
+            .child(on_flag("onboarding-single", "Members can pick one answer", prompt.single_select, cx, |p| p.single_select = !p.single_select))
+            .child(on_flag("onboarding-required", "Required", prompt.required, cx, |p| p.required = !p.required))
+            .child(on_flag("onboarding-shown", "Ask when someone joins", prompt.in_onboarding, cx, |p| p.in_onboarding = !p.in_onboarding));
+
+        let mut answers = div().flex().flex_col().gap_2().child(label("Answers"));
+        for (o, option) in prompt.options.iter().enumerate() {
+            let Some(inputs) = self.onboarding_inputs.get(p).and_then(|i| i.options.get(o)) else { continue };
+            let mut row = div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(div().flex_1().child(Input::new(&inputs.title)))
+                .child(div().flex_1().child(Input::new(&inputs.description)));
+            let attached = option.channel_ids.len() + option.role_ids.len();
+            if attached > 0 {
+                row = row.child(div().flex_none().text_color(rgb(theme::TEXT_MUTED)).child(format!("{attached} attached")));
+            }
+            answers = answers.child(row.child(button(("onboarding-option-remove", (p * 1000 + o) as u64), "Remove", Tone::Danger, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        this.edit_onboarding(cx, |this, setup, cx| {
+                            setup.prompts[p].options.remove(o);
+                            this.onboarding_inputs[p].options.remove(o);
+                        });
+                    })
+                    .ok();
+                }
+            })));
+        }
+        if prompt.options.len() < MAX_ONBOARDING_OPTIONS {
+            answers = answers.child(div().flex().child(button(("onboarding-option-add", p as u64), "Add Answer", Tone::Plain, {
+                let view = cx.weak_entity();
+                move |_, window, cx| {
+                    view.update(cx, |this, cx| {
+                        let id = this.fresh_id();
+                        this.edit_onboarding(cx, |this, setup, cx| {
+                            if setup.prompts[p].add_option(id) {
+                                let option = setup.prompts[p].options.last().expect("an option was just added").clone();
+                                let inputs = this.option_inputs(&option, window, cx);
+                                this.onboarding_inputs[p].options.push(inputs);
+                            }
+                        });
+                    })
+                    .ok();
+                }
+            })));
+        }
+        card.child(answers).into_any_element()
+    }
+
+    /// The text and announcement channels that are not default yet.
+    fn onboarding_choices(&self, guild: Snowflake, defaults: &[Snowflake], cx: &Context<Self>) -> Vec<(Snowflake, String)> {
+        self.session
+            .read(cx)
+            .store
+            .channel_groups(guild)
+            .into_iter()
+            .flat_map(|g| g.channels)
+            .filter(|c| matches!(c.kind, ChannelType::GuildText | ChannelType::GuildAnnouncement))
+            .filter(|c| !defaults.contains(&c.id))
+            .map(|c| (c.id, c.name.clone().unwrap_or_default()))
+            .collect()
+    }
+
+    fn onboarding_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let header = div().flex().flex_col().gap_3().child(title("Onboarding")).child(widgets::blurb(
+            "Welcome new members with questions that open the channels and roles that fit them.",
+        ));
+        let loaded = match self.session.read(cx).admin.onboarding.clone() {
+            Load::Ready(setup) => setup,
+            Load::Failed(error) => return header.child(status_line("circle-alert", error, theme::DANGER)).into_any_element(),
+            _ => return header.child(status_line("loader", "Loading onboarding...".into(), theme::TEXT_MUTED)).into_any_element(),
+        };
+        let Some(current) = self.onboarding_current(cx) else { return header.into_any_element() };
+        let changed = current.edit_body() != loaded.edit_body();
+        let label = |text: &'static str| div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(text);
+
+        let mut defaults = div().flex().flex_col().gap_2().child(label("Default channels"));
+        for (index, id) in current.default_channel_ids.iter().enumerate() {
+            let name = self.session.read(cx).store.channel(*id).and_then(|c| c.name.clone()).unwrap_or_else(|| "unknown-channel".to_owned());
+            let id = *id;
+            defaults = defaults.child(
+                div()
+                    .p_3()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgb(theme::BG_PANEL))
+                    .child(div().truncate().text_color(rgb(theme::TEXT_BRIGHT)).child(format!("#{name}")))
+                    .child(button(("onboarding-default-remove", index as u64), "Remove", Tone::Danger, {
+                        let view = cx.weak_entity();
+                        move |_, _, cx| {
+                            view.update(cx, |this, cx| this.edit_onboarding(cx, |_, setup, _| setup.toggle_default_channel(id))).ok();
+                        }
+                    })),
+            );
+        }
+        defaults = defaults.child(div().flex().child(button("onboarding-default-add", "Add Channel", Tone::Plain, {
+            let view = cx.weak_entity();
+            move |_, _, cx| {
+                view.update(cx, |this, cx| {
+                    this.onboarding_menu = !this.onboarding_menu;
+                    cx.notify();
+                })
+                .ok();
+            }
+        })));
+        if self.onboarding_menu {
+            let mut menu = div()
+                .id("onboarding-channel-menu")
+                .max_h(px(200.))
+                .overflow_y_scroll()
+                .flex()
+                .flex_col()
+                .rounded(px(theme::RADIUS))
+                .border_1()
+                .border_color(rgb(theme::BORDER))
+                .bg(rgb(theme::BG_CHAT));
+            for (option, name) in self.onboarding_choices(guild, &current.default_channel_ids, cx) {
+                menu = menu.child(
+                    div()
+                        .id(("onboarding-channel-option", option.0))
+                        .h(px(32.))
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .text_color(rgb(theme::TEXT))
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.onboarding_menu = false;
+                            this.edit_onboarding(cx, |_, setup, _| setup.toggle_default_channel(option));
+                        }))
+                        .child(format!("#{name}")),
+                );
+            }
+            defaults = defaults.child(menu);
+        }
+
+        let mut questions = div().flex().flex_col().gap_3().child(label("Questions"));
+        for (p, prompt) in current.prompts.iter().enumerate() {
+            questions = questions.child(self.onboarding_prompt(p, prompt, cx));
+        }
+        questions = questions.child(div().flex().child(button("onboarding-prompt-add", "Add Question", Tone::Plain, {
+            let view = cx.weak_entity();
+            move |_, window, cx| {
+                view.update(cx, |this, cx| {
+                    let id = this.fresh_id();
+                    this.edit_onboarding(cx, |this, setup, cx| {
+                        if setup.add_prompt(id) {
+                            let inputs = PromptInputs { title: this.onboarding_input("", "Write a question", window, cx), options: Vec::new() };
+                            this.onboarding_inputs.push(inputs);
+                        }
+                    });
+                })
+                .ok();
+            }
+        })));
+
+        let mut page = header
+            .child(self.onboarding_switch("onboarding-enabled", "Enable onboarding", current.enabled, cx, |setup| setup.enabled = !setup.enabled))
+            .child(defaults)
+            .child(questions);
+        if changed {
+            page = page.child(div().flex().child(button("save-onboarding", "Save Changes", Tone::Primary, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        if let Some(setup) = this.onboarding_current(cx) {
+                            this.onboarding = None;
+                            this.send(AdminRequest::SaveOnboardingSetup { guild, body: setup.edit_body() }, cx);
                         }
                     })
                     .ok();
@@ -2404,6 +2731,7 @@ impl Render for ServerSettings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(guild) = self.guild else { return div().into_any_element() };
         self.seed_welcome(window, cx);
+        self.seed_onboarding(window, cx);
         let (name, perms) = {
             let s = self.session.read(cx);
             (s.store.guild(guild).map(|g| g.name.clone()).unwrap_or_default(), s.store.guild_permissions(guild))
@@ -2440,6 +2768,7 @@ impl Render for ServerSettings {
             Page::AutoMod => self.automod(cx),
             Page::EnableCommunity => self.enable_community(cx),
             Page::WelcomeScreen => self.welcome_screen(cx),
+            Page::Onboarding => self.onboarding_page(cx),
             Page::BoostPerks => self.boost_perks(cx),
             Page::Stickers => self.stickers(cx),
             Page::Soundboard => self.soundboard(cx),

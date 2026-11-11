@@ -59,7 +59,7 @@ pub use notification::{
     mute_active,
 };
 pub use onboarding::{
-    Onboarding, OnboardingMode, OnboardingOption, OnboardingPrompt, OnboardingResponse,
+    MAX_ONBOARDING_OPTIONS, MAX_ONBOARDING_PROMPTS, Onboarding, OnboardingMode, OnboardingOption, OnboardingPrompt, OnboardingResponse,
     OnboardingSubmission, OnboardingUpdate, PromptType,
 };
 pub use message::{

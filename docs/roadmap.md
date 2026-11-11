@@ -847,7 +847,21 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       layout and wording are a best guess and the live page was not measured.
       Missing: channel emoji cannot be picked (a loaded one is kept), the page
       is listed even for servers without Community, and there is no preview.
-- [ ] Onboarding setup
+- [x] Onboarding setup (Onboarding page under MANAGE_GUILD: enable switch,
+      default channels with an add menu, questions with title, single answer,
+      required and "ask when someone joins" switches, and answers with title
+      and description. Save sends `PUT /guilds/:id/onboarding` with the body
+      shape of the web client's serializer, only when the draft differs from
+      the loaded setup, and the answer replaces the loaded state. A question
+      or answer with no title is left out of the body. Unit tested: body
+      shape, blank rows, question cap, default channel toggle.
+      Missing: the channels and roles an answer grants cannot be picked yet
+      (loaded ones are kept and shown as a count), answer emoji cannot be
+      picked, no dropdown question type or Advanced mode switch, no server
+      requirement check (7 default channels) before enabling, and the page
+      route was read from the web client but the settings chunk that sends it
+      is not in the reference. Layout is a best guess. Never sent and not
+      seen on screen.)
 - [ ] Server templates
 - [ ] Prune members: count preview and confirm
 

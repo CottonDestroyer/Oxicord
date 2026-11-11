@@ -153,6 +153,23 @@ impl ApiClient {
         .await
     }
 
+    /// Saves the onboarding setup from `Onboarding::edit_body`. The server
+    /// answers with the setup as it now stands. Admin write: built and unit
+    /// tested, not sent from the real account.
+    pub async fn edit_onboarding(
+        &self,
+        guild: Snowflake,
+        body: &Value,
+    ) -> Result<oxicord_model::Onboarding, ApiError> {
+        self.json(
+            Method::PUT,
+            &format!("/guilds/{guild}/onboarding"),
+            "PUT /guilds/:id/onboarding",
+            Some(body),
+        )
+        .await
+    }
+
     /// Sends the options picked in the Server Guide and the time each prompt
     /// and option was shown. The call is gated by the account-write rule: the
     /// port builds it but is not exercised against the real account.
