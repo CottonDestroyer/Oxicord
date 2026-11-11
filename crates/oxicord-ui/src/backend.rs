@@ -414,6 +414,8 @@ pub enum Command {
     SetAudioDevices { input: Option<String>, output: Option<String> },
     /// The Input Volume setting, 0 to 100 percent of the microphone.
     SetInputVolume(u8),
+    /// How loud one person is played to us, 0 to 200 percent.
+    SetUserVolume { user: Snowflake, percent: u16 },
 }
 
 /// How the call we are in is doing.

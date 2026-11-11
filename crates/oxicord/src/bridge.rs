@@ -208,6 +208,7 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
         Command::SetVoiceFlags { mute, deafen } => live.voice.set_flags(mute, deafen),
         Command::SetAudioDevices { input, output } => live.voice.set_devices(input, output),
         Command::SetInputVolume(percent) => live.voice.set_input_volume(percent),
+        Command::SetUserVolume { user, percent } => live.voice.set_user_volume(user, percent),
         Command::LoadHistory { channel, before } => {
             tokio::spawn(async move {
                 let result = load_history(&api, channel, before).await;

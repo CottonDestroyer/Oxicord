@@ -5,8 +5,10 @@
 use std::rc::Rc;
 
 use gpui_kit::{
-    App, ClickEvent, Context, EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point,
-    Render, StatefulInteractiveElement as _, Styled as _, Window, div, point, px, rgb,
+    App, ClickEvent, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
+    Point, Render, StatefulInteractiveElement as _, Styled as _, Window,
+    component::slider::{Slider, SliderState},
+    div, point, px, rgb,
 };
 
 use crate::{icons::icon, theme};
@@ -14,6 +16,9 @@ use crate::{icons::icon, theme};
 #[derive(Clone)]
 pub enum Entry {
     Item { label: String, glyph: &'static str, danger: bool },
+    /// A labelled slider that sets its value as it moves, with the value
+    /// shown beside the label as a percent. Picking nothing closes nothing.
+    Slider { label: String, state: Entity<SliderState> },
     Separator,
 }
 
@@ -38,6 +43,7 @@ const WIDTH: f32 = 220.;
 const ITEM: f32 = 32.;
 const SEPARATOR: f32 = 5.;
 const GAP: f32 = 4.;
+const SLIDER: f32 = 52.;
 
 #[derive(Default)]
 pub struct PopupMenu {
@@ -58,7 +64,11 @@ impl PopupMenu {
         16. + GAP * self.entries.len().saturating_sub(1) as f32 + self
             .entries
             .iter()
-            .map(|e| if matches!(e, Entry::Separator) { SEPARATOR } else { ITEM })
+            .map(|e| match e {
+                Entry::Separator => SEPARATOR,
+                Entry::Slider { .. } => SLIDER,
+                Entry::Item { .. } => ITEM,
+            })
             .sum::<f32>()
     }
 }
@@ -95,6 +105,30 @@ impl Render for PopupMenu {
         for (index, entry) in self.entries.iter().enumerate() {
             card = match entry {
                 Entry::Separator => card.child(div().my(px(2.)).h(px(1.)).bg(rgb(theme::BORDER))),
+                Entry::Slider { label, state } => {
+                    let percent = state.read(cx).value().start().round();
+                    card.child(
+                        div()
+                            .id(("popup-slider", index as u64))
+                            .h(px(SLIDER))
+                            .px_2()
+                            .flex()
+                            .flex_col()
+                            .justify_center()
+                            .gap(px(6.))
+                            .child(
+                                div()
+                                    .flex()
+                                    .justify_between()
+                                    .text_size(px(14.))
+                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                    .text_color(rgb(theme::TEXT_BRIGHT))
+                                    .child(label.clone())
+                                    .child(div().text_color(rgb(theme::TEXT_MUTED)).child(format!("{percent}%"))),
+                            )
+                            .child(Slider::new(state).accessibility_label(label.clone())),
+                    )
+                }
                 Entry::Item { label, glyph, danger } => {
                     let color = if *danger { theme::DANGER } else { theme::TEXT_BRIGHT };
                     card.child(

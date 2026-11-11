@@ -2,7 +2,7 @@
 //! a channel, the gateway answers with the voice server to connect to, and
 //! the voice crate runs the call. This keeps those in step.
 
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{collections::HashMap, sync::{Arc, Mutex, MutexGuard}};
 
 use async_channel::Sender;
 use oxicord_gateway::GatewayHandle;
@@ -46,6 +46,8 @@ struct Inner {
     output_device: Option<String>,
     /// The Input Volume setting, 0 to 100.
     input_volume: u8,
+    /// How loud each person is played, 0 to 200, by user id.
+    user_volumes: HashMap<u64, u16>,
 }
 
 #[derive(Clone)]
@@ -69,6 +71,7 @@ impl Voice {
                 input_device: None,
                 output_device: None,
                 input_volume: 100,
+                user_volumes: HashMap::new(),
             })),
             gateway,
             events,
@@ -122,6 +125,9 @@ impl Voice {
             output_device: inner.output_device.clone(),
         });
         handle.set_input_volume(inner.input_volume);
+        for (user, percent) in &inner.user_volumes {
+            handle.set_user_volume(*user, *percent);
+        }
         handle.set_deafened(inner.deafen);
         handle.set_muted(inner.mute || inner.deafen);
         inner.call = Some(handle);
@@ -256,6 +262,16 @@ impl Voice {
         inner.input_volume = percent.min(100);
         if let Some(call) = &inner.call {
             call.set_input_volume(inner.input_volume);
+        }
+    }
+
+    /// Plays one person at this percent of their level, for this call and
+    /// the next ones.
+    pub fn set_user_volume(&self, user: Snowflake, percent: u16) {
+        let mut inner = self.lock();
+        inner.user_volumes.insert(user.0, percent);
+        if let Some(call) = &inner.call {
+            call.set_user_volume(user.0, percent);
         }
     }
 

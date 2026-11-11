@@ -447,6 +447,9 @@ impl Session {
         };
         // The saved slider position, which the call has not heard of yet.
         backend.send(Command::SetInputVolume(self.settings.input_volume));
+        for (user, percent) in &self.settings.user_volumes {
+            backend.send(Command::SetUserVolume { user: Snowflake(*user), percent: *percent });
+        }
         backend.send(Command::JoinVoice { guild, channel });
         cx.notify();
     }
@@ -1051,6 +1054,17 @@ impl Session {
     pub fn set_input_volume(&mut self, backend: &Backend, percent: u8, save: bool, cx: &mut Context<Self>) {
         self.settings.input_volume = percent.min(100);
         backend.send(Command::SetInputVolume(self.settings.input_volume));
+        if save {
+            backend.send(Command::SaveSettings(self.settings.clone()));
+        }
+        cx.notify();
+    }
+
+    /// A person's volume slider moved, in the menu of someone in the call.
+    /// The call hears it at once, the file is written when `save` is set.
+    pub fn set_user_volume(&mut self, backend: &Backend, user: Snowflake, percent: u16, save: bool, cx: &mut Context<Self>) {
+        self.settings.set_user_volume(user.0, percent);
+        backend.send(Command::SetUserVolume { user, percent: self.settings.user_volume(user.0) });
         if save {
             backend.send(Command::SaveSettings(self.settings.clone()));
         }

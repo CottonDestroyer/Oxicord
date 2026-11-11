@@ -913,7 +913,21 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       which come with the later voice items, and the slider's own wording and
       spacing are a best guess because the settings chunk is not in the
       reference.)
-- [ ] Per-user volume (local gain) from the user's right click menu
+- [x] Per-user volume (local gain) from the user's right click menu (right
+      clicking a person who is in our call, on their call tile or anywhere a
+      person menu opens, shows a User Volume slider from 0 to 200 percent with
+      the value beside it, between Message and the friend actions. Dragging
+      changes how loud they are played at once, by scaling their decoded audio
+      with clipping, and letting go saves it per user in the local settings
+      file. Saved volumes are sent again on every join and 100 is not stored.
+      Unit tests cover the gain, the settings round trip and when the menu
+      offers the slider. Seen on screen through a dev command that opens the
+      menu as if they were in the call: the slider, the percent label, 46
+      landing in the settings file. Not checked in a live call, so whether the
+      sound really changes is unverified. Missing: the web client's Mute
+      checkbox for a person, and the slider is not offered from the voice list
+      in the sidebar. The 0 to 200 range and the label are from memory of the
+      web client, not the reference.)
 - [ ] Push to talk with a configurable key
 - [ ] Resume a call after the voice websocket drops (voice resume opcode)
 - [ ] Pop out the call into its own window

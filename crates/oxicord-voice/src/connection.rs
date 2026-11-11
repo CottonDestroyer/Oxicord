@@ -22,7 +22,7 @@ use crate::{
     capture::{Capture, Gate, with_volume},
     dave::{self, Dave, Out},
     opus::{Decoder, Encoder, FRAME},
-    playback::Playback,
+    playback::{MAX_USER_VOLUME, Playback, with_gain},
     transport::{self, Cipher, Mode},
 };
 
@@ -114,6 +114,8 @@ struct Call {
     gate: Gate,
     /// The input volume slider, 0 to 100.
     input_volume: u8,
+    /// How loud each person is played, by user id. Missing means 100.
+    user_volumes: HashMap<u64, u16>,
     /// Whether we are currently sending speech.
     talking: bool,
     /// Every frame heard from the microphone, sent or not. It sets the RTP
@@ -161,6 +163,7 @@ async fn serve(
         encoder: None,
         gate: Gate::default(),
         input_volume: 100,
+        user_volumes: HashMap::new(),
         talking: false,
         heard: 0,
         sequence: 0,
@@ -242,6 +245,9 @@ async fn serve(
                 Some(Command::SetInputDevice(device)) => call.set_input_device(device),
                 Some(Command::SetOutputDevice(device)) => call.set_output_device(device),
                 Some(Command::SetInputVolume(percent)) => call.set_input_volume(percent),
+                Some(Command::SetUserVolume { user, percent }) => {
+                    call.user_volumes.insert(user, percent.min(MAX_USER_VOLUME));
+                }
                 Some(Command::Leave) | None => {
                     let _ = sink.send(Message::Close(None)).await;
                     return Ok(());
@@ -587,7 +593,10 @@ impl Call {
             },
         };
         if let Some(pcm) = decoder.decode(&opus) {
-            playback.push(header.ssrc, &pcm);
+            match sender.and_then(|user| self.user_volumes.get(&user)).copied() {
+                Some(percent) if percent != 100 => playback.push(header.ssrc, &with_gain(&pcm, percent)),
+                _ => playback.push(header.ssrc, &pcm),
+            }
         }
     }
 }

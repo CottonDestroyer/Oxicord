@@ -13,7 +13,7 @@ mod playback;
 mod transport;
 
 pub use capture::input_devices;
-pub use playback::output_devices;
+pub use playback::{MAX_USER_VOLUME, output_devices};
 
 use std::fmt;
 
@@ -68,6 +68,7 @@ pub(crate) enum Command {
     SetInputDevice(Option<String>),
     SetOutputDevice(Option<String>),
     SetInputVolume(u8),
+    SetUserVolume { user: u64, percent: u16 },
     Leave,
 }
 
@@ -100,6 +101,11 @@ impl VoiceHandle {
     /// Sends the microphone at this percent of its level, 0 to 100.
     pub fn set_input_volume(&self, percent: u8) {
         let _ = self.tx.send(Command::SetInputVolume(percent));
+    }
+
+    /// Plays this person at this percent of how loud they were sent, 0 to 200.
+    pub fn set_user_volume(&self, user: u64, percent: u16) {
+        let _ = self.tx.send(Command::SetUserVolume { user, percent });
     }
 
     pub fn leave(&self) {

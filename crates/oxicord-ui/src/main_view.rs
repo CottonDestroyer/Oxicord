@@ -4,7 +4,7 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    FocusHandle, MouseButton, component::input::{Escape, InputEvent, InputState}, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
+    FocusHandle, MouseButton, component::{input::{Escape, InputEvent, InputState}, slider::{SliderEvent, SliderState}}, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
@@ -228,6 +228,8 @@ pub struct MainView {
     picker: Entity<DmPicker>,
     popup: Entity<PopupMenu>,
     popup_open: bool,
+    /// Listens to the volume slider in the open user menu.
+    volume_sub: Option<Subscription>,
     /// Folders opened in the rail.
     expanded: HashSet<u64>,
     picker_open: bool,
@@ -937,6 +939,7 @@ impl MainView {
             picker,
             popup,
             popup_open: false,
+            volume_sub: None,
             expanded: HashSet::new(),
             picker_open: false,
             inbox,
@@ -1383,6 +1386,22 @@ impl MainView {
                 self.show_profile(user, guild, Some(at), false, cx);
             }
             DevCommand::Full(user, guild) => self.show_profile(user, guild, None, true, cx),
+            DevCommand::UserMenu(user) => {
+                // `me` stands for the first friend, since the menu for ourselves has no volume.
+                let user = if user == Snowflake(0) {
+                    let session = self.session.read(cx);
+                    let friend = session.store.relationships(oxicord_model::RelationshipKind::Friend).first().map(|u| u.id);
+                    match friend {
+                        Some(friend) => friend,
+                        None => return,
+                    }
+                } else {
+                    user
+                };
+                let at = gpui_kit::point(window.viewport_size().width / 2., px(300.));
+                let open = OpenUserMenu { user, guild: None, at, dm: None, can_mention: false };
+                self.show_user_menu(&open, true, cx);
+            }
             DevCommand::Rules(guild) => self.open_screening(guild, window, cx),
             DevCommand::Danger(kind) => {
                 use crate::danger_dialog::Danger;
@@ -2072,12 +2091,52 @@ impl MainView {
 
     /// Opens the menu for a person and carries out whatever is picked.
     fn open_user_menu(&mut self, open: &OpenUserMenu, cx: &mut Context<Self>) {
-        let (tie, is_me) = {
-            let store = &self.session.read(cx).store;
-            (store.relationship(open.user), store.me().map(|u| u.id) == Some(open.user))
+        let in_our_call = {
+            let session = self.session.read(cx);
+            session
+                .voice
+                .target
+                .is_some_and(|(_, channel)| session.store.voice_in(channel).iter().any(|v| v.user_id == open.user))
         };
-        let list = user_menu::choices(tie, is_me, open.can_mention, open.dm.is_some());
-        let entries = list.iter().map(|c| c.entry()).collect();
+        self.show_user_menu(open, in_our_call, cx);
+    }
+
+    fn show_user_menu(&mut self, open: &OpenUserMenu, in_our_call: bool, cx: &mut Context<Self>) {
+        let (tie, is_me, saved_volume) = {
+            let session = self.session.read(cx);
+            let store = &session.store;
+            (
+                store.relationship(open.user),
+                store.me().map(|u| u.id) == Some(open.user),
+                session.settings.user_volume(open.user.0),
+            )
+        };
+        let list = user_menu::choices(tie, is_me, open.can_mention, open.dm.is_some(), in_our_call);
+        let volume = list.contains(&user_menu::Choice::Volume).then(|| {
+            let state = cx.new(|_| {
+                SliderState::new().min(0.).max(f32::from(oxicord_voice::MAX_USER_VOLUME)).step(1.).default_value(f32::from(saved_volume))
+            });
+            let user = open.user;
+            self.volume_sub = Some(cx.subscribe(&state, move |this, _, event: &SliderEvent, cx| {
+                let (value, save) = match event {
+                    SliderEvent::Change(value) => (value, false),
+                    SliderEvent::Release(value) => (value, true),
+                };
+                let percent = value.start().round().clamp(0., f32::from(oxicord_voice::MAX_USER_VOLUME)) as u16;
+                let backend = this.backend.clone();
+                this.session.update(cx, |s, cx| s.set_user_volume(&backend, user, percent, save, cx));
+            }));
+            state
+        });
+        let entries = list
+            .iter()
+            .map(|c| match (c, &volume) {
+                (user_menu::Choice::Volume, Some(state)) => {
+                    crate::popup::Entry::Slider { label: "User Volume".into(), state: state.clone() }
+                }
+                _ => c.entry(),
+            })
+            .collect();
         let (user, guild, dm) = (open.user, open.guild, open.dm);
         let view = cx.entity().downgrade();
         let pick = std::rc::Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
@@ -2125,7 +2184,7 @@ impl MainView {
                 cx.notify();
             }
             Choice::CopyId => cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(user.to_string())),
-            Choice::Separator => {}
+            Choice::Volume | Choice::Separator => {}
         }
     }
 
@@ -3918,8 +3977,15 @@ impl MainView {
                 } else if person.muted {
                     pill = pill.child(icon("mic-off", 16., 0xffffff));
                 }
+                let user = person.user;
                 div()
                     .id(("call-tile", person.user.0))
+                    .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                        let guild = this.guild;
+                        this.session.update(cx, |_, cx| {
+                            cx.emit(OpenUserMenu { user, guild, at: event.position, dm: None, can_mention: false });
+                        });
+                    }))
                     .relative()
                     .flex_none()
                     .w(px(tile_w))

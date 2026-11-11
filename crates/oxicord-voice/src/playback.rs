@@ -212,6 +212,16 @@ impl Playback {
     }
 }
 
+/// The loudest a person can be turned up to, like the official client's 200%.
+pub const MAX_USER_VOLUME: u16 = 200;
+
+/// Plays one person louder or quieter. 100 is as sent, past it the samples
+/// are clipped rather than wrapped.
+pub fn with_gain(pcm: &[i16], percent: u16) -> Vec<i16> {
+    let gain = f32::from(percent.min(MAX_USER_VOLUME)) / 100.0;
+    pcm.iter().map(|&s| (f32::from(s) * gain).round().clamp(-32768.0, 32767.0) as i16).collect()
+}
+
 /// Names of the speakers and headphones we can play on.
 pub fn output_devices() -> Vec<String> {
     cpal::default_host()
@@ -289,6 +299,17 @@ mod tests {
         let mut out = [1.0f32; 4];
         mixer.pull(&mut out);
         assert!(out.iter().all(|&s| s == 0.0));
+    }
+
+    #[test]
+    fn a_person_can_be_turned_down_up_and_off() {
+        let pcm = [1000, -1000];
+        assert_eq!(with_gain(&pcm, 100), vec![1000, -1000]);
+        assert_eq!(with_gain(&pcm, 50), vec![500, -500]);
+        assert_eq!(with_gain(&pcm, 0), vec![0, 0]);
+        assert_eq!(with_gain(&pcm, 200), vec![2000, -2000]);
+        assert_eq!(with_gain(&pcm, 900), vec![2000, -2000], "capped at the maximum");
+        assert_eq!(with_gain(&[30000, -30000], 200), vec![32767, -32768], "clipped, not wrapped");
     }
 
     #[test]
