@@ -1072,6 +1072,25 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         AdminRequest::SaveOnboardingSetup { guild, body } => {
             say(AdminEvent::OnboardingSetup(guild, api.edit_onboarding(guild, &body).await.map_err(text))).await;
         }
+        AdminRequest::LoadTemplates(guild) => {
+            say(AdminEvent::Templates(guild, api.guild_templates(guild).await.map_err(text))).await;
+        }
+        AdminRequest::CreateTemplate { guild, body } => {
+            check(api.create_guild_template(guild, &body).await.map(|_| ()), "create that template").await;
+            say(AdminEvent::Templates(guild, api.guild_templates(guild).await.map_err(text))).await;
+        }
+        AdminRequest::EditTemplate { guild, code, body } => {
+            check(api.edit_guild_template(guild, &code, &body).await.map(|_| ()), "save that template").await;
+            say(AdminEvent::Templates(guild, api.guild_templates(guild).await.map_err(text))).await;
+        }
+        AdminRequest::SyncTemplate { guild, code } => {
+            check(api.sync_guild_template(guild, &code).await.map(|_| ()), "sync that template").await;
+            say(AdminEvent::Templates(guild, api.guild_templates(guild).await.map_err(text))).await;
+        }
+        AdminRequest::DeleteTemplate { guild, code } => {
+            check(api.delete_guild_template(guild, &code).await, "delete that template").await;
+            say(AdminEvent::Templates(guild, api.guild_templates(guild).await.map_err(text))).await;
+        }
         AdminRequest::LoadIntegrations(guild) => {
             say(AdminEvent::Integrations(guild, api.guild_integrations(guild).await.map_err(text))).await;
         }

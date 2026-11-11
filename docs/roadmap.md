@@ -862,7 +862,20 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       route was read from the web client but the settings chunk that sends it
       is not in the reference. Layout is a best guess. Never sent and not
       seen on screen.)
-- [ ] Server templates
+- [x] Server templates (Server Template page: loads `GET /guilds/:id/templates`;
+      with none, a name (prefilled with the server name) and description and a
+      Generate a Template Link button (`POST`); with one, the discord.new link,
+      use count, last synced day, a notice when the server is dirty, Save
+      Changes (`PATCH`, only when the text changed), Copy Link, Sync Template
+      (`PUT`) and a two click Delete Template (`DELETE`). Every write reloads
+      the list. Routes and the `{name, description}` body come from the web
+      client's template module; the name and description caps (100 and 120)
+      are from the public API docs, not the reference. Unit tested: parsing,
+      body trimming and caps, the changed check, per server list handling.
+      Missing: the settings chunk that draws the page is not in the reference,
+      so layout and wording are a best guess, and the web client's
+      "Template has been synced" toasts and the dirty dot on the settings
+      button are not there. Never sent and not seen on screen.)
 - [ ] Prune members: count preview and confirm
 
 ## Voice

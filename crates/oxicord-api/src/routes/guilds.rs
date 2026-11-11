@@ -153,6 +153,76 @@ impl ApiClient {
         .await
     }
 
+    /// The templates made from a server. Discord allows one per server.
+    pub async fn guild_templates(
+        &self,
+        guild: Snowflake,
+    ) -> Result<Vec<oxicord_model::GuildTemplate>, ApiError> {
+        self.json(
+            Method::GET,
+            &format!("/guilds/{guild}/templates"),
+            "GET /guilds/:id/templates",
+            None,
+        )
+        .await
+    }
+
+    /// Makes the server's template from its current state.
+    pub async fn create_guild_template(
+        &self,
+        guild: Snowflake,
+        body: &Value,
+    ) -> Result<oxicord_model::GuildTemplate, ApiError> {
+        self.json(
+            Method::POST,
+            &format!("/guilds/{guild}/templates"),
+            "POST /guilds/:id/templates",
+            Some(body),
+        )
+        .await
+    }
+
+    /// Syncs a template to the server's current channels and roles.
+    pub async fn sync_guild_template(
+        &self,
+        guild: Snowflake,
+        code: &str,
+    ) -> Result<oxicord_model::GuildTemplate, ApiError> {
+        self.json(
+            Method::PUT,
+            &format!("/guilds/{guild}/templates/{code}"),
+            "PUT /guilds/:id/templates/:code",
+            None,
+        )
+        .await
+    }
+
+    /// Changes a template's name and description.
+    pub async fn edit_guild_template(
+        &self,
+        guild: Snowflake,
+        code: &str,
+        body: &Value,
+    ) -> Result<oxicord_model::GuildTemplate, ApiError> {
+        self.json(
+            Method::PATCH,
+            &format!("/guilds/{guild}/templates/{code}"),
+            "PATCH /guilds/:id/templates/:code",
+            Some(body),
+        )
+        .await
+    }
+
+    pub async fn delete_guild_template(&self, guild: Snowflake, code: &str) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/guilds/{guild}/templates/{code}"),
+            "DELETE /guilds/:id/templates/:code",
+            None,
+        )
+        .await
+    }
+
     /// Saves the onboarding setup from `Onboarding::edit_body`. The server
     /// answers with the setup as it now stands. Admin write: built and unit
     /// tested, not sent from the real account.

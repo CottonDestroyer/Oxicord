@@ -4,7 +4,7 @@
 
 use chrono::Local;
 use gpui_kit::{
-    AnyElement, AppContext as _, ClickEvent, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
+    AnyElement, AppContext as _, ClickEvent, ClipboardItem, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
     StyledImage as _, Subscription, Window, div, px, rgb,
     component::input::{Input, InputState},
@@ -12,7 +12,7 @@ use gpui_kit::{
 use oxicord_media::cdn;
 use oxicord_model::{
     ChannelType, MAX_ONBOARDING_OPTIONS, Onboarding, OnboardingOption, OnboardingPrompt, Permissions, Snowflake,
-    WelcomeChannel, WelcomeScreen,
+    WelcomeChannel, WelcomeScreen, template_body,
     admin::{AutoModRule, IntegrationEntry, WebhookEntry, action_name, keyword_rule_body, parse_keywords},
     welcome::MAX_WELCOME_CHANNELS,
 };
@@ -210,6 +210,7 @@ enum Armed {
     Webhook(Snowflake),
     Rule(Snowflake),
     Integration(Snowflake),
+    Template,
 }
 
 /// The line under an integration's name: its kind, the linked account, the
@@ -311,6 +312,11 @@ pub struct ServerSettings {
     onboarding_inputs: Vec<PromptInputs>,
     onboarding_menu: bool,
     onboarding_seq: u64,
+    /// The Server Template name and description inputs, and whether they hold
+    /// what the server last said.
+    template_name: Entity<InputState>,
+    template_description: Entity<InputState>,
+    template_seeded: bool,
     role: Option<Snowflake>,
     role_perms: Permissions,
     role_hoist: bool,
@@ -363,6 +369,9 @@ impl ServerSettings {
             onboarding_inputs: Vec::new(),
             onboarding_menu: false,
             onboarding_seq: 0,
+            template_name: input(cx, window, "Template name"),
+            template_description: input(cx, window, "What is this template for?"),
+            template_seeded: false,
             session,
             media,
             backend,
@@ -428,8 +437,10 @@ impl ServerSettings {
         self.welcome_menu = false;
         self.onboarding = None;
         self.onboarding_menu = false;
+        self.template_seeded = false;
         let Some(guild) = self.guild else { return };
         let request = match page {
+            Page::ServerTemplate => Some(AdminRequest::LoadTemplates(guild)),
             Page::Integrations => Some(AdminRequest::LoadWebhooks(guild)),
             Page::AutoMod => Some(AdminRequest::LoadAutomod(guild)),
             Page::WelcomeScreen => Some(AdminRequest::LoadWelcome(guild)),
@@ -2009,26 +2020,117 @@ impl ServerSettings {
             .into_any_element()
     }
 
+    /// Fills the template inputs from the loaded template the first time it
+    /// is on screen, or with the server's name when there is none yet.
+    fn seed_template(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != Page::ServerTemplate || self.template_seeded {
+            return;
+        }
+        let (Some(guild), Load::Ready(list)) = (self.guild, self.session.read(cx).admin.templates.clone()) else { return };
+        let (name, description) = match list.first() {
+            Some(t) => (t.name.clone(), t.description.clone().unwrap_or_default()),
+            None => (self.session.read(cx).store.guild(guild).map(|g| g.name.clone()).unwrap_or_default(), String::new()),
+        };
+        self.template_name.update(cx, |i, cx| i.set_value(name, window, cx));
+        self.template_description.update(cx, |i, cx| i.set_value(description, window, cx));
+        self.template_seeded = true;
+    }
+
+    /// A template request, after which the inputs follow the server's answer.
+    fn send_template(&mut self, request: AdminRequest, cx: &mut Context<Self>) {
+        self.template_seeded = false;
+        self.armed = None;
+        self.send(request, cx);
+    }
+
     fn server_template(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(guild) = self.guild else { return div().into_any_element() };
-        let name = self
-            .session
-            .read(cx)
-            .store
-            .guild(guild)
-            .map(|g| g.name.clone())
-            .unwrap_or_default();
+        let header = div().flex().flex_col().gap_3().child(title("Server Template")).child(widgets::blurb(
+            "Share this server's channels and roles as a template. Anyone with the link can start a new server from it, without members or messages.",
+        ));
+        let templates = match self.session.read(cx).admin.templates.clone() {
+            Load::Ready(list) => list,
+            Load::Failed(error) => return header.child(status_line("circle-alert", error, theme::DANGER)).into_any_element(),
+            _ => return header.child(status_line("loader", "Loading the template...".into(), theme::TEXT_MUTED)).into_any_element(),
+        };
+        let name = self.template_name.read(cx).value().to_string();
+        let description = self.template_description.read(cx).value().to_string();
+        let label = |text: &'static str| div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(text);
+        let mut page = header
+            .child(div().flex().flex_col().gap_2().child(label("Template name")).child(Input::new(&self.template_name)))
+            .child(div().flex().flex_col().gap_2().child(label("Description")).child(Input::new(&self.template_description)));
 
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(title("Server Template"))
-            .child(group(
-                "Server Template",
-                vec![widgets::info_row("Server Name", name)],
-            ))
-            .into_any_element()
+        let Some(template) = templates.into_iter().next() else {
+            if !name.trim().is_empty() {
+                page = page.child(div().flex().child(button("template-create", "Generate a Template Link", Tone::Primary, {
+                    let view = cx.weak_entity();
+                    move |_, _, cx| {
+                        view.update(cx, |this, cx| {
+                            let body = template_body(this.template_name.read(cx).value().as_ref(), this.template_description.read(cx).value().as_ref());
+                            this.send_template(AdminRequest::CreateTemplate { guild, body }, cx);
+                        })
+                        .ok();
+                    }
+                })));
+            }
+            return page.into_any_element();
+        };
+
+        let url = template.url();
+        let mut rows = vec![
+            widgets::info_row("Template Link", url.clone()),
+            widgets::info_row("Used", format!("{} times", template.usage_count)),
+            widgets::info_row("Last Synced", template.synced_on().to_owned()),
+        ];
+        if template.dirty() {
+            rows.push(status_line(
+                "circle-alert",
+                "The server has changed since this template was last synced.".into(),
+                theme::TEXT_MUTED,
+            ));
+        }
+        page = page.child(group("Template", rows));
+
+        let code = template.code.clone();
+        let armed = self.armed == Some(Armed::Template);
+        let mut actions = div().flex().gap_2();
+        if template.changed(&name, &description) {
+            actions = actions.child(button("template-save", "Save Changes", Tone::Primary, {
+                let (view, code) = (cx.weak_entity(), code.clone());
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        let body = template_body(this.template_name.read(cx).value().as_ref(), this.template_description.read(cx).value().as_ref());
+                        this.send_template(AdminRequest::EditTemplate { guild, code: code.clone(), body }, cx);
+                    })
+                    .ok();
+                }
+            }));
+        }
+        actions = actions
+            .child(button("template-copy", "Copy Link", Tone::Plain, move |_, _, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(url.clone()));
+            }))
+            .child(button("template-sync", "Sync Template", if template.dirty() { Tone::Primary } else { Tone::Plain }, {
+                let (view, code) = (cx.weak_entity(), code.clone());
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        this.send_template(AdminRequest::SyncTemplate { guild, code: code.clone() }, cx);
+                    })
+                    .ok();
+                }
+            }))
+            .child(button("template-delete", if armed { "Click again to delete" } else { "Delete Template" }, Tone::Danger, {
+                let (view, code) = (cx.weak_entity(), code);
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        if this.confirm(Armed::Template, cx) {
+                            this.send_template(AdminRequest::DeleteTemplate { guild, code: code.clone() }, cx);
+                        }
+                    })
+                    .ok();
+                }
+            }));
+        page.child(actions).into_any_element()
     }
 
     fn widget(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -2732,6 +2834,7 @@ impl Render for ServerSettings {
         let Some(guild) = self.guild else { return div().into_any_element() };
         self.seed_welcome(window, cx);
         self.seed_onboarding(window, cx);
+        self.seed_template(window, cx);
         let (name, perms) = {
             let s = self.session.read(cx);
             (s.store.guild(guild).map(|g| g.name.clone()).unwrap_or_default(), s.store.guild_permissions(guild))

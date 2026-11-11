@@ -947,6 +947,14 @@ impl Session {
                 self.admin.switch_to(*g);
                 self.admin.onboarding = Load::Loading;
             }
+            R::LoadTemplates(g)
+            | R::CreateTemplate { guild: g, .. }
+            | R::EditTemplate { guild: g, .. }
+            | R::SyncTemplate { guild: g, .. }
+            | R::DeleteTemplate { guild: g, .. } => {
+                self.admin.switch_to(*g);
+                self.admin.templates = Load::Loading;
+            }
             R::LoadAudit(g) => {
                 self.admin.switch_to(*g);
                 self.admin.audit = Load::Loading;
