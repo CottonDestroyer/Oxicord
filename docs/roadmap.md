@@ -958,7 +958,14 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       server accepting the resume is unverified. Missing: a visible
       reconnecting state in the call panel, and a fresh identify when the
       session has expired instead of ending the call.)
-- [ ] Pop out the call into its own window
+- [x] Pop out the call into its own window (the pop out button on the call
+      bar opens a second window with the tiles, mute, hang up and a return
+      button, and the main window shows "Your call is in another window" with
+      Bring it back. Closing the pop out, or leaving the call, puts it back;
+      closing the main window quits the app. Checked live against a real
+      call. Missing: the pop out has no device menus, camera or share
+      buttons, and no right click menu on a tile, and it is a native
+      titlebar window rather than the official always-on-top mini window.)
 - [ ] Noise suppression toggle (Krisp is proprietary: use RNNoise and note
       the difference)
 

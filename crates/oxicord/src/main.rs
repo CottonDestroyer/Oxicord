@@ -99,14 +99,6 @@ fn main() {
             load_fonts(cx);
             oxicord_ui::bind_keys(cx);
 
-            // Without this the process lingers after the last window closes.
-            cx.on_window_closed(|cx, _| {
-                if cx.windows().is_empty() {
-                    cx.quit();
-                }
-            })
-            .detach();
-
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -121,10 +113,19 @@ fn main() {
                 ..Default::default()
             };
 
-            gpui_kit::open_window(options, cx, move |window, cx| {
+            let (main, _) = gpui_kit::open_window(options, cx, move |window, cx| {
                 cx.new(|cx| AppView::new(backend, saved_token, settings, window, cx))
             })
             .expect("failed to open the main window");
+
+            // Without this the process lingers after the main window closes,
+            // as a popped out call would keep it alive.
+            cx.on_window_closed(move |cx, _| {
+                if !cx.windows().iter().any(|w| w.window_id() == main.window_id()) {
+                    cx.quit();
+                }
+            })
+            .detach();
             cx.activate(true);
         });
 }

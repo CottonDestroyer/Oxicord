@@ -12,6 +12,8 @@ use oxicord_media::cdn;
 use oxicord_model::{ChannelType, EventStatus, RelationshipKind, Snowflake, Status, WelcomeScreen};
 use oxicord_store::Unread;
 
+mod call_window;
+
 use crate::{
     account::Load,
     backend::{Backend, Command},
@@ -178,6 +180,8 @@ pub struct MainView {
     settings_open: bool,
     /// Whether the voice channel's text chat is shown beside the call.
     call_chat_open: bool,
+    /// The window the call was popped out into, while there is one.
+    popout: Option<gpui_kit::AnyWindowHandle>,
     /// Redraws once a second while in a call, for the clock.
     _clock: gpui_kit::Task<()>,
     settings_view: Entity<SettingsView>,
@@ -884,6 +888,7 @@ impl MainView {
             profile_tab: profile::Tab::Board,
             settings_open: false,
             call_chat_open: false,
+            popout: None,
             _clock: clock,
             settings_view,
             members_shown,
@@ -3943,6 +3948,9 @@ impl MainView {
                 None => (String::new(), Vec::new(), session.voice.clone()),
             }
         };
+        if self.popout.is_some() {
+            return self.render_call_popped_out(name, cx);
+        }
 
         // The biggest 16:9 tiles that fit the area, whatever the count.
         let viewport = window.viewport_size();
@@ -3954,59 +3962,14 @@ impl MainView {
         let tiles: Vec<AnyElement> = people
             .iter()
             .map(|person| {
-                let speaking = call.speaking.contains(&person.user);
-                let tile_color = self
-                    .media
-                    .update(cx, |media, _| media.dominant_color(&person.avatar))
-                    .unwrap_or(theme::CALL_TILE);
-                let avatar_size = (tile_h * 0.27).clamp(40., 80.);
-                let mut pill = div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .h(px(32.))
-                    .px(px(8.))
-                    .rounded(px(theme::RADIUS))
-                    .bg(rgba(0x0000_008f))
-                    .text_size(px(16.))
-                    .line_height(px(20.))
-                    .text_color(rgb(0xffffff))
-                    .child(person.name.clone());
-                if person.deafened {
-                    pill = pill.child(icon("headphone-off", 16., 0xffffff));
-                } else if person.muted {
-                    pill = pill.child(icon("mic-off", 16., 0xffffff));
-                }
                 let user = person.user;
-                div()
-                    .id(("call-tile", person.user.0))
+                call_tile(&self.media, person, call.speaking.contains(&user), (tile_w, tile_h), cx)
                     .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
                         let guild = this.guild;
                         this.session.update(cx, |_, cx| {
                             cx.emit(OpenUserMenu { user, guild, at: event.position, dm: None, can_mention: false });
                         });
                     }))
-                    .relative()
-                    .flex_none()
-                    .w(px(tile_w))
-                    .h(px(tile_h))
-                    .rounded(px(theme::RADIUS))
-                    .overflow_hidden()
-                    .bg(rgb(tile_color))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(avatar(&self.media, &person.avatar, avatar_size, &person.name, cx))
-                    .child(div().absolute().left(px(12.)).bottom(px(12.)).child(pill))
-                    // The ring goes on top so the speaker's tile is easy to spot.
-                    .child(
-                        div()
-                            .absolute()
-                            .size_full()
-                            .rounded(px(theme::RADIUS))
-                            .border_2()
-                            .border_color(if speaking { rgb(theme::STATUS_POSITIVE) } else { rgba(0) }),
-                    )
                     .into_any_element()
             })
             .collect();
@@ -4142,6 +4105,7 @@ impl MainView {
                             .id("call-pop-out")
                             .size(px(24.))
                             .cursor_pointer()
+                            .on_click(cx.listener(|this, _, _, cx| this.pop_out_call(cx)))
                             .child(icon("external-link", 24., theme::TEXT_BRIGHT)),
                     )
                     .child(
@@ -4153,6 +4117,79 @@ impl MainView {
                             .child(icon("maximize", 24., theme::TEXT_BRIGHT)),
                     )
             }))
+            .into_any_element()
+    }
+
+    /// Moves the call into a window of its own, or brings that window forward.
+    fn pop_out_call(&mut self, cx: &mut Context<Self>) {
+        if let Some(window) = self.popout {
+            if window.update(cx, |_, window, _| window.activate_window()).is_ok() {
+                return;
+            }
+            self.popout = None;
+        }
+        let (session, media, backend) = (self.session.clone(), self.media.clone(), self.backend.clone());
+        let Some((handle, view)) = call_window::open(session, media, backend, cx) else { return };
+        self.popout = Some(handle);
+        // The view goes with its window, which is when the call comes back here.
+        cx.observe_release(&view, |this, _, cx| {
+            this.popout = None;
+            cx.notify();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// What the main window shows of a call that lives in its own window.
+    fn render_call_popped_out(&mut self, name: String, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(rgb(theme::BG_CHAT))
+            .child(self.call_header(name, cx))
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(16.))
+                    .child(icon("external-link", 48., theme::TEXT_MUTED))
+                    .child(
+                        div()
+                            .text_size(px(20.))
+                            .line_height(px(24.))
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(rgb(theme::TEXT_BRIGHT))
+                            .child("Your call is in another window"),
+                    )
+                    .child(
+                        div()
+                            .id("call-bring-back")
+                            .h(px(40.))
+                            .px(px(24.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(theme::RADIUS))
+                            .bg(rgb(theme::ACCENT))
+                            .text_size(px(16.))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_color(rgb(0xffffff))
+                            .cursor_pointer()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(window) = this.popout.take() {
+                                    let _ = window.update(cx, |_, window, _| window.remove_window());
+                                }
+                                cx.notify();
+                            }))
+                            .child("Bring it back"),
+                    ),
+            )
             .into_any_element()
     }
 
@@ -4800,6 +4837,60 @@ fn mention_badge(count: u32) -> Option<AnyElement> {
 
 fn is_voice(kind: ChannelType) -> bool {
     matches!(kind, ChannelType::GuildVoice | ChannelType::GuildStageVoice)
+}
+
+/// One person's tile in a call, ringed while they speak.
+fn call_tile(
+    media: &Entity<Media>,
+    person: &VoiceItem,
+    speaking: bool,
+    (tile_w, tile_h): (f32, f32),
+    cx: &mut App,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let tile_color = media
+        .update(cx, |media, _| media.dominant_color(&person.avatar))
+        .unwrap_or(theme::CALL_TILE);
+    let avatar_size = (tile_h * 0.27).clamp(40., 80.);
+    let mut pill = div()
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .h(px(32.))
+        .px(px(8.))
+        .rounded(px(theme::RADIUS))
+        .bg(rgba(0x0000_008f))
+        .text_size(px(16.))
+        .line_height(px(20.))
+        .text_color(rgb(0xffffff))
+        .child(person.name.clone());
+    if person.deafened {
+        pill = pill.child(icon("headphone-off", 16., 0xffffff));
+    } else if person.muted {
+        pill = pill.child(icon("mic-off", 16., 0xffffff));
+    }
+    div()
+        .id(("call-tile", person.user.0))
+        .relative()
+        .flex_none()
+        .w(px(tile_w))
+        .h(px(tile_h))
+        .rounded(px(theme::RADIUS))
+        .overflow_hidden()
+        .bg(rgb(tile_color))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(avatar(media, &person.avatar, avatar_size, &person.name, cx))
+        .child(div().absolute().left(px(12.)).bottom(px(12.)).child(pill))
+        // The ring goes on top so the speaker's tile is easy to spot.
+        .child(
+            div()
+                .absolute()
+                .size_full()
+                .rounded(px(theme::RADIUS))
+                .border_2()
+                .border_color(if speaking { rgb(theme::STATUS_POSITIVE) } else { rgba(0) }),
+        )
 }
 
 /// The little arrow beside mute and deafen that opens their device lists.
