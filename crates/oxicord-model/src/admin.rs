@@ -51,6 +51,50 @@ impl InviteEntry {
     }
 }
 
+/// A webhook as the server lists it. Followed channels (type 2) and
+/// application webhooks (type 3) carry no token, so they have no link to copy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WebhookEntry {
+    pub id: Snowflake,
+    pub name: String,
+    pub channel: Option<Snowflake>,
+    pub avatar: Option<String>,
+    pub token: Option<String>,
+    /// 1 incoming, 2 channel follower, 3 application.
+    pub kind: u8,
+    pub creator: Option<String>,
+}
+
+impl WebhookEntry {
+    pub fn parse_list(body: &Value) -> Vec<Self> {
+        body.as_array().map(|list| list.iter().filter_map(Self::parse).collect()).unwrap_or_default()
+    }
+
+    pub fn parse(value: &Value) -> Option<Self> {
+        Some(Self {
+            id: id(value, "id")?,
+            name: text(value, "name").unwrap_or_default(),
+            channel: id(value, "channel_id"),
+            avatar: text(value, "avatar"),
+            token: text(value, "token"),
+            kind: u8::try_from(count(value, "type")).unwrap_or(1),
+            creator: value.get("user").and_then(|u| {
+                // The web client shows the old tag, `name#1234`, when there is one.
+                let name = text(u, "username")?;
+                match text(u, "discriminator").filter(|d| d != "0" && !d.is_empty()) {
+                    Some(tag) => Some(format!("{name}#{tag}")),
+                    None => Some(name),
+                }
+            }),
+        })
+    }
+
+    /// The address that posts into the channel, when there is one.
+    pub fn url(&self) -> Option<String> {
+        self.token.as_ref().map(|token| format!("https://discord.com/api/webhooks/{}/{token}", self.id))
+    }
+}
+
 /// Someone banned from the server.
 #[derive(Clone, Debug)]
 pub struct BanEntry {
@@ -188,6 +232,23 @@ mod tests {
         assert_eq!(list[0].inviter.as_deref(), Some("ada"));
         assert_eq!(list[0].channel.as_deref(), Some("general"));
         assert_eq!(list[0].max_age, 86400);
+    }
+
+    #[test]
+    fn webhooks_read_their_channel_and_build_their_link() {
+        let list = WebhookEntry::parse_list(&json!([
+            { "id": "5", "name": "Spidey Bot", "channel_id": "9", "token": "tok", "type": 1, "user": { "id": "1", "username": "ada" } },
+            { "id": "6", "name": "Followed", "channel_id": "9", "type": 2,
+              "user": { "id": "2", "username": "Wick", "discriminator": "3938" } },
+            { "name": "no id" }
+        ]));
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[1].creator.as_deref(), Some("Wick#3938"));
+        assert_eq!(list[0].channel, Some(Snowflake(9)));
+        assert_eq!(list[0].creator.as_deref(), Some("ada"));
+        assert_eq!(list[0].url().as_deref(), Some("https://discord.com/api/webhooks/5/tok"));
+        assert_eq!(list[1].url(), None);
+        assert_eq!(list[1].kind, 2);
     }
 
     #[test]

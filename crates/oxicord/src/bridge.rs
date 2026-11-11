@@ -1045,6 +1045,21 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         AdminRequest::ClearOverwrite { channel, target } => {
             check(api.clear_overwrite(channel, target).await, "reset those permissions").await;
         }
+        AdminRequest::LoadWebhooks(guild) => {
+            say(AdminEvent::Webhooks(guild, api.guild_webhooks(guild).await.map_err(text))).await;
+        }
+        AdminRequest::CreateWebhook { guild, channel, name } => {
+            check(api.create_webhook(channel, &name).await, "create that webhook").await;
+            say(AdminEvent::Webhooks(guild, api.guild_webhooks(guild).await.map_err(text))).await;
+        }
+        AdminRequest::EditWebhook { guild, webhook, name, channel } => {
+            check(api.edit_webhook(webhook, &name, channel).await, "save that webhook").await;
+            say(AdminEvent::Webhooks(guild, api.guild_webhooks(guild).await.map_err(text))).await;
+        }
+        AdminRequest::DeleteWebhook { guild, webhook } => {
+            check(api.delete_webhook(webhook).await, "delete that webhook").await;
+            say(AdminEvent::Webhooks(guild, api.guild_webhooks(guild).await.map_err(text))).await;
+        }
     }
 }
 /// What follows disabling or deleting the account: the token is dead, so a

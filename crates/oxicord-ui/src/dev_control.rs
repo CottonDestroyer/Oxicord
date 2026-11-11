@@ -14,6 +14,7 @@
 //! full <user> [server id]      the full profile
 //! tab <board|activity|friends|servers>   switch the full profile's tab
 //! close               close the card
+//! webhooks <server id>   server settings on its Webhooks page
 //! ```
 //!
 //! The file is `OXICORD_DEV_CMD`, or `oxicord-dev-cmd.txt` in the temp folder.
@@ -54,6 +55,8 @@ pub enum DevCommand {
     TotpCodes,
     /// The channel permissions screen on a channel.
     ChannelPermissions(Snowflake, bool),
+    /// Server settings on the Webhooks page of a server.
+    Webhooks(Snowflake),
     /// A kind of the shared drastic-action dialog: 0 disable, 1 delete, 2 remove
     /// two-factor. Opening is harmless, nothing is sent until its button.
     Danger(u8),
@@ -107,6 +110,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         "interested" => id().map(DevCommand::Interested),
         "totp-codes" => Some(DevCommand::TotpCodes),
         "chperm" => id().map(|channel| DevCommand::ChannelPermissions(channel, words.clone().nth(1) != Some("live"))),
+        "webhooks" => id().map(DevCommand::Webhooks),
         "danger" => match words.clone().next()? {
             "disable" => Some(DevCommand::Danger(0)),
             "delete" => Some(DevCommand::Danger(1)),

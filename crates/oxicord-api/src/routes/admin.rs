@@ -2,7 +2,7 @@
 
 use oxicord_model::{
     Permissions, Snowflake,
-    admin::{AuditLog, BanEntry, InviteEntry},
+    admin::{AuditLog, BanEntry, InviteEntry, WebhookEntry},
 };
 use reqwest::Method;
 use serde_json::{Value, json};
@@ -229,6 +229,45 @@ impl ApiClient {
     pub async fn edit_channel(&self, channel: Snowflake, fields: &Value) -> Result<(), ApiError> {
         self.empty(Method::PATCH, &format!("/channels/{channel}"), "PATCH /channels/:id", Some(fields)).await
     }
+
+    /// Every webhook in the server. Needs `Manage Webhooks`.
+    pub async fn guild_webhooks(&self, guild: Snowflake) -> Result<Vec<WebhookEntry>, ApiError> {
+        let body: Value = self
+            .json(Method::GET, &format!("/guilds/{guild}/webhooks"), "GET /guilds/:id/webhooks", None)
+            .await?;
+        Ok(WebhookEntry::parse_list(&body))
+    }
+
+    /// Makes a webhook in a channel. The web client sends only the name.
+    pub async fn create_webhook(&self, channel: Snowflake, name: &str) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            &format!("/channels/{channel}/webhooks"),
+            "POST /channels/:id/webhooks",
+            Some(&json!({ "name": name })),
+        )
+        .await
+    }
+
+    /// Changes a webhook's name and the channel it posts to.
+    pub async fn edit_webhook(&self, webhook: Snowflake, name: &str, channel: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/webhooks/{webhook}"),
+            "PATCH /webhooks/:id",
+            Some(&webhook_body(name, channel)),
+        )
+        .await
+    }
+
+    pub async fn delete_webhook(&self, webhook: Snowflake) -> Result<(), ApiError> {
+        self.empty(Method::DELETE, &format!("/webhooks/{webhook}"), "DELETE /webhooks/:id", None).await
+    }
+}
+
+/// The edit of one webhook, its channel as a string id.
+fn webhook_body(name: &str, channel: Snowflake) -> Value {
+    json!({ "name": name, "channel_id": channel.to_string() })
 }
 
 /// The body of one overwrite: its target, whether that is a role (0) or a
@@ -245,6 +284,11 @@ fn overwrite_body(target: Snowflake, kind: u8, allow: Permissions, deny: Permiss
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_webhook_edit_names_the_webhook_and_its_channel_as_a_string() {
+        assert_eq!(webhook_body("Hook", Snowflake(42)), json!({ "name": "Hook", "channel_id": "42" }));
+    }
 
     #[test]
     fn an_overwrite_names_its_target_kind_and_both_sets_as_strings() {

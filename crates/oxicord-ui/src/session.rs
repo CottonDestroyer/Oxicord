@@ -927,6 +927,10 @@ impl Session {
                 self.admin.switch_to(*g);
                 self.admin.bans = Load::Loading;
             }
+            R::LoadWebhooks(g) => {
+                self.admin.switch_to(*g);
+                self.admin.webhooks = Load::Loading;
+            }
             R::LoadAudit(g) => {
                 self.admin.switch_to(*g);
                 self.admin.audit = Load::Loading;

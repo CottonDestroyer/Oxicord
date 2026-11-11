@@ -3,7 +3,7 @@
 
 use oxicord_model::{
     Snowflake,
-    admin::{AuditLog, BanEntry, InviteEntry},
+    admin::{AuditLog, BanEntry, InviteEntry, WebhookEntry},
 };
 use serde_json::Value;
 
@@ -47,6 +47,10 @@ pub enum AdminRequest {
     },
     /// Back to inheriting for a role or member in a channel.
     ClearOverwrite { channel: Snowflake, target: Snowflake },
+    LoadWebhooks(Snowflake),
+    CreateWebhook { guild: Snowflake, channel: Snowflake, name: String },
+    EditWebhook { guild: Snowflake, webhook: Snowflake, name: String, channel: Snowflake },
+    DeleteWebhook { guild: Snowflake, webhook: Snowflake },
 }
 
 /// The answers, each tagged with the server it was for.
@@ -54,6 +58,7 @@ pub enum AdminRequest {
 pub enum AdminEvent {
     Invites(Snowflake, Result<Vec<InviteEntry>, String>),
     Bans(Snowflake, Result<Vec<BanEntry>, String>),
+    Webhooks(Snowflake, Result<Vec<WebhookEntry>, String>),
     Audit(Snowflake, Result<AuditLog, String>),
     MemberVerification(Snowflake, Box<Result<oxicord_model::VerificationInfo, String>>),
     /// How answering the screening form went.
@@ -66,6 +71,7 @@ pub struct AdminState {
     pub guild: Option<Snowflake>,
     pub invites: Load<Vec<InviteEntry>>,
     pub bans: Load<Vec<BanEntry>>,
+    pub webhooks: Load<Vec<WebhookEntry>>,
     pub audit: Load<AuditLog>,
 }
 
@@ -81,6 +87,7 @@ impl AdminState {
         match event {
             AdminEvent::Invites(g, r) if self.guild == Some(g) => self.invites = Load::from_result(r),
             AdminEvent::Bans(g, r) if self.guild == Some(g) => self.bans = Load::from_result(r),
+            AdminEvent::Webhooks(g, r) if self.guild == Some(g) => self.webhooks = Load::from_result(r),
             AdminEvent::Audit(g, r) if self.guild == Some(g) => self.audit = Load::from_result(r),
             AdminEvent::MemberVerification(..) | AdminEvent::Verified(..) => {}
             _ => {}

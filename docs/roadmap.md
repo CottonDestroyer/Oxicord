@@ -764,7 +764,31 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       off state (allow versus inherit) were not seen on the wire, a failed
       request does not roll the on-screen edit back until the screen reopens, and
       the other tabs still do nothing.
-- [ ] Webhooks: list, create, edit, delete
+- [x] Webhooks: list, create, edit, delete. Integrations now opens on the
+      live client's two cards (Webhooks with its count, Channels Followed with
+      its count) and the Webhooks card opens a page with the intro, New Webhook,
+      the webhooks grouped under "Posting to #channel", each row with avatar,
+      name and "Created on <date> by <tag>", and a row editor with Name, a
+      Channel menu, Save Changes (only when something changed), Copy Webhook URL
+      and a two click Delete Webhook. The calls are `GET /guilds/{id}/webhooks`,
+      `POST /channels/{id}/webhooks` with the name, `PATCH /webhooks/{id}` with
+      name and channel, and `DELETE /webhooks/{id}`, taken from the web client's
+      module 824953. New Webhook uses the first text channel and a random name
+      as the web client does. Measured on the live page (view only):
+      screenshots/reference/integrations.png, webhooks.png and webhook_edit.png.
+      Read-only check in the port against the same server: the list, the
+      editor and the channel menu show the same webhooks, dates and creators
+      (captures in screenshots/port/integrations.png, webhooks.png,
+      webhook_edit.png and webhook_channel_menu.png). Create, edit and delete
+      were built and unit tested only, never sent: the model read, the link
+      build, the grouping, the changed test and the edit body. Remaining
+      differences: the avatar upload and Remove controls are not built, the
+      Channels Followed card has no Learn More button or page, Copy Webhook URL
+      does nothing for application webhooks (they list without a token), the
+      Integrations item is missing from the port's left list for this account
+      (the port's rule for which pages an account sees differs from the web
+      client's), and the list does not show the new webhook expanded after New
+      Webhook.
 - [ ] AutoMod rules: list
 - [ ] AutoMod rules: create and edit
 - [ ] Integrations list

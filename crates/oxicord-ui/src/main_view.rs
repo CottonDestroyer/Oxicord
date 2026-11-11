@@ -1394,6 +1394,11 @@ impl MainView {
             DevCommand::ChannelPermissions(channel, dry) => {
                 self.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel, dry)));
             }
+            DevCommand::Webhooks(guild) => {
+                self.server_settings_open = true;
+                self.server_settings.update(cx, |view, cx| view.opened_webhooks(guild, window, cx));
+                cx.notify();
+            }
             DevCommand::TotpCodes => {
                 self.totp_open = true;
                 self.totp_dialog.update(cx, |dialog, cx| dialog.preview_codes(window, cx));

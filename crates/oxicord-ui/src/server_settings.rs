@@ -10,7 +10,10 @@ use gpui_kit::{
     component::input::{Input, InputState},
 };
 use oxicord_media::cdn;
-use oxicord_model::{ChannelType, Permissions, Snowflake, admin::action_name};
+use oxicord_model::{
+    ChannelType, Permissions, Snowflake,
+    admin::{WebhookEntry, action_name},
+};
 use serde_json::json;
 
 fn mime_for(path: &std::path::Path) -> &'static str {
@@ -187,6 +190,30 @@ enum Armed {
     Role(Snowflake),
     Channel(Snowflake),
     Emoji(Snowflake),
+    Webhook(Snowflake),
+}
+
+/// The webhooks grouped by the channel they post to, in the order each
+/// channel first appears.
+fn webhooks_by_channel(list: &[WebhookEntry]) -> Vec<(Option<Snowflake>, Vec<&WebhookEntry>)> {
+    let mut groups: Vec<(Option<Snowflake>, Vec<&WebhookEntry>)> = Vec::new();
+    for hook in list {
+        match groups.iter_mut().find(|(channel, _)| *channel == hook.channel) {
+            Some((_, hooks)) => hooks.push(hook),
+            None => groups.push((hook.channel, vec![hook])),
+        }
+    }
+    groups
+}
+
+/// Whether the editor holds something other than what the server has.
+fn webhook_changed(hook: &WebhookEntry, name: &str, channel: Option<Snowflake>) -> bool {
+    name.trim() != hook.name || channel.is_some_and(|c| Some(c) != hook.channel)
+}
+
+/// "2 webhooks", "1 webhook".
+fn counted(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 pub struct CloseServerSettings;
@@ -207,6 +234,13 @@ pub struct ServerSettings {
     channel_name: Entity<InputState>,
     channel_topic: Entity<InputState>,
     emoji_name: Entity<InputState>,
+    webhook_name: Entity<InputState>,
+    /// The Webhooks page inside Integrations is open.
+    webhooks_open: bool,
+    /// The webhook whose editor is open, and the channel picked in it.
+    webhook: Option<Snowflake>,
+    webhook_channel: Option<Snowflake>,
+    channel_menu: bool,
     role: Option<Snowflake>,
     role_perms: Permissions,
     role_hoist: bool,
@@ -241,6 +275,11 @@ impl ServerSettings {
             channel_name: input(cx, window, "Channel name"),
             channel_topic: input(cx, window, "Topic"),
             emoji_name: input(cx, window, "Emoji name"),
+            webhook_name: input(cx, window, "Webhook name"),
+            webhooks_open: false,
+            webhook: None,
+            webhook_channel: None,
+            channel_menu: false,
             session,
             media,
             backend,
@@ -265,6 +304,13 @@ impl ServerSettings {
         self.opened(guild, window, cx);
     }
 
+    /// Opens straight on the Webhooks page, for checking it from the dev control.
+    pub fn opened_webhooks(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        self.opened(guild, window, cx);
+        self.select(Page::Integrations, cx);
+        self.webhooks_open = true;
+    }
+
     pub fn opened(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.guild = Some(guild);
         self.role = None;
@@ -285,8 +331,12 @@ impl ServerSettings {
     fn select(&mut self, page: Page, cx: &mut Context<Self>) {
         self.page = page;
         self.armed = None;
+        self.webhooks_open = false;
+        self.webhook = None;
+        self.channel_menu = false;
         let Some(guild) = self.guild else { return };
         let request = match page {
+            Page::Integrations => Some(AdminRequest::LoadWebhooks(guild)),
             Page::Invites => Some(AdminRequest::LoadInvites(guild)),
             Page::Bans => Some(AdminRequest::LoadBans(guild)),
             Page::AuditLog => Some(AdminRequest::LoadAudit(guild)),
@@ -638,24 +688,364 @@ impl ServerSettings {
     }
 
     fn integrations(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(guild) = self.guild else { return div().into_any_element() };
-        let name = self
-            .session
-            .read(cx)
-            .store
-            .guild(guild)
-            .map(|g| g.name.clone())
-            .unwrap_or_default();
+        if self.webhooks_open {
+            return self.webhooks(cx);
+        }
+        let (hooks, followed) = match &self.session.read(cx).admin.webhooks {
+            Load::Ready(list) => {
+                let followed = list.iter().filter(|w| w.kind == 2).count();
+                (counted(list.len() - followed, "webhook", "webhooks"), counted(followed, "channel", "channels"))
+            }
+            _ => ("...".to_owned(), "...".to_owned()),
+        };
+        let card = |glyph: &str, name: &'static str, count: String| {
+            div()
+                .h(px(88.))
+                .px_4()
+                .flex()
+                .items_center()
+                .gap_4()
+                .rounded(px(theme::RADIUS))
+                .bg(rgb(theme::BG_PANEL))
+                .child(icon(glyph, 24., theme::TEXT_MUTED))
+                .child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .flex_col()
+                        .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(name))
+                        .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT)).child(count)),
+                )
+        };
 
         div()
             .flex()
             .flex_col()
             .gap_3()
             .child(title("Integrations"))
-            .child(group(
-                "Integrations",
-                vec![widgets::info_row("Server Name", name)],
+            .child(widgets::blurb(
+                "Customize your server with integrations. Manage webhooks, followed channels, and apps, as well as Twitch and YouTube settings for creators.",
             ))
+            .child(div().h(px(1.)).mb_2().bg(rgb(theme::BORDER)))
+            .child(
+                card("webhook", "Webhooks", hooks)
+                    .id("open-webhooks")
+                    .cursor_pointer()
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        this.webhooks_open = true;
+                        cx.notify();
+                    }))
+                    .child(icon("chevron-right", 16., theme::TEXT_MUTED)),
+            )
+            .child(card("arrow-left-right", "Channels Followed", followed))
+            .into_any_element()
+    }
+
+    /// Opens one webhook's editor with what the server has for it.
+    fn pick_webhook(&mut self, hook: &WebhookEntry, window: &mut Window, cx: &mut Context<Self>) {
+        self.webhook = Some(hook.id);
+        self.webhook_channel = hook.channel;
+        self.channel_menu = false;
+        self.armed = None;
+        self.webhook_name.update(cx, |i, cx| i.set_value(hook.name.clone(), window, cx));
+        cx.notify();
+    }
+
+    fn webhooks(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
+        let state = self.session.read(cx).admin.webhooks.clone();
+        let channel_name = |this: &Self, id: Option<Snowflake>, cx: &Context<Self>| -> String {
+            id.and_then(|id| this.session.read(cx).store.channel(id).and_then(|c| c.name.clone())).unwrap_or_default()
+        };
+
+        let crumbs = div()
+            .mb_4()
+            .flex()
+            .items_center()
+            .gap_2()
+            .text_size(px(24.))
+            .font_weight(FontWeight::MEDIUM)
+            .child(
+                div()
+                    .id("webhooks-back")
+                    .cursor_pointer()
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        this.webhooks_open = false;
+                        this.webhook = None;
+                        cx.notify();
+                    }))
+                    .child("Integrations"),
+            )
+            .child(icon("chevron-right", 18., theme::TEXT_MUTED))
+            .child(div().text_color(rgb(theme::TEXT_BRIGHT)).child("Webhooks"));
+
+        // A new webhook goes in the first text channel, named at random the way
+        // the web client does it.
+        let first_text = {
+            let store = &self.session.read(cx).store;
+            store
+                .channel_groups(guild)
+                .into_iter()
+                .flat_map(|g| g.channels)
+                .find(|c| c.kind == ChannelType::GuildText)
+                .map(|c| c.id)
+        };
+        let new_webhook = button("new-webhook", "New Webhook", Tone::Primary, {
+            let view = cx.weak_entity();
+            move |_, _, cx| {
+                let Some(channel) = first_text else { return };
+                let name = if std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.subsec_nanos())
+                    % 2
+                    == 0
+                {
+                    "Spidey Bot"
+                } else {
+                    "Captain Hook"
+                };
+                view.update(cx, |this, cx| {
+                    this.send(AdminRequest::CreateWebhook { guild, channel, name: name.to_owned() }, cx);
+                })
+                .ok();
+            }
+        });
+
+        let mut body = div().flex().flex_col().gap_4();
+        match state {
+            Load::Ready(list) => {
+                for (channel, hooks) in webhooks_by_channel(&list) {
+                    let heading = format!("Posting to #{}", channel_name(self, channel, cx));
+                    let mut section = div().flex().flex_col().gap_3().child(
+                        div().text_color(rgb(theme::TEXT_BRIGHT)).font_weight(FontWeight::MEDIUM).child(heading),
+                    );
+                    for hook in hooks {
+                        section = section.child(self.webhook_card(guild, hook, cx));
+                    }
+                    body = body.child(section);
+                }
+            }
+            Load::Failed(error) => body = body.child(status_line("circle-alert", error, theme::DANGER)),
+            _ => body = body.child(status_line("loader", "Loading webhooks...".into(), theme::TEXT_MUTED)),
+        }
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(crumbs)
+            .child(widgets::blurb(
+                "Webhooks are a simple way to post messages from other apps and websites into Discord using internet magic.",
+            ))
+            .child(div().h(px(1.)).mb_2().bg(rgb(theme::BORDER)))
+            .child(new_webhook)
+            .child(body)
+            .into_any_element()
+    }
+
+    fn webhook_card(&mut self, guild: Snowflake, hook: &WebhookEntry, cx: &mut Context<Self>) -> AnyElement {
+        let id = hook.id;
+        let open = self.webhook == Some(id);
+        let avatar_url = cdn::user_avatar(id, hook.avatar.as_deref(), 64);
+        let media = self.media.clone();
+        let made = format!(
+            "Created on {}{}",
+            id.datetime().format("%b %-d, %Y"),
+            hook.creator.as_ref().map_or_else(String::new, |c| format!(" by {c}")),
+        );
+        let header = div()
+            .id(("webhook", id.0))
+            .h(px(88.))
+            .px_4()
+            .flex()
+            .items_center()
+            .gap_4()
+            .cursor_pointer()
+            .child(crate::media::avatar(&media, &avatar_url, 48., &hook.name, cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(hook.name.clone()))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::TEXT))
+                            .child(icon("clock", 14., theme::TEXT_MUTED))
+                            .child(made),
+                    ),
+            )
+            .child(icon(if open { "chevron-down" } else { "chevron-right" }, 16., theme::TEXT_MUTED))
+            .on_click({
+                let hook = hook.clone();
+                cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    if this.webhook == Some(hook.id) {
+                        this.webhook = None;
+                        cx.notify();
+                    } else {
+                        this.pick_webhook(&hook, window, cx);
+                    }
+                })
+            });
+
+        let mut card = div().flex().flex_col().rounded(px(theme::RADIUS)).bg(rgb(theme::BG_PANEL)).child(header);
+        if open {
+            card = card.child(self.webhook_editor(guild, hook, cx));
+        }
+        card.into_any_element()
+    }
+
+    fn webhook_editor(&mut self, guild: Snowflake, hook: &WebhookEntry, cx: &mut Context<Self>) -> AnyElement {
+        let id = hook.id;
+        let chosen = self.webhook_channel.or(hook.channel);
+        let chosen_name = chosen
+            .and_then(|c| self.session.read(cx).store.channel(c).and_then(|c| c.name.clone()))
+            .unwrap_or_default();
+        let typed = self.webhook_name.read(cx).value().to_string();
+        let changed = webhook_changed(hook, &typed, self.webhook_channel);
+        let armed = self.armed == Some(Armed::Webhook(id));
+        let label = |text: &'static str| {
+            div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(text)
+        };
+
+        let select = div()
+            .id("webhook-channel")
+            .h(px(40.))
+            .px_3()
+            .flex()
+            .items_center()
+            .justify_between()
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .cursor_pointer()
+            .text_color(rgb(theme::TEXT))
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.channel_menu = !this.channel_menu;
+                cx.notify();
+            }))
+            .child(format!("#{chosen_name}"))
+            .child(icon("chevron-down", 16., theme::TEXT_MUTED));
+
+        let mut channel_column = div().flex_1().flex().flex_col().gap_2().child(label("Channel")).child(select);
+        if self.channel_menu {
+            let options: Vec<(Snowflake, String)> = {
+                let store = &self.session.read(cx).store;
+                store
+                    .channel_groups(guild)
+                    .into_iter()
+                    .flat_map(|g| g.channels)
+                    .filter(|c| !matches!(c.kind, ChannelType::GuildCategory))
+                    .map(|c| (c.id, c.name.clone().unwrap_or_default()))
+                    .collect()
+            };
+            let mut menu = div()
+                .id("webhook-channel-menu")
+                .max_h(px(200.))
+                .overflow_y_scroll()
+                .flex()
+                .flex_col()
+                .rounded(px(theme::RADIUS))
+                .border_1()
+                .border_color(rgb(theme::BORDER))
+                .bg(rgb(theme::BG_CHAT));
+            for (option, name) in options {
+                menu = menu.child(
+                    div()
+                        .id(("webhook-channel-option", option.0))
+                        .h(px(32.))
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .text_color(rgb(theme::TEXT))
+                        .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.webhook_channel = Some(option);
+                            this.channel_menu = false;
+                            cx.notify();
+                        }))
+                        .child(format!("#{name}")),
+                );
+            }
+            channel_column = channel_column.child(menu);
+        }
+
+        let mut actions = div().flex().gap_2();
+        if changed {
+            actions = actions.child(button("save-webhook", "Save Changes", Tone::Primary, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        let name = this.webhook_name.read(cx).value().trim().to_owned();
+                        let Some(channel) = this.webhook_channel.or(chosen) else { return };
+                        if !name.is_empty() {
+                            this.send(AdminRequest::EditWebhook { guild, webhook: id, name, channel }, cx);
+                        }
+                    })
+                    .ok();
+                }
+            }));
+        }
+        // Application webhooks come without a token, so there is nothing to copy
+        // for them, but the live client still shows the button.
+        let url = hook.url();
+        actions = actions.child(button("copy-webhook", "Copy Webhook URL", Tone::Plain, move |_, _, cx| {
+            if let Some(url) = &url {
+                cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(url.clone()));
+            }
+        }));
+        actions = actions.child(button(
+            "delete-webhook",
+            if armed { "Click again to delete" } else { "Delete Webhook" },
+            Tone::Danger,
+            {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        if this.confirm(Armed::Webhook(id), cx) {
+                            this.webhook = None;
+                            this.send(AdminRequest::DeleteWebhook { guild, webhook: id }, cx);
+                        }
+                    })
+                    .ok();
+                }
+            },
+        ));
+
+        div()
+            .mx_4()
+            .pt_4()
+            .pb_4()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .border_t_1()
+            .border_color(rgb(theme::BORDER))
+            .child(
+                div()
+                    .flex()
+                    .gap_4()
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(label("Name"))
+                            .child(Input::new(&self.webhook_name)),
+                    )
+                    .child(channel_column),
+            )
+            .child(actions)
             .into_any_element()
     }
 
@@ -1646,6 +2036,43 @@ mod tests {
     fn a_color_round_trips_through_its_text() {
         assert_eq!(parse_color(&color_text(0x00a8fc)), Some(0x00a8fc));
         assert_eq!(color_text(0), "");
+    }
+
+    fn hook(id: u64, channel: u64, name: &str) -> WebhookEntry {
+        WebhookEntry {
+            id: Snowflake(id),
+            name: name.into(),
+            channel: Some(Snowflake(channel)),
+            avatar: None,
+            token: None,
+            kind: 1,
+            creator: None,
+        }
+    }
+
+    #[test]
+    fn webhooks_group_by_channel_in_first_seen_order() {
+        let list = [hook(1, 20, "a"), hook(2, 10, "b"), hook(3, 20, "c")];
+        let groups = webhooks_by_channel(&list);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].0, Some(Snowflake(20)));
+        assert_eq!(groups[0].1.iter().map(|h| h.id).collect::<Vec<_>>(), vec![Snowflake(1), Snowflake(3)]);
+        assert_eq!(groups[1].0, Some(Snowflake(10)));
+    }
+
+    #[test]
+    fn a_webhook_counts_as_changed_only_when_name_or_channel_differ() {
+        let h = hook(1, 20, "Wick");
+        assert!(!webhook_changed(&h, " Wick ", None));
+        assert!(!webhook_changed(&h, "Wick", Some(Snowflake(20))));
+        assert!(webhook_changed(&h, "Wick 2", None));
+        assert!(webhook_changed(&h, "Wick", Some(Snowflake(21))));
+    }
+
+    #[test]
+    fn counts_say_one_or_many() {
+        assert_eq!(counted(1, "webhook", "webhooks"), "1 webhook");
+        assert_eq!(counted(0, "channel", "channels"), "0 channels");
     }
 
     #[test]
