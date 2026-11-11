@@ -979,6 +979,147 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       audio itself was not heard. Missing: the official Krisp and Standard
       choice, and the official default of on.)
 
+## Phase 8: parity audit against live build 670026 (2026-11-11)
+
+Found by opening the live web client (build 670026, newer than the 668923
+snapshot in reference/web) and our debug app side by side, both at 1920 x 1080
+(web viewport set to 1920 x 1080, our window sized to match), on the same
+server (Low iq gaymers) and the same account. Each line is a gap seen in those
+two captures or on the live settings pages. Work top to bottom; each line is
+one feature and one commit. Re-capture the live page before starting an item,
+the build moves.
+
+### Messages and chat
+
+- [ ] Server nickname and role colour on author names. Ours prints the global
+      name in white ("Zephyr" where the live client prints the server nickname
+      "Marshmallow" in the role colour). `Message::member` is parsed but the
+      row uses `author.display_name()` (chat/view.rs). Use the member nick,
+      then the global name, and colour by the top coloured role. Same names in
+      reply lines, mentions, the typing line and the member list.
+- [ ] Reply line as the live client draws it: a 16 px avatar, the author in the
+      role colour, the server tag chip, then the text with mentions, custom
+      emoji and timestamps resolved. Ours prints raw markup
+      (`@Cotton <@1272377551070144138> welcom back`, `<:Enstein:155704...>`).
+      Also the "Blocked message" and "Original message was deleted" variants
+      and the connector line from the arrow to the avatar.
+- [ ] Server tag chip (guild badge and four letter tag) after names in
+      messages, reply lines, the member list, the DM list and the DM header.
+      The model already parses `primary_guild`; only the profile card shows it.
+- [ ] Composer placeholder "Message #channel-name" (and "Message @user" in a
+      DM). Ours says only "Message". Also the Apps button (sparkle grid) at the
+      right end of the composer icons, which opens the app launcher.
+- [ ] Message timestamps in the live format: time only ("5:33 PM") on today's
+      rows with the full date in the tooltip, then "Yesterday at" and the date
+      for older rows, following the 12 hour or 24 hour setting. Ours writes
+      "Today at 17:44" on every row. Confirm the live rule before copying it.
+- [ ] Blocked and ignored messages collapse into "N blocked messages - Show"
+      rows (the live client groups consecutive ones). Verify what ours does.
+- [ ] Search box in the channel header: placeholder "Search <server name>",
+      wider than ours, with the filter chips dropdown on focus. Ours is a small
+      "Search" field.
+- [ ] Header icon set: threads, mute toggle drawn with a slash when muted,
+      pinned messages with the new dot, members. Compare glyphs and tooltips
+      with the live header.
+
+### Server list and channel list
+
+- [ ] Server banner and boost goal in the channel list header: the banner image
+      fills the header, the name sits over it with a chevron, and the "Boost
+      Goal" bar (progress and "36 Boosts") sits below it. Ours is a plain text
+      header with no banner.
+- [ ] Events row under the header ("Events", calendar glyph), opening the
+      existing Events dialog. Ours has no row on a server that has events.
+- [ ] Server header dropdown menu, as the live client draws it (grouped, with
+      icons): Server Boost, Server Tag, Invite to Server, Server Settings,
+      Create Event, App Directory, Notification Settings, Privacy Settings,
+      Edit Per-server Profile, Hide Muted Channels (checkbox), Leave Server
+      (red), Copy Server ID. Ours opens the older right click list (Server
+      Guide, Change Nickname, Mark as read, Mute server...) from the header
+      too. Keep that list for the right click on a server icon and give the
+      header its own menu. Create Event needs the event creation dialog (build
+      and unit test only, no live write).
+- [ ] Invite glyph in the header and on the hovered channel row, as drawn live.
+
+### Home and direct messages
+
+- [ ] Nitro, Shop and Quests rows under Friends in the DM sidebar. Nitro and
+      Shop carry a NEW pill. Nitro opens the Nitro store page (read only
+      shell, no purchase). Shop and Quests are app-only on the web client
+      ("Opening Discord App" at /quest-home): draw the rows and open a stub
+      page saying so.
+- [ ] DM rows: status or activity line under the name (custom status, a bot's
+      "/help" text, "Dungeon crawling | Use /raid") and the server tag chip.
+      Ours shows the name only.
+- [ ] Friends page: the tab strip collapses to "Friends", Pending and Add
+      Friend when no one is online, plus the "Looking for accounts you've
+      blocked or ignored? Go to settings" banner, the search field and the
+      "Received - N" heading. Verify the full layout on an account that has
+      friends before copying it.
+- [ ] New group DM button at the right end of the friends header, and the
+      inbox and help icons in the title strip.
+
+### User settings (the sidebar was rebuilt in the live client)
+
+The live sidebar, top to bottom: Account (sub-entries Account Info, Password &
+Security, Account Status, Family Center), Data & Privacy, Messaging
+Permissions, Notifications; Billing group: Nitro, Server Boost, Subscriptions,
+Gift Inventory, Billing; Experience group: Voice & Video, Appearance,
+Accessibility, System, Language & Time; Games & Apps group: Activity Privacy,
+Connected Apps; then Developer and a red Log Out row, and a footer with the
+build line ("stable 670026"), Privacy Policy, Terms of Service and More. Ours
+is the older layout (My Account, Content & Social, Data & Privacy, Authorized
+Apps, Devices, Connections, then App settings: Appearance, Voice & Video, Chat,
+Notifications, Keybinds, Advanced).
+
+- [ ] Rebuild the settings sidebar to the live structure: group headings, the
+      Account sub-entries that scroll to a section, the Log Out row, the
+      version footer, and the search box matching every page below.
+- [ ] Account page as one scrolling page: Account Info (Username, Email and
+      Phone with Reveal and Edit), Password & Security (Password Edit,
+      Multi-Factor Authentication "Set up", Logged-in Devices "N devices"),
+      Account Status (Age Group with Confirm Age, Account Standing "All
+      good"), Family Center ("Set up Family Center"), and the Disable and
+      Close account rows. The existing dialogs stay, only their entry points
+      move. Devices becomes the Logged-in Devices detail page.
+- [ ] Data & Privacy page: How Discord Uses My Data (use data to make Discord
+      work), Request my data, Profile Privacy, and the related Activity Privacy
+      link.
+- [ ] Messaging Permissions page (replaces Content & Social): Content Filters
+      (sensitive content filters), Spam Filters, Direct Message permissions,
+      Friend Request permissions, Messaging in Connected Games, and the Ignore
+      & Block list.
+- [ ] Notifications page as drawn live: Overview, Sounds, Badges, Email (with
+      "Unsubscribe from all marketing emails"), and the Advanced group behind
+      "Show Advanced Notification Settings".
+- [ ] Voice & Video page additions: the Voice group with "Show Advanced Voice
+      Settings", Camera, Streaming, Sounds (with "Show 18 more sounds"),
+      Soundboard with its server and sound pickers, and the Advanced group with
+      "Show Diagnostic Settings" and "Reset all Voice & Video settings". Video,
+      soundboard playback and streaming stay inert (see Out of scope).
+- [ ] Appearance page as drawn live: Theme with Default Themes and Color
+      Themes (locked ones link to Nitro), App Icon, Messages (display mode and
+      spacing), Chat Box, Search, Streamer Mode. Ours has a time format and a
+      members list switch only.
+- [ ] Accessibility page: the live preview message, Text Readability, Visual
+      Density, Color & Contrast, Reduced Motion, Audio & Screen Reader.
+- [ ] System page (the old Keybinds page): Custom Keybinds and Default
+      Keybinds, with the record a key control.
+- [ ] Language & Time page: language and time zone choices. Capture the live
+      page first, its headings did not read back.
+- [ ] Activity Privacy page: What Activity I Share, Where I Share Activity,
+      Activity Joining.
+- [ ] Connected Apps page: Connections with Nitro Rewards, then the Authorized
+      Apps list (Verification and Security). Merges our Connections and
+      Authorized Apps pages.
+- [ ] Developer page (Developer Mode and the related switches). Merges our
+      Advanced page.
+- [ ] Billing group shells, read only, no purchase flow: Nitro (the Nitro Basic
+      and Nitro plan cards with the perks list), Server Boost (Server Boosts,
+      perks per level, Boosting FAQ), Subscriptions, Gift Inventory (Redeem
+      Codes, Gifts I Purchased), Billing (Payment Methods, Transaction
+      History).
+
 ## Out of scope
 
 Video, camera, screen share, Go Live, stage, activities, soundboard and voice
