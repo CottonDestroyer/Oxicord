@@ -8,7 +8,7 @@ use std::{
 use chrono::{Local, NaiveDate, Utc};
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ExternalPaths, FollowMode, FontWeight,
-    KeyDownEvent, MouseButton, MouseDownEvent,
+    KeyDownEvent, MouseButton, MouseDownEvent, Pixels, Point, point,
     PathPromptOptions,
     Focusable as _,
     InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
@@ -32,11 +32,12 @@ use super::{
 use crate::{
     backend::{Backend, Command},
     emoji_panel::{ClosePicker, EmojiPanel, Picked, PickedGif, PickedSticker},
+    popup::Entry,
     icons::icon,
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{AutocompleteDone, MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenRulesScreening, OpenUserMenu, PanelKind, Session},
+    session::{AutocompleteDone, MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenPopup, OpenRulesScreening, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -120,6 +121,8 @@ pub struct ChatView {
     /// Whether the typing line is on screen, which decides if the clock needs
     /// to keep redrawing it.
     typing_shown: bool,
+    /// The text box's placeholder as last applied, so it is only set on change.
+    hint: String,
     _ticker: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -246,6 +249,7 @@ impl ChatView {
             unread_after: None,
             last_typing_sent: None,
             typing_shown: false,
+            hint: String::new(),
             _ticker: ticker,
             _subscriptions: subscriptions,
         }
@@ -2086,6 +2090,7 @@ impl ChatView {
         let notice = self.session.read(cx).notice.clone();
         let can_send = self.can_send(cx);
         let typing = self.typing_line(cx);
+        self.apply_hint(window, cx);
         self.typing_shown = typing.is_some();
 
         let mut column = div().flex_none().flex().flex_col().px(px(8.)).pb(px(8.)).pt_1();
@@ -2171,8 +2176,9 @@ impl ChatView {
                         this.add_files(dropped.paths().to_vec(), cx);
                     }))
                     .children((self.editing.is_none()).then(|| {
-                        toolbar_button("attach", "circle-plus", theme::TEXT_MUTED)
-                            .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx)))
+                        toolbar_button("attach", "circle-plus", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, event: &ClickEvent, _, cx| this.open_plus_menu(event.position(), cx),
+                        ))
                     }))
                     .child(
                         div()
@@ -2208,17 +2214,65 @@ impl ChatView {
                         )),
                     )
                     .child(
-                        toolbar_button("poll", "poll", theme::TEXT_MUTED).on_click(cx.listener(
-                            |this, _, _, cx| {
-                                if let Some(channel) = this.channel {
-                                    let guild = this.guild(cx);
-                                    this.session.update(cx, |_, cx| cx.emit(OpenCreatePoll { channel, guild }));
-                                }
-                            },
+                        toolbar_button("apps", "layout-grid", theme::TEXT_MUTED).on_click(cx.listener(
+                            |this, _, window, cx| this.open_apps(window, cx),
                         )),
                     ),
             )
             .into_any_element()
+    }
+
+    /// Names the place in the text box the way the official client does:
+    /// "Message #channel", "Message @person".
+    fn apply_hint(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let hint = {
+            let store = &self.session.read(cx).store;
+            let Some(channel) = store.channel(channel) else { return };
+            let name = if channel.kind.is_dm() {
+                store.dm_name(channel)
+            } else {
+                channel.name.clone().unwrap_or_default()
+            };
+            composer_hint(channel.kind, &name)
+        };
+        if self.hint != hint {
+            self.hint = hint.clone();
+            self.input.update(cx, |input, cx| input.set_placeholder(hint, window, cx));
+        }
+    }
+
+    /// The menu behind the composer's plus button, opening above it.
+    fn open_plus_menu(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
+        const ENTRIES: [(&str, &str); 3] =
+            [("Upload a File", "file"), ("Create Poll", "chart-no-axes-gantt"), ("Use Apps", "layout-grid")];
+        let entries = ENTRIES.iter().map(|(label, glyph)| Entry::item(*label, glyph)).collect();
+        let chat = cx.entity().downgrade();
+        let pick = Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
+            chat.update(cx, |this, cx| match index {
+                0 => this.pick_files(cx),
+                1 => {
+                    if let Some(channel) = this.channel {
+                        let guild = this.guild(cx);
+                        this.session.update(cx, |_, cx| cx.emit(OpenCreatePoll { channel, guild }));
+                    }
+                }
+                _ => this.open_apps(window, cx),
+            })
+            .ok();
+        });
+        // The menu is three rows tall, which is 120px with its padding.
+        let at = point(at.x - px(16.), at.y - px(29. + 4. + 120.));
+        self.session.update(cx, |_, cx| cx.emit(OpenPopup { at, entries, pick }));
+    }
+
+    /// The Apps button and "Use Apps": starts a slash command, whose
+    /// suggestions list the apps in this server.
+    fn open_apps(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.input.read(cx).value().is_empty() {
+            self.input.update(cx, |input, cx| input.insert("/", window, cx));
+        }
+        self.input.update(cx, |input, cx| input.focus(window, cx));
     }
 
     /// "Ada is typing...", or nothing.
@@ -2719,9 +2773,20 @@ impl Render for Tip {
     }
 }
 
+/// The text box's placeholder: "Message #channel" in a server and "Message
+/// @person" in a conversation with one person. A group goes by its name.
+fn composer_hint(kind: ChannelType, name: &str) -> String {
+    match kind {
+        ChannelType::Dm => format!("Message @{name}"),
+        ChannelType::GroupDm => format!("Message {name}"),
+        _ => format!("Message #{name}"),
+    }
+}
+
 #[cfg(test)]
 mod reactor_tests {
-    use super::reactors_line;
+    use super::{composer_hint, reactors_line};
+    use oxicord_model::ChannelType;
 
     #[test]
     fn the_tooltip_lists_names_and_counts_the_rest() {
@@ -2731,5 +2796,12 @@ mod reactor_tests {
         assert_eq!(reactors_line(&n(&["Ann", "Bo", "Cy"]), 3, "wave"), "Ann, Bo and Cy reacted with :wave:");
         assert_eq!(reactors_line(&n(&["Ann", "Bo", "Cy"]), 9, "wave"), "Ann, Bo, Cy and 6 others reacted with :wave:");
         assert_eq!(reactors_line(&[], 4, "wave"), "4 reacted with :wave:");
+    }
+
+    #[test]
+    fn the_placeholder_names_where_the_message_goes() {
+        assert_eq!(composer_hint(ChannelType::GuildText, "yap-yap"), "Message #yap-yap");
+        assert_eq!(composer_hint(ChannelType::Dm, "Gabriel"), "Message @Gabriel");
+        assert_eq!(composer_hint(ChannelType::GroupDm, "Ann, Bo"), "Message Ann, Bo");
     }
 }

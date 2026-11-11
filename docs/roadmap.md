@@ -1040,9 +1040,20 @@ the build moves.
       are covered by the Friends page item; the muted variant on dimmed DM
       rows is the row's own fade only; the tag is not shown in the profile
       column header, it is the existing pill.
-- [ ] Composer placeholder "Message #channel-name" (and "Message @user" in a
+- [x] Composer placeholder "Message #channel-name" (and "Message @user" in a
       DM). Ours says only "Message". Also the Apps button (sparkle grid) at the
       right end of the composer icons, which opens the app launcher.
+      Done: the placeholder follows the open channel (checked against live in
+      #yap-yap and the Gabriel DM; a group DM uses its name, a thread uses
+      "#name", both unverified live since the account has neither open). The
+      Apps button replaces our poll button, with the live glyph. The plus
+      button now opens a menu like live (Upload a File, Create Poll, Use Apps)
+      instead of going straight to the file picker. Remaining differences: the
+      Apps button only starts a slash command in the box, it does not open the
+      launcher popout (search, Recents, "Apps in this Server", Promoted);
+      the plus menu lacks Create Thread and Schedule Message and uses our
+      shared popup, which puts glyphs on the right and is 220px wide where
+      live is content sized with glyphs on the left; the restyle is the last Phase 8 item.
 - [ ] Message timestamps in the live format: time only ("5:33 PM") on today's
       rows with the full date in the tooltip, then "Yesterday at" and the date
       for older rows, following the 12 hour or 24 hour setting. Ours writes
@@ -1153,6 +1164,13 @@ Notifications, Keybinds, Advanced).
       perks per level, Boosting FAQ), Subscriptions, Gift Inventory (Redeem
       Codes, Gifts I Purchased), Billing (Payment Methods, Transaction
       History).
+- [ ] Menu style shared by all popup and context menus: live draws the glyph at
+      the left of each label, sizes the card to its content (201px for the
+      plus menu), rounds it at 8px and gives rows 36px height with a 2px
+      radius. Ours is 220px wide, rows 32px with a 4px radius and glyphs on
+      the right. Measure the
+      live message, user, server and plus menus first, then restyle
+      `popup.rs` and `context_menu.rs` once.
 
 ## Out of scope
 
