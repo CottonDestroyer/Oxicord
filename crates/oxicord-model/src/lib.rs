@@ -82,7 +82,7 @@ pub use prune::{PRUNE_DAYS, PruneResult, PruneState, members_label, prune_body};
 pub use template::{GuildTemplate, MAX_TEMPLATE_DESCRIPTION, MAX_TEMPLATE_NAME, template_body};
 pub use user::{
     AccountMetadata, Badge, Game, GameEntry, GameEntrySubmission, LinkedAccount, MutualGuild, Profile,
-    ServerTag, User, WidgetDataSubmission, WidgetSubmission, WidgetsSubmission,
+    PrimaryGuild, ServerTag, User, WidgetDataSubmission, WidgetSubmission, WidgetsSubmission,
 };
 pub use verification::{FormField, GuildProfile, VerificationForm, VerificationInfo, VerificationResponse};
 pub use welcome::{WelcomeChannel, WelcomeScreen};

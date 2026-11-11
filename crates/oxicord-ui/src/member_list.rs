@@ -1,11 +1,11 @@
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, Entity, FontWeight, ImageSource, InteractiveElement as _, IntoElement,
     ListAlignment, ListOffset, ListState, MouseButton, MouseDownEvent, ParentElement as _, Render,
-    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window, div, img, list, px, rgb,
+    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window, div, img, list, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_media::cdn;
-use oxicord_model::{Snowflake, Status};
+use oxicord_model::{ServerTag, Snowflake, Status};
 use oxicord_store::{Changes, Entry};
 
 use crate::{
@@ -157,7 +157,7 @@ impl MemberList {
         roles: &[Snowflake],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (name, avatar_url, status, color, bot, line, in_voice, decoration, nameplate) = {
+        let (name, avatar_url, status, color, bot, line, in_voice, decoration, nameplate, tag) = {
             let store = &self.session.read(cx).store;
             let Some(account) = store.user(user) else {
                 return div().h(px(MEMBER_HEIGHT)).into_any_element();
@@ -173,6 +173,7 @@ impl MemberList {
                 store.voice_of(user).is_some_and(|v| v.channel_id.is_some()),
                 account.decoration(),
                 account.nameplate(),
+                account.server_tag(),
             )
         };
 
@@ -264,6 +265,7 @@ impl MemberList {
                                     .items_center()
                                     .gap(px(4.))
                                     .child(div().min_w_0().truncate().text_color(rgb(name_color)).child(name))
+                                    .children(tag.map(|t| server_tag_chip(&t, 14., &self.media, cx)))
                                     .children(bot.then(app_badge))
                                     .children(in_voice.then(|| icon("volume-2", 12., theme::TEXT_MUTED))),
                             )
@@ -316,6 +318,30 @@ pub fn app_badge() -> Div {
         .font_weight(FontWeight::BOLD)
         .text_color(rgb(0xffffff))
         .child("APP")
+}
+
+/// The server tag after a name: the server's badge and four letters on a
+/// grey chip. `badge` is the picture size, 14 in lists and 12 in reply lines.
+pub fn server_tag_chip(tag: &ServerTag, badge: f32, media: &Entity<Media>, cx: &mut App) -> Div {
+    let picture = tag
+        .badge
+        .as_deref()
+        .and_then(|hash| media.update(cx, |m, _| m.get(&cdn::clan_badge(tag.guild_id, hash, 32))));
+    div()
+        .flex_none()
+        .h(px(16.))
+        .px(px(4.))
+        .flex()
+        .items_center()
+        .gap(px(2.))
+        .rounded(px(4.))
+        .bg(rgba(0x97979f3d))
+        .text_size(px(12.))
+        .line_height(px(16.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(0xd4d5d8))
+        .children(picture.map(|image| img(ImageSource::Image(image)).size(px(badge)).flex_none()))
+        .child(tag.tag.clone())
 }
 
 /// The small status mark on the corner of an avatar.

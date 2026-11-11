@@ -1023,9 +1023,23 @@ the build moves.
       a few pixels off the live spacing; "Message could not be loaded" (original
       not fetched) is shown as deleted; the deleted variant was not on screen in
       the live channel so it is unverified against it.
-- [ ] Server tag chip (guild badge and four letter tag) after names in
-      messages, reply lines, the member list, the DM list and the DM header.
-      The model already parses `primary_guild`; only the profile card shows it.
+- [x] Server tag chip after names in messages, reply lines, the member list and
+      the DM list. `User` now reads `primary_guild` (so message authors, DM
+      recipients and member list users carry it; a tag switched off by
+      `identity_enabled: false`, or odd JSON, shows nothing), and one helper,
+      `member_list::server_tag_chip`, draws the chip: 16 px high, 4 px side
+      padding, 4 px radius, `rgba(151,151,159,0.24)` fill, 12 px semibold
+      `#d4d5d8` letters, the clan badge at 14 px (12 px in a reply line, where
+      the chip is at 0.64 opacity like the name) with 2 px before the letters.
+      Measured against the live DOM at 1920 x 1080 (message header, reply
+      line, member list, DM list) and compared by screenshot on Low iq
+      gaymers #yap-yap and Home. The live DM header has no chip, so ours has
+      none either. Unit test for the model side.
+      Remaining differences: the chip is not clickable (live opens the tag
+      popout); the Friends page rows and the Active Now list also carry it and
+      are covered by the Friends page item; the muted variant on dimmed DM
+      rows is the row's own fade only; the tag is not shown in the profile
+      column header, it is the existing pill.
 - [ ] Composer placeholder "Message #channel-name" (and "Message @user" in a
       DM). Ours says only "Message". Also the Apps button (sparkle grid) at the
       right end of the composer icons, which opens the app launcher.

@@ -1461,6 +1461,7 @@ impl ChatView {
                             .text_color(rgb(name_color.unwrap_or(theme::TEXT_BRIGHT)))
                             .child(author),
                     )
+                    .children(message.author.server_tag().map(|t| crate::member_list::server_tag_chip(&t, 14., &self.media, cx)))
                     .children(message.author.bot.then(crate::member_list::app_badge))
                     .child(
                         div()
@@ -2593,6 +2594,9 @@ fn reply_line(
                     .opacity(0.64)
                     .child(format!("@{name}")),
             )
+            .children(original.author.server_tag().map(|t| {
+                crate::member_list::server_tag_chip(&t, 12., media, cx).mr(px(4.)).opacity(0.64)
+            }))
             .children(original.author.bot.then(crate::member_list::app_badge).map(|b| b.mr(px(4.))));
     }
     let placeholder = |text: &str| div().italic().truncate().child(text.to_owned()).into_any_element();

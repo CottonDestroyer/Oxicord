@@ -21,6 +21,8 @@ pub struct User {
     pub avatar_decoration_data: Option<ShopItem>,
     #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
     pub collectibles: Option<Collectibles>,
+    #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
+    pub primary_guild: Option<PrimaryGuild>,
 }
 
 /// A shop item such as a decoration or a nameplate, named by its listing.
@@ -45,6 +47,11 @@ impl User {
     /// The listing of the banner behind their name in lists, if they have one on.
     pub fn nameplate(&self) -> Option<Snowflake> {
         self.collectibles.as_ref()?.nameplate.as_ref().map(|n| n.sku_id)
+    }
+
+    /// The tag they wear after their name, unless they switched it off.
+    pub fn server_tag(&self) -> Option<ServerTag> {
+        self.primary_guild.as_ref()?.to_tag()
     }
 
     pub fn display_name(&self) -> &str {
@@ -249,7 +256,7 @@ struct RawProfile {
     #[serde(default)]
     guild_member_profile: Option<ProfileFields>,
     #[serde(default)]
-    primary_guild: Option<PrimaryGuildFields>,
+    primary_guild: Option<PrimaryGuild>,
     #[serde(default, deserialize_with = "crate::serde_util::lenient_vec")]
     widgets: Vec<WidgetFields>,
 }
@@ -270,8 +277,9 @@ struct GuildMemberFields {
     bio: Option<String>,
 }
 
-#[derive(Default, Deserialize)]
-struct PrimaryGuildFields {
+/// The server a person wears the tag of, as users carry it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct PrimaryGuild {
     #[serde(default)]
     tag: Option<String>,
     #[serde(default)]
@@ -280,6 +288,19 @@ struct PrimaryGuildFields {
     identity_guild_id: Option<Snowflake>,
     #[serde(default)]
     badge: Option<String>,
+}
+
+impl PrimaryGuild {
+    fn to_tag(&self) -> Option<ServerTag> {
+        if self.identity_enabled == Some(false) {
+            return None;
+        }
+        Some(ServerTag {
+            tag: self.tag.clone().filter(|t| !t.is_empty())?,
+            guild_id: self.identity_guild_id?,
+            badge: self.badge.clone().filter(|b| !b.is_empty()),
+        })
+    }
 }
 
 #[derive(Default, Deserialize)]
@@ -318,7 +339,7 @@ struct ProfileFields {
     accent_color: Option<u32>,
     /// Newer responses carry the server tag on the user.
     #[serde(default)]
-    primary_guild: Option<PrimaryGuildFields>,
+    primary_guild: Option<PrimaryGuild>,
     /// The effect over the card, named by the shop listing it came from.
     #[serde(default, deserialize_with = "crate::serde_util::lenient_default")]
     profile_effect: Option<EquippedEffect>,
@@ -420,16 +441,7 @@ impl From<RawProfile> for Profile {
             joined_server: raw.guild_member.as_ref().and_then(|m| m.joined_at.clone()),
             member_nick: raw.guild_member.as_ref().and_then(|m| m.nick.clone()).filter(|n| !n.is_empty()),
             member_roles: raw.guild_member.map(|m| m.roles).unwrap_or_default(),
-            server_tag: primary_guild.and_then(|g| {
-                if g.identity_enabled == Some(false) {
-                    return None;
-                }
-                Some(ServerTag {
-                    tag: g.tag.filter(|t| !t.is_empty())?,
-                    guild_id: g.identity_guild_id?,
-                    badge: g.badge.filter(|b| !b.is_empty()),
-                })
-            }),
+            server_tag: primary_guild.and_then(|g| g.to_tag()),
             favorite_games,
             played_games,
             want_to_play_games,
@@ -576,6 +588,24 @@ mod tests {
 
         let plain: Profile = serde_json::from_str(r#"{"user_profile":{"bio":"everywhere"}}"#).unwrap();
         assert_eq!((plain.bio.as_str(), plain.server_banner, plain.server_avatar), ("everywhere", None, None));
+    }
+
+    #[test]
+    fn a_message_author_carries_the_tag_they_wear() {
+        let on: User = serde_json::from_str(
+            r#"{"id":"1","primary_guild":{"identity_guild_id":"9","identity_enabled":true,"tag":"LWIQ","badge":"b1"}}"#,
+        )
+        .unwrap();
+        assert_eq!(on.server_tag().map(|t| (t.tag, t.guild_id, t.badge)), Some(("LWIQ".into(), Snowflake(9), Some("b1".into()))));
+        let off: User = serde_json::from_str(
+            r#"{"id":"1","primary_guild":{"identity_guild_id":"9","identity_enabled":false,"tag":"LWIQ"}}"#,
+        )
+        .unwrap();
+        assert_eq!(off.server_tag(), None);
+        let none: User = serde_json::from_str(r#"{"id":"1","primary_guild":null}"#).unwrap();
+        assert_eq!(none.server_tag(), None);
+        let odd: User = serde_json::from_str(r#"{"id":"1","primary_guild":"x"}"#).unwrap();
+        assert_eq!(odd.server_tag(), None);
     }
 
     #[test]

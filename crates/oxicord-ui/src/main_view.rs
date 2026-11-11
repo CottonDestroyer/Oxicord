@@ -117,6 +117,8 @@ struct DmItem {
     /// Only for one-to-one conversations.
     status: Option<Status>,
     unread: Unread,
+    /// The tag the other person wears, for one-to-one conversations.
+    tag: Option<oxicord_model::ServerTag>,
 }
 
 /// The signed in frame: guild rail, channel list, and the content area.
@@ -2581,6 +2583,10 @@ impl MainView {
                     avatar,
                     status,
                     unread: store.unread(c.id),
+                    tag: match (c.kind, c.recipients.first()) {
+                        (ChannelType::Dm, Some(user)) => store.user(user.id).unwrap_or(user).server_tag(),
+                        _ => None,
+                    },
                 }
             })
             .collect()
@@ -3389,7 +3395,14 @@ impl MainView {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child(div().truncate().child(dm.name))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
+                            .child(div().truncate().child(dm.name))
+                            .children(dm.tag.map(|t| crate::member_list::server_tag_chip(&t, 14., &self.media, cx))),
+                    )
                     .children(dm.members.map(|n| {
                         div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{n} Members"))
                     })),
