@@ -12,7 +12,7 @@ use gpui_kit::{
 use oxicord_media::cdn;
 use oxicord_model::{
     ChannelType, Permissions, Snowflake,
-    admin::{AutoModRule, WebhookEntry, action_name, keyword_rule_body, parse_keywords},
+    admin::{AutoModRule, IntegrationEntry, WebhookEntry, action_name, keyword_rule_body, parse_keywords},
 };
 use serde_json::json;
 
@@ -192,6 +192,26 @@ enum Armed {
     Emoji(Snowflake),
     Webhook(Snowflake),
     Rule(Snowflake),
+    Integration(Snowflake),
+}
+
+/// The line under an integration's name: its kind, the linked account, the
+/// subscribers and who added it, as far as the server said.
+fn integration_detail(entry: &IntegrationEntry) -> String {
+    let mut parts = vec![entry.kind_name().to_owned()];
+    if let Some(account) = &entry.account {
+        parts.push(account.clone());
+    }
+    if entry.subscribers > 0 {
+        parts.push(counted(entry.subscribers as usize, "subscriber", "subscribers"));
+    }
+    if !entry.enabled {
+        parts.push("Disabled".to_owned());
+    }
+    if let Some(creator) = &entry.creator {
+        parts.push(format!("Added by {creator}"));
+    }
+    parts.join(" \u{b7} ")
 }
 
 /// The webhooks grouped by the channel they post to, in the order each
@@ -379,6 +399,9 @@ impl ServerSettings {
         if let Some(request) = request {
             let backend = self.backend.clone();
             self.session.update(cx, |s, cx| s.request_admin(&backend, request, cx));
+        }
+        if page == Page::Integrations {
+            self.send(AdminRequest::LoadIntegrations(guild), cx);
         }
         cx.notify();
     }
@@ -773,7 +796,57 @@ impl ServerSettings {
                     .child(icon("chevron-right", 16., theme::TEXT_MUTED)),
             )
             .child(card("arrow-left-right", "Channels Followed", followed))
+            .children(self.integration_cards(cx))
             .into_any_element()
+    }
+
+    /// The Twitch, YouTube and app integrations below the two cards. Nothing
+    /// shows while the list loads, fails or is empty.
+    fn integration_cards(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let Some(guild) = self.guild else { return Vec::new() };
+        let Load::Ready(list) = self.session.read(cx).admin.integrations.clone() else { return Vec::new() };
+        list.into_iter()
+            .map(|entry| {
+                let id = entry.id;
+                let armed = self.armed == Some(Armed::Integration(id));
+                let detail = integration_detail(&entry);
+                div()
+                    .h(px(88.))
+                    .px_4()
+                    .flex()
+                    .items_center()
+                    .gap_4()
+                    .rounded(px(theme::RADIUS))
+                    .bg(rgb(theme::BG_PANEL))
+                    .child(icon("bot", 24., theme::TEXT_MUTED))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(entry.name.clone()))
+                            .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT)).child(detail)),
+                    )
+                    .child(button(
+                        ("remove-integration", id.0),
+                        if armed { "Click again to remove" } else { "Remove" },
+                        Tone::Danger,
+                        {
+                            let view = cx.weak_entity();
+                            move |_, _, cx| {
+                                view.update(cx, |this, cx| {
+                                    if this.confirm(Armed::Integration(id), cx) {
+                                        this.send(AdminRequest::DeleteIntegration { guild, integration: id }, cx);
+                                    }
+                                })
+                                .ok();
+                            }
+                        },
+                    ))
+                    .into_any_element()
+            })
+            .collect()
     }
 
     /// Opens one webhook's editor with what the server has for it.
@@ -2285,6 +2358,25 @@ mod tests {
         assert!(!webhook_changed(&h, "Wick", Some(Snowflake(20))));
         assert!(webhook_changed(&h, "Wick 2", None));
         assert!(webhook_changed(&h, "Wick", Some(Snowflake(21))));
+    }
+
+    #[test]
+    fn an_integration_line_names_its_kind_account_and_adder() {
+        let mut entry = IntegrationEntry {
+            id: Snowflake(1),
+            name: "My Channel".into(),
+            kind: "twitch".into(),
+            enabled: true,
+            creator: Some("Ada".into()),
+            account: Some("adaplays".into()),
+            subscribers: 1,
+        };
+        assert_eq!(integration_detail(&entry), "Twitch \u{b7} adaplays \u{b7} 1 subscriber \u{b7} Added by Ada");
+        entry.kind = "discord".into();
+        entry.account = None;
+        entry.subscribers = 0;
+        entry.enabled = false;
+        assert_eq!(integration_detail(&entry), "App \u{b7} Disabled \u{b7} Added by Ada");
     }
 
     #[test]

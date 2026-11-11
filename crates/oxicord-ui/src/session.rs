@@ -931,6 +931,10 @@ impl Session {
                 self.admin.switch_to(*g);
                 self.admin.webhooks = Load::Loading;
             }
+            R::LoadIntegrations(g) => {
+                self.admin.switch_to(*g);
+                self.admin.integrations = Load::Loading;
+            }
             R::LoadAutomod(g) => {
                 self.admin.switch_to(*g);
                 self.admin.automod = Load::Loading;

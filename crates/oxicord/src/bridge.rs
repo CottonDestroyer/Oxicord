@@ -1060,6 +1060,13 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
             check(api.delete_automod_rule(guild, rule).await, "delete that AutoMod rule").await;
             say(AdminEvent::Automod(guild, api.automod_rules(guild).await.map_err(text))).await;
         }
+        AdminRequest::LoadIntegrations(guild) => {
+            say(AdminEvent::Integrations(guild, api.guild_integrations(guild).await.map_err(text))).await;
+        }
+        AdminRequest::DeleteIntegration { guild, integration } => {
+            check(api.delete_integration(guild, integration).await, "remove that integration").await;
+            say(AdminEvent::Integrations(guild, api.guild_integrations(guild).await.map_err(text))).await;
+        }
         AdminRequest::LoadWebhooks(guild) => {
             say(AdminEvent::Webhooks(guild, api.guild_webhooks(guild).await.map_err(text))).await;
         }

@@ -2,7 +2,7 @@
 
 use oxicord_model::{
     Permissions, Snowflake,
-    admin::{AuditLog, AutoModRule, BanEntry, InviteEntry, WebhookEntry},
+    admin::{AuditLog, AutoModRule, BanEntry, IntegrationEntry, InviteEntry, WebhookEntry},
 };
 use reqwest::Method;
 use serde_json::{Value, json};
@@ -281,6 +281,24 @@ impl ApiClient {
             .json(Method::GET, &format!("/guilds/{guild}/webhooks"), "GET /guilds/:id/webhooks", None)
             .await?;
         Ok(WebhookEntry::parse_list(&body))
+    }
+
+    /// The integrations of the server: Twitch, YouTube and added apps.
+    pub async fn guild_integrations(&self, guild: Snowflake) -> Result<Vec<IntegrationEntry>, ApiError> {
+        let body: Value = self
+            .json(Method::GET, &format!("/guilds/{guild}/integrations"), "GET /guilds/:id/integrations", None)
+            .await?;
+        Ok(IntegrationEntry::parse_list(&body))
+    }
+
+    pub async fn delete_integration(&self, guild: Snowflake, integration: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/guilds/{guild}/integrations/{integration}"),
+            "DELETE /guilds/:id/integrations/:id",
+            None,
+        )
+        .await
     }
 
     /// Makes a webhook in a channel. The web client sends only the name.

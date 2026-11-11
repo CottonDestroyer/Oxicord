@@ -95,6 +95,51 @@ impl WebhookEntry {
     }
 }
 
+/// An integration as `GET /guilds/:id/integrations` lists it: a Twitch or
+/// YouTube link, or an app (type `discord`) that was added to the server.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntegrationEntry {
+    pub id: Snowflake,
+    pub name: String,
+    /// `twitch`, `youtube`, `discord` for an app, or `guild_subscription`.
+    pub kind: String,
+    pub enabled: bool,
+    /// Who added it.
+    pub creator: Option<String>,
+    /// The linked channel's name for Twitch and YouTube.
+    pub account: Option<String>,
+    pub subscribers: u64,
+}
+
+impl IntegrationEntry {
+    pub fn parse_list(body: &Value) -> Vec<Self> {
+        body.as_array().map(|list| list.iter().filter_map(Self::parse).collect()).unwrap_or_default()
+    }
+
+    pub fn parse(value: &Value) -> Option<Self> {
+        Some(Self {
+            id: id(value, "id")?,
+            name: text(value, "name").unwrap_or_default(),
+            kind: text(value, "type").unwrap_or_default(),
+            enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+            creator: value.get("user").and_then(|u| text(u, "global_name").filter(|n| !n.is_empty()).or_else(|| text(u, "username"))),
+            account: value.get("account").and_then(|a| text(a, "name")),
+            subscribers: count(value, "subscriber_count"),
+        })
+    }
+
+    /// What the card calls the kind.
+    pub fn kind_name(&self) -> &'static str {
+        match self.kind.as_str() {
+            "twitch" => "Twitch",
+            "youtube" => "YouTube",
+            "discord" => "App",
+            "guild_subscription" => "Subscriptions",
+            _ => "Integration",
+        }
+    }
+}
+
 /// One AutoMod rule as the server lists it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AutoModRule {
@@ -359,6 +404,22 @@ mod tests {
         assert_eq!(list[0].url().as_deref(), Some("https://discord.com/api/webhooks/5/tok"));
         assert_eq!(list[1].url(), None);
         assert_eq!(list[1].kind, 2);
+    }
+
+    #[test]
+    fn integrations_read_their_kind_creator_and_linked_account() {
+        let list = IntegrationEntry::parse_list(&json!([
+            { "id": "7", "name": "My Channel", "type": "twitch", "enabled": false,
+              "user": { "id": "1", "username": "ada", "global_name": "Ada" },
+              "account": { "id": "x", "name": "adaplays" }, "subscriber_count": 12 },
+            { "id": "8", "name": "Helper", "type": "discord" },
+            { "name": "no id" }
+        ]));
+        assert_eq!(list.len(), 2);
+        assert_eq!((list[0].kind_name(), list[0].enabled, list[0].subscribers), ("Twitch", false, 12));
+        assert_eq!(list[0].creator.as_deref(), Some("Ada"));
+        assert_eq!(list[0].account.as_deref(), Some("adaplays"));
+        assert_eq!((list[1].kind_name(), list[1].enabled), ("App", true));
     }
 
     #[test]

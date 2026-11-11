@@ -3,7 +3,7 @@
 
 use oxicord_model::{
     Snowflake,
-    admin::{AuditLog, AutoModRule, BanEntry, InviteEntry, WebhookEntry},
+    admin::{AuditLog, AutoModRule, BanEntry, IntegrationEntry, InviteEntry, WebhookEntry},
 };
 use serde_json::Value;
 
@@ -53,6 +53,8 @@ pub enum AdminRequest {
     /// Some fields of a rule: its name, `enabled`, its words.
     EditAutomod { guild: Snowflake, rule: Snowflake, fields: Value },
     DeleteAutomod { guild: Snowflake, rule: Snowflake },
+    LoadIntegrations(Snowflake),
+    DeleteIntegration { guild: Snowflake, integration: Snowflake },
     LoadWebhooks(Snowflake),
     CreateWebhook { guild: Snowflake, channel: Snowflake, name: String },
     EditWebhook { guild: Snowflake, webhook: Snowflake, name: String, channel: Snowflake },
@@ -65,6 +67,7 @@ pub enum AdminEvent {
     Invites(Snowflake, Result<Vec<InviteEntry>, String>),
     Bans(Snowflake, Result<Vec<BanEntry>, String>),
     Webhooks(Snowflake, Result<Vec<WebhookEntry>, String>),
+    Integrations(Snowflake, Result<Vec<IntegrationEntry>, String>),
     Automod(Snowflake, Result<Vec<AutoModRule>, String>),
     Audit(Snowflake, Result<AuditLog, String>),
     MemberVerification(Snowflake, Box<Result<oxicord_model::VerificationInfo, String>>),
@@ -79,6 +82,7 @@ pub struct AdminState {
     pub invites: Load<Vec<InviteEntry>>,
     pub bans: Load<Vec<BanEntry>>,
     pub webhooks: Load<Vec<WebhookEntry>>,
+    pub integrations: Load<Vec<IntegrationEntry>>,
     pub automod: Load<Vec<AutoModRule>>,
     pub audit: Load<AuditLog>,
 }
@@ -96,6 +100,7 @@ impl AdminState {
             AdminEvent::Invites(g, r) if self.guild == Some(g) => self.invites = Load::from_result(r),
             AdminEvent::Bans(g, r) if self.guild == Some(g) => self.bans = Load::from_result(r),
             AdminEvent::Webhooks(g, r) if self.guild == Some(g) => self.webhooks = Load::from_result(r),
+            AdminEvent::Integrations(g, r) if self.guild == Some(g) => self.integrations = Load::from_result(r),
             AdminEvent::Automod(g, r) if self.guild == Some(g) => self.automod = Load::from_result(r),
             AdminEvent::Audit(g, r) if self.guild == Some(g) => self.audit = Load::from_result(r),
             AdminEvent::MemberVerification(..) | AdminEvent::Verified(..) => {}

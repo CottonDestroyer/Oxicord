@@ -819,7 +819,20 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       commonly flagged and member profile rules cannot be created, the actions
       (alert channel, timeout length) and exemptions cannot be edited, the
       block message custom text is absent, and `rules/validate` is not called.
-- [ ] Integrations list
+- [x] Integrations list. The Integrations page loads `GET
+      /guilds/{id}/integrations` (route from the web client's module 652215)
+      beside the webhooks and lists each Twitch, YouTube or app integration as
+      a card below Webhooks and Channels Followed: name, then its kind, linked
+      account, subscriber count, a Disabled mark and who added it. Remove is
+      two clicks and sends `DELETE /guilds/{id}/integrations/{id}`, then
+      re-fetches the list. Nothing shows while the list loads, fails or is
+      empty, which is what the live client shows for the test account (its
+      Integrations page has only the two cards, so the list could not be
+      measured). Unit tested: the model read, the kind names and the detail
+      line. Never sent from the real account and NOT seen on screen. Missing:
+      the card layout is a best guess, Twitch and YouTube sync, enable and
+      subscriber role settings are not built, there is no per integration
+      page, and the Channels Followed card still has no Learn More button.
 - [ ] Welcome screen setup
 - [ ] Onboarding setup
 - [ ] Server templates
