@@ -398,7 +398,7 @@ impl MainView {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| EditChannelDialog::new(session, backend, window, cx))
         };
-        let channel_settings = cx.new(|_| ChannelSettings::new(session.clone()));
+        let channel_settings = cx.new(|_| ChannelSettings::new(session.clone(), backend.clone()));
         let create_channel = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| CreateChannelDialog::new(session, backend, window, cx))
@@ -460,7 +460,7 @@ impl MainView {
             }),
             cx.subscribe(&session, |this, _, open: &OpenChannelPermissions, cx| {
                 this.channel_settings_open = true;
-                this.channel_settings.update(cx, |screen, cx| screen.opened(open.0, cx));
+                this.channel_settings.update(cx, |screen, cx| screen.opened(open.0, open.1, cx));
                 cx.notify();
             }),
             cx.subscribe(&create_channel, |this, _, _: &CloseCreateChannel, cx| {
@@ -1391,8 +1391,8 @@ impl MainView {
                 self.danger_dialog.update(cx, |dialog, cx| dialog.opened(kind, window, cx));
                 cx.notify();
             }
-            DevCommand::ChannelPermissions(channel) => {
-                self.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel)));
+            DevCommand::ChannelPermissions(channel, dry) => {
+                self.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel, dry)));
             }
             DevCommand::TotpCodes => {
                 self.totp_open = true;

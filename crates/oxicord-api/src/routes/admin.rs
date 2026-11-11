@@ -1,7 +1,7 @@
 //! Server management: the calls behind the server settings pages.
 
 use oxicord_model::{
-    Snowflake,
+    Permissions, Snowflake,
     admin::{AuditLog, BanEntry, InviteEntry},
 };
 use reqwest::Method;
@@ -192,8 +192,80 @@ impl ApiClient {
         .await
     }
 
+    /// Sets what a role or member may do in one channel. `kind` is 0 for a role
+    /// and 1 for a member; the two permission sets are sent as strings, which is
+    /// what the web client sends (module `updatePermissionOverwrite`). Gated by
+    /// the admin-write rule: built and unit tested, never sent against a real
+    /// server.
+    pub async fn set_overwrite(
+        &self,
+        channel: Snowflake,
+        target: Snowflake,
+        kind: u8,
+        allow: Permissions,
+        deny: Permissions,
+    ) -> Result<(), ApiError> {
+        self.empty(
+            Method::PUT,
+            &format!("/channels/{channel}/permissions/{target}"),
+            "PUT /channels/:id/permissions/:id",
+            Some(&overwrite_body(target, kind, allow, deny)),
+        )
+        .await
+    }
+
+    /// Removes a role's or member's overwrite from a channel, so it inherits.
+    pub async fn clear_overwrite(&self, channel: Snowflake, target: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/channels/{channel}/permissions/{target}"),
+            "DELETE /channels/:id/permissions/:id",
+            None,
+        )
+        .await
+    }
+
     /// Changes a channel: `name`, `topic`, `nsfw`, `rate_limit_per_user`.
     pub async fn edit_channel(&self, channel: Snowflake, fields: &Value) -> Result<(), ApiError> {
         self.empty(Method::PATCH, &format!("/channels/{channel}"), "PATCH /channels/:id", Some(fields)).await
+    }
+}
+
+/// The body of one overwrite: its target, whether that is a role (0) or a
+/// member (1), and what it allows and denies, the sets as strings.
+fn overwrite_body(target: Snowflake, kind: u8, allow: Permissions, deny: Permissions) -> Value {
+    json!({
+        "id": target.to_string(),
+        "type": kind,
+        "allow": allow.bits().to_string(),
+        "deny": deny.bits().to_string(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_overwrite_names_its_target_kind_and_both_sets_as_strings() {
+        let body = overwrite_body(
+            Snowflake(77),
+            0,
+            Permissions::SEND_MESSAGES,
+            Permissions::VIEW_CHANNEL | Permissions::PIN_MESSAGES,
+        );
+        assert_eq!(
+            body,
+            json!({
+                "id": "77",
+                "type": 0,
+                "allow": "2048",
+                "deny": (1u64 << 51 | 1 << 10).to_string(),
+            })
+        );
+        // A member is type 1 and an empty set is still sent.
+        let member = overwrite_body(Snowflake(5), 1, Permissions::empty(), Permissions::empty());
+        assert_eq!(member["type"], 1);
+        assert_eq!(member["allow"], "0");
     }
 }

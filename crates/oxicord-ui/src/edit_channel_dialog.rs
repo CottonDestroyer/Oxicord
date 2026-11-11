@@ -381,7 +381,7 @@ impl Render for EditChannelDialog {
                         button("edit-channel-permissions", "Permissions", false).on_click(cx.listener(
                             |this, _: &ClickEvent, _, cx| {
                                 if let Some(channel) = this.channel {
-                                    this.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel)));
+                                    this.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel, false)));
                                 }
                                 cx.emit(CloseEditChannel);
                             },

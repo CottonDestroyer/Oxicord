@@ -36,6 +36,17 @@ pub enum AdminRequest {
     CreateChannel { guild: Snowflake, name: String, kind: u8, parent: Option<Snowflake> },
     EditChannel { channel: Snowflake, fields: Value },
     DeleteChannel(Snowflake),
+    /// What a role (`kind` 0) or member (1) may do in a channel. The gateway
+    /// reports the change back as a channel update.
+    SetOverwrite {
+        channel: Snowflake,
+        target: Snowflake,
+        kind: u8,
+        allow: oxicord_model::Permissions,
+        deny: oxicord_model::Permissions,
+    },
+    /// Back to inheriting for a role or member in a channel.
+    ClearOverwrite { channel: Snowflake, target: Snowflake },
 }
 
 /// The answers, each tagged with the server it was for.

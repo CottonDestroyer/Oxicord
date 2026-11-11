@@ -12,9 +12,11 @@ use gpui_kit::{
     Window, div, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
-use oxicord_model::{ChannelType, Overwrite, Snowflake};
+use oxicord_model::{ChannelType, Overwrite, OverwriteKind, Permissions, Snowflake};
 
 use crate::{
+    AdminRequest,
+    backend::Backend,
     channel_permissions::{self as perms, Tri},
     icons::icon,
     scroll,
@@ -37,13 +39,21 @@ pub enum ChannelSettingsEvent {
 impl EventEmitter<ChannelSettingsEvent> for ChannelSettings {}
 
 /// Asked of the session to open this screen on a channel.
-pub struct OpenChannelPermissions(pub Snowflake);
+/// The flag asks for a dry run, where edits stay on screen and nothing is sent.
+pub struct OpenChannelPermissions(pub Snowflake, pub bool);
 
 impl EventEmitter<OpenChannelPermissions> for Session {}
 
 pub struct ChannelSettings {
     session: Entity<Session>,
+    backend: Backend,
     channel: Option<Snowflake>,
+    /// Edits shown before the gateway reports them back, so a click answers
+    /// at once. Dropped when the store catches up and when the screen reopens.
+    pending: Option<Vec<Overwrite>>,
+    /// Keeps every edit local. Used to check the screen against a real
+    /// server without changing it.
+    dry: bool,
     /// The overwrite shown on the right: a role or member id, `@everyone`
     /// being the server's own id.
     selected: Option<Snowflake>,
@@ -60,12 +70,23 @@ struct Entry {
 }
 
 impl ChannelSettings {
-    pub fn new(session: Entity<Session>) -> Self {
-        Self { session, channel: None, selected: None, advanced: false, scroll: ScrollHandle::new() }
+    pub fn new(session: Entity<Session>, backend: Backend) -> Self {
+        Self {
+            session,
+            backend,
+            channel: None,
+            pending: None,
+            dry: false,
+            selected: None,
+            advanced: false,
+            scroll: ScrollHandle::new(),
+        }
     }
 
-    pub fn opened(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
+    pub fn opened(&mut self, channel: Snowflake, dry: bool, cx: &mut Context<Self>) {
         self.channel = Some(channel);
+        self.pending = None;
+        self.dry = dry;
         // `@everyone` is always there to pick, and it is the id of the server.
         self.selected = self.guild_of(channel, cx);
         self.advanced = false;
@@ -133,10 +154,22 @@ impl ChannelSettings {
             .child(label)
     }
 
-    /// The segmented control: deny, inherit, allow. Display only for now.
-    fn tri(state: Tri, disabled: bool) -> Div {
-        let segment = |glyph: AnyElement, picked: bool, fill: u32, left: bool, right: bool| {
+    /// The segmented control: deny, inherit, allow. `pick` runs for the chosen
+    /// state; a disabled control takes no clicks.
+    fn tri(
+        bits: u64,
+        state: Tri,
+        disabled: bool,
+        cx: &mut Context<Self>,
+        pick: impl Fn(&mut Self, Tri, &mut Context<Self>) + Clone + 'static,
+    ) -> Div {
+        let segment = |glyph: AnyElement, picked: bool, fill: u32, left: bool, right: bool, to: Tri| {
+            let pick = pick.clone();
             div()
+                .id(ElementId::Name(format!("tri-{bits}-{}", to as u8).into()))
+                .when(!disabled, |s| {
+                    s.cursor_pointer().on_click(cx.listener(move |this, _: &ClickEvent, _, cx| pick(this, to, cx)))
+                })
                 .w(px(31.))
                 .h(px(26.))
                 .flex()
@@ -169,12 +202,18 @@ impl ChannelSettings {
             .border_1()
             .border_color(rgba(0x97979f29))
             .when(disabled, |group| group.opacity(0.4))
-            .child(segment(cross, deny, RED, true, false))
-            .child(segment(slash, inherit, 0x2f2f33, false, false))
-            .child(segment(tick, allow, GREEN, false, true))
+            .child(segment(cross, deny, RED, true, false, Tri::Deny))
+            .child(segment(slash, inherit, 0x2f2f33, false, false, Tri::Inherit))
+            .child(segment(tick, allow, GREEN, false, true, Tri::Allow))
     }
 
-    fn permission_row(perm: &'static perms::Perm, state: Tri, disabled: bool) -> Div {
+    fn permission_row(
+        perm: &'static perms::Perm,
+        state: Tri,
+        disabled: bool,
+        cx: &mut Context<Self>,
+        pick: impl Fn(&mut Self, Tri, &mut Context<Self>) + Clone + 'static,
+    ) -> Div {
         div()
             .flex()
             .items_start()
@@ -214,7 +253,7 @@ impl ChannelSettings {
                         )
                     }),
             )
-            .child(Self::tri(state, disabled))
+            .child(Self::tri(perm.flag.bits(), state, disabled, cx, pick))
     }
 
     fn divider() -> Div {
@@ -247,8 +286,81 @@ impl ChannelSettings {
             .bg(rgb(theme::BG_CARD))
     }
 
+    /// The overwrites to draw: an edit the gateway has not reported yet, if
+    /// there is one, else what the store has. The edit goes once they agree.
+    fn shown(&mut self, stored: &[Overwrite]) -> Vec<Overwrite> {
+        if !self.dry && self.pending.as_ref().is_some_and(|pending| perms::synced_with(stored, pending)) {
+            self.pending = None;
+        }
+        self.pending.clone().unwrap_or_else(|| stored.to_vec())
+    }
+
+    fn stored(&self, channel: Snowflake, cx: &Context<Self>) -> Vec<Overwrite> {
+        self.session
+            .read(cx)
+            .store
+            .channel(channel)
+            .map(|c| c.permission_overwrites.clone())
+            .unwrap_or_default()
+    }
+
+    fn send(&mut self, request: AdminRequest, cx: &mut Context<Self>) {
+        if !self.dry {
+            self.session.update(cx, |session, cx| session.request_admin(&self.backend, request, cx));
+        }
+    }
+
+    /// Sets every flag in `flags` to `tri` for one role or member, and asks
+    /// for it. An overwrite left saying nothing is removed.
+    fn set(
+        &mut self,
+        channel: Snowflake,
+        target: Snowflake,
+        kind: OverwriteKind,
+        flags: Permissions,
+        tri: Tri,
+        cx: &mut Context<Self>,
+    ) {
+        let stored = self.stored(channel, cx);
+        let list = self.shown(&stored);
+        let changed = perms::edited(perms::find(&list, target), target, kind, flags, tri);
+        let request = if changed.allow.is_empty() && changed.deny.is_empty() {
+            AdminRequest::ClearOverwrite { channel, target }
+        } else {
+            AdminRequest::SetOverwrite {
+                channel,
+                target,
+                kind: changed.kind as u8,
+                allow: changed.allow,
+                deny: changed.deny,
+            }
+        };
+        self.pending = Some(perms::with_overwrite(&list, changed));
+        self.send(request, cx);
+        cx.notify();
+    }
+
+    /// Gives the channel its category's overwrites.
+    fn sync(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
+        let category = {
+            let store = &self.session.read(cx).store;
+            store
+                .channel(channel)
+                .and_then(|c| c.parent_id)
+                .and_then(|id| store.channel(id))
+                .map(|p| p.permission_overwrites.clone())
+        };
+        let Some(category) = category else { return };
+        // The body is the web client's shape for a channel update, not seen on
+        // the wire.
+        let fields = serde_json::json!({ "permission_overwrites": perms::overwrites_json(&category) });
+        self.pending = Some(category);
+        self.send(AdminRequest::EditChannel { channel, fields }, cx);
+        cx.notify();
+    }
+
     fn permissions(&mut self, channel: Snowflake, cx: &mut Context<Self>) -> Div {
-        let (kind, guild, overwrites, category, mine) = {
+        let (kind, guild, stored, category, mine) = {
             let store = &self.session.read(cx).store;
             let Some(c) = store.channel(channel) else { return div() };
             let category = c.parent_id.and_then(|id| store.channel(id)).map(|p| {
@@ -256,8 +368,10 @@ impl ChannelSettings {
             });
             (c.kind, c.guild_id, c.permission_overwrites.clone(), category, store.permissions_in(c))
         };
+        let overwrites = self.shown(&stored);
         let Some(guild) = guild else { return div() };
         let private = perms::is_private(&overwrites, guild);
+        let voice = matches!(kind, ChannelType::GuildVoice | ChannelType::GuildStageVoice);
         let entries = self.entries(channel, guild, &overwrites, cx);
         let selected = self.selected.filter(|id| entries.iter().any(|e| e.id == *id)).unwrap_or(guild);
         let current = perms::find(&overwrites, selected);
@@ -284,6 +398,7 @@ impl ChannelSettings {
                 )
                 .child(
                     div()
+                        .id("sync-with-category")
                         .h(px(32.))
                         .px(px(12.))
                         .flex()
@@ -295,6 +410,11 @@ impl ChannelSettings {
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(rgb(0xdcdcdf))
                         .when(synced, |button| button.opacity(0.5))
+                        .when(!synced, |button| {
+                            button
+                                .cursor_pointer()
+                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.sync(channel, cx)))
+                        })
                         .child("Sync Now"),
                 )
         });
@@ -318,7 +438,21 @@ impl ChannelSettings {
                             .text_color(rgb(theme::TEXT))
                             .child("Private Channel"),
                     )
-                    .child(Self::switch(private)),
+                    .child(
+                        Self::switch(private)
+                            .id("private-channel")
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                // Private hides the channel from `@everyone`; a voice
+                                // channel also stops letting them join.
+                                let mut flags = Permissions::VIEW_CHANNEL;
+                                if voice {
+                                    flags |= Permissions::CONNECT;
+                                }
+                                let tri = if private { Tri::Allow } else { Tri::Deny };
+                                this.set(channel, guild, OverwriteKind::Role, flags, tri, cx);
+                            })),
+                    ),
             )
             .child(
                 div()
@@ -431,7 +565,12 @@ impl ChannelSettings {
                     // Nobody can hand out what they lack, which the client
                     // says on the row instead of hiding it.
                     let disabled = !mine.contains(perm.flag);
-                    right = right.child(Self::permission_row(perm, perms::state_of(current, perm.flag), disabled));
+                    let target_kind = current.map_or(OverwriteKind::Role, |o| o.kind);
+                    let flag = perm.flag;
+                    let pick = move |this: &mut Self, tri: Tri, cx: &mut Context<Self>| {
+                        this.set(channel, selected, target_kind, flag, tri, cx);
+                    };
+                    right = right.child(Self::permission_row(perm, perms::state_of(current, perm.flag), disabled, cx, pick));
                 }
             }
 

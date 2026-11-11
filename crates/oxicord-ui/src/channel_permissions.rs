@@ -351,6 +351,64 @@ pub fn synced_with(own: &[Overwrite], category: &[Overwrite]) -> bool {
     a == b
 }
 
+/// What an overwrite's two sets become when one permission is set to `tri`:
+/// the flag leaves both sets, then joins the one that matches.
+pub fn set_state(allow: Permissions, deny: Permissions, flag: Permissions, tri: Tri) -> (Permissions, Permissions) {
+    let (allow, deny) = (allow - flag, deny - flag);
+    match tri {
+        Tri::Allow => (allow | flag, deny),
+        Tri::Deny => (allow, deny | flag),
+        Tri::Inherit => (allow, deny),
+    }
+}
+
+/// The list with `changed` in place of the overwrite for its target, added if
+/// it is new, and dropped when it no longer says anything.
+pub fn with_overwrite(list: &[Overwrite], changed: Overwrite) -> Vec<Overwrite> {
+    let at = list.iter().position(|o| o.id == changed.id);
+    let mut out: Vec<Overwrite> = list.iter().filter(|o| o.id != changed.id).cloned().collect();
+    if !(changed.allow.is_empty() && changed.deny.is_empty()) {
+        // Keep the spot it had so the rows do not jump around.
+        match at {
+            Some(at) => out.insert(at.min(out.len()), changed),
+            None => out.push(changed),
+        }
+    }
+    out
+}
+
+/// The overwrite for `target` after setting every flag in `flags` to `tri`.
+pub fn edited(
+    current: Option<&Overwrite>,
+    target: Snowflake,
+    kind: OverwriteKind,
+    flags: Permissions,
+    tri: Tri,
+) -> Overwrite {
+    let (mut allow, mut deny) = current.map_or((Permissions::empty(), Permissions::empty()), |o| (o.allow, o.deny));
+    for flag in flags.iter() {
+        (allow, deny) = set_state(allow, deny, flag, tri);
+    }
+    Overwrite { id: target, kind, allow, deny }
+}
+
+/// The `permission_overwrites` a channel update carries, for syncing with the
+/// category.
+pub fn overwrites_json(list: &[Overwrite]) -> serde_json::Value {
+    serde_json::Value::Array(
+        list.iter()
+            .map(|o| {
+                serde_json::json!({
+                    "id": o.id.to_string(),
+                    "type": o.kind as u8,
+                    "allow": o.allow.bits().to_string(),
+                    "deny": o.deny.bits().to_string(),
+                })
+            })
+            .collect(),
+    )
+}
+
 /// Roles come before members in the list the live page draws, then by name.
 pub fn is_role(overwrite: &Overwrite) -> bool {
     overwrite.kind == OverwriteKind::Role
@@ -414,5 +472,56 @@ mod tests {
         assert!(has(ChannelType::GuildVoice, "Connect"));
         assert!(!has(ChannelType::GuildText, "Connect"));
         assert!(has(ChannelType::GuildText, "Pin Messages"));
+    }
+
+    #[test]
+    fn setting_a_permission_moves_it_to_exactly_one_set() {
+        let (send, embed) = (Permissions::SEND_MESSAGES, Permissions::EMBED_LINKS);
+        let (allow, deny) = set_state(embed, send, send, Tri::Allow);
+        assert_eq!((allow, deny), (embed | send, Permissions::empty()), "deny gave way to allow");
+        let (allow, deny) = set_state(allow, deny, send, Tri::Deny);
+        assert_eq!((allow, deny), (embed, send));
+        let (allow, deny) = set_state(allow, deny, send, Tri::Inherit);
+        assert_eq!((allow, deny), (embed, Permissions::empty()), "inherit leaves both sets");
+    }
+
+    #[test]
+    fn editing_an_overwrite_keeps_what_it_already_said() {
+        let current = overwrite(7, OverwriteKind::Role, Permissions::SEND_MESSAGES, Permissions::empty());
+        let flags = Permissions::EMBED_LINKS | Permissions::ATTACH_FILES;
+        let next = edited(Some(&current), Snowflake(7), OverwriteKind::Role, flags, Tri::Deny);
+        assert_eq!(next.allow, Permissions::SEND_MESSAGES);
+        assert_eq!(next.deny, flags);
+        let fresh = edited(None, Snowflake(9), OverwriteKind::Member, Permissions::VIEW_CHANNEL, Tri::Allow);
+        assert_eq!((fresh.id, fresh.kind, fresh.allow), (Snowflake(9), OverwriteKind::Member, Permissions::VIEW_CHANNEL));
+    }
+
+    #[test]
+    fn a_changed_overwrite_keeps_its_spot_and_an_empty_one_goes() {
+        let a = overwrite(1, OverwriteKind::Role, Permissions::SEND_MESSAGES, Permissions::empty());
+        let b = overwrite(2, OverwriteKind::Role, Permissions::empty(), Permissions::VIEW_CHANNEL);
+        let list = [a.clone(), b.clone()];
+
+        let changed = overwrite(1, OverwriteKind::Role, Permissions::EMBED_LINKS, Permissions::empty());
+        let out = with_overwrite(&list, changed.clone());
+        assert_eq!(out.iter().map(|o| o.id.0).collect::<Vec<_>>(), [1, 2]);
+        assert_eq!(out[0].allow, Permissions::EMBED_LINKS);
+
+        let added = overwrite(3, OverwriteKind::Member, Permissions::SPEAK, Permissions::empty());
+        assert_eq!(with_overwrite(&list, added).len(), 3);
+
+        let emptied = overwrite(1, OverwriteKind::Role, Permissions::empty(), Permissions::empty());
+        let out = with_overwrite(&list, emptied);
+        assert_eq!(out.iter().map(|o| o.id.0).collect::<Vec<_>>(), [2]);
+        assert!(with_overwrite(&[], overwrite(5, OverwriteKind::Role, Permissions::empty(), Permissions::empty())).is_empty());
+    }
+
+    #[test]
+    fn overwrites_go_out_with_string_ids_and_sets() {
+        let list = [overwrite(4, OverwriteKind::Member, Permissions::SEND_MESSAGES, Permissions::VIEW_CHANNEL)];
+        assert_eq!(
+            overwrites_json(&list),
+            serde_json::json!([{ "id": "4", "type": 1, "allow": "2048", "deny": "1024" }])
+        );
     }
 }

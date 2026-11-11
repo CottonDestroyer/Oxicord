@@ -742,7 +742,28 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       without an avatar, the live page greys Manage Permissions for this account
       where the port enables it (its rule for what an account may grant was not
       worked out), and the add glyph is filled rather than outlined.
-- [ ] Channel permission overwrites: edit allow, deny, inherit
+- [x] Channel permission overwrites: edit allow, deny, inherit. Each segment
+      of the deny, inherit and allow control now sets that permission for the
+      selected role or member: the flag leaves both sets and joins the one that
+      matches, an overwrite left saying nothing is removed, and a click shows
+      at once while the gateway's channel update confirms it (the on-screen edit
+      is dropped once the store agrees). The Private Channel switch sets View
+      Channel (plus Connect on a voice channel) for `@everyone` between deny and
+      allow, and Sync Now gives the channel its category's overwrites. Rows the
+      account cannot grant ignore clicks. The calls are `PUT` and `DELETE` on
+      `/channels/{id}/permissions/{target}` with the allow and deny sets as
+      strings, and Sync Now is a channel update carrying `permission_overwrites`.
+      Built and unit tested, never sent: the screen was checked only in a dry
+      run (`chperm <channel>` is dry unless given `live`), where edits stay
+      local, so nothing was changed on the real server. Unit tested: the set
+      move for each state, editing several flags over an existing overwrite,
+      keeping a row's place and dropping an empty one, the string JSON, and the
+      request body. Captures: screenshots/port/channel_permissions_edit.png and
+      channel_permissions_synced.png. Remaining differences: the add button for
+      roles and members does nothing, the request bodies and the private switch's
+      off state (allow versus inherit) were not seen on the wire, a failed
+      request does not roll the on-screen edit back until the screen reopens, and
+      the other tabs still do nothing.
 - [ ] Webhooks: list, create, edit, delete
 - [ ] AutoMod rules: list
 - [ ] AutoMod rules: create and edit

@@ -1039,6 +1039,12 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         }
         AdminRequest::EditChannel { channel, fields } => check(api.edit_channel(channel, &fields).await, "save that channel").await,
         AdminRequest::DeleteChannel(channel) => check(api.close_channel(channel).await, "delete that channel").await,
+        AdminRequest::SetOverwrite { channel, target, kind, allow, deny } => {
+            check(api.set_overwrite(channel, target, kind, allow, deny).await, "change those permissions").await;
+        }
+        AdminRequest::ClearOverwrite { channel, target } => {
+            check(api.clear_overwrite(channel, target).await, "reset those permissions").await;
+        }
     }
 }
 /// What follows disabling or deleting the account: the token is dead, so a

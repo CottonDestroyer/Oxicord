@@ -53,7 +53,7 @@ pub enum DevCommand {
     /// so the screen can be checked without turning anything on.
     TotpCodes,
     /// The channel permissions screen on a channel.
-    ChannelPermissions(Snowflake),
+    ChannelPermissions(Snowflake, bool),
     /// A kind of the shared drastic-action dialog: 0 disable, 1 delete, 2 remove
     /// two-factor. Opening is harmless, nothing is sent until its button.
     Danger(u8),
@@ -106,7 +106,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         }
         "interested" => id().map(DevCommand::Interested),
         "totp-codes" => Some(DevCommand::TotpCodes),
-        "chperm" => id().map(DevCommand::ChannelPermissions),
+        "chperm" => id().map(|channel| DevCommand::ChannelPermissions(channel, words.clone().nth(1) != Some("live"))),
         "danger" => match words.clone().next()? {
             "disable" => Some(DevCommand::Danger(0)),
             "delete" => Some(DevCommand::Danger(1)),
