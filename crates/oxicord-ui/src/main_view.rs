@@ -1394,6 +1394,11 @@ impl MainView {
             DevCommand::ChannelPermissions(channel, dry) => {
                 self.session.update(cx, |_, cx| cx.emit(OpenChannelPermissions(channel, dry)));
             }
+            DevCommand::Automod(guild) => {
+                self.server_settings_open = true;
+                self.server_settings.update(cx, |view, cx| view.opened_automod(guild, window, cx));
+                cx.notify();
+            }
             DevCommand::Webhooks(guild) => {
                 self.server_settings_open = true;
                 self.server_settings.update(cx, |view, cx| view.opened_webhooks(guild, window, cx));

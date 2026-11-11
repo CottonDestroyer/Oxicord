@@ -12,7 +12,7 @@ use gpui_kit::{
 use oxicord_media::cdn;
 use oxicord_model::{
     ChannelType, Permissions, Snowflake,
-    admin::{WebhookEntry, action_name},
+    admin::{AutoModRule, WebhookEntry, action_name},
 };
 use serde_json::json;
 
@@ -211,6 +211,41 @@ fn webhook_changed(hook: &WebhookEntry, name: &str, channel: Option<Snowflake>) 
     name.trim() != hook.name || channel.is_some_and(|c| Some(c) != hook.channel)
 }
 
+/// One AutoMod rule: its name, what it watches for and does, and whether it
+/// is on.
+fn automod_card(rule: &AutoModRule) -> AnyElement {
+    let actions = rule.action_names();
+    let mut detail = rule.trigger_name().to_owned();
+    if !actions.is_empty() {
+        detail = format!("{detail} \u{b7} {}", actions.join(", "));
+    }
+    let exempt = rule.exempt_channels + rule.exempt_roles;
+    if exempt > 0 {
+        detail = format!("{detail} \u{b7} {}", counted(exempt, "exemption", "exemptions"));
+    }
+    let (state, color) = if rule.enabled { ("On", theme::ONLINE) } else { ("Off", theme::TEXT_MUTED) };
+    div()
+        .h(px(72.))
+        .px_4()
+        .flex()
+        .items_center()
+        .gap_4()
+        .rounded(px(theme::RADIUS))
+        .bg(rgb(theme::BG_PANEL))
+        .child(icon("shield-check", 24., theme::TEXT_MUTED))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(rule.name.clone()))
+                .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT)).child(detail)),
+        )
+        .child(div().text_size(px(12.)).font_weight(FontWeight::MEDIUM).text_color(rgb(color)).child(state))
+        .into_any_element()
+}
+
 /// "2 webhooks", "1 webhook".
 fn counted(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
@@ -311,6 +346,12 @@ impl ServerSettings {
         self.webhooks_open = true;
     }
 
+    /// Opens straight on the AutoMod page, for checking it from the dev control.
+    pub fn opened_automod(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
+        self.opened(guild, window, cx);
+        self.select(Page::AutoMod, cx);
+    }
+
     pub fn opened(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.guild = Some(guild);
         self.role = None;
@@ -337,6 +378,7 @@ impl ServerSettings {
         let Some(guild) = self.guild else { return };
         let request = match page {
             Page::Integrations => Some(AdminRequest::LoadWebhooks(guild)),
+            Page::AutoMod => Some(AdminRequest::LoadAutomod(guild)),
             Page::Invites => Some(AdminRequest::LoadInvites(guild)),
             Page::Bans => Some(AdminRequest::LoadBans(guild)),
             Page::AuditLog => Some(AdminRequest::LoadAudit(guild)),
@@ -1094,24 +1136,31 @@ impl ServerSettings {
     }
 
     fn automod(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(guild) = self.guild else { return div().into_any_element() };
-        let name = self
-            .session
-            .read(cx)
-            .store
-            .guild(guild)
-            .map(|g| g.name.clone())
-            .unwrap_or_default();
+        let state = self.session.read(cx).admin.automod.clone();
+        let mut body = div().flex().flex_col().gap_3();
+        match state {
+            Load::Ready(rules) if rules.is_empty() => {
+                body = body.child(status_line("shield-check", "No AutoMod rules yet.".into(), theme::TEXT_MUTED));
+            }
+            Load::Ready(rules) => {
+                for rule in &rules {
+                    body = body.child(automod_card(rule));
+                }
+            }
+            Load::Failed(error) => body = body.child(status_line("circle-alert", error, theme::DANGER)),
+            _ => body = body.child(status_line("loader", "Loading rules...".into(), theme::TEXT_MUTED)),
+        }
 
         div()
             .flex()
             .flex_col()
             .gap_3()
             .child(title("AutoMod"))
-            .child(group(
-                "AutoMod",
-                vec![widgets::info_row("Server Name", name)],
+            .child(widgets::blurb(
+                "Set up automated moderation to keep your community safe. AutoMod rules can block messages, send alerts to moderators and time out members.",
             ))
+            .child(div().h(px(1.)).mb_2().bg(rgb(theme::BORDER)))
+            .child(body)
             .into_any_element()
     }
 

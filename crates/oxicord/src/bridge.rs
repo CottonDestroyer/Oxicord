@@ -1045,6 +1045,9 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         AdminRequest::ClearOverwrite { channel, target } => {
             check(api.clear_overwrite(channel, target).await, "reset those permissions").await;
         }
+        AdminRequest::LoadAutomod(guild) => {
+            say(AdminEvent::Automod(guild, api.automod_rules(guild).await.map_err(text))).await;
+        }
         AdminRequest::LoadWebhooks(guild) => {
             say(AdminEvent::Webhooks(guild, api.guild_webhooks(guild).await.map_err(text))).await;
         }

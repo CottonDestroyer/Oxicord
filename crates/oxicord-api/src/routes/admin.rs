@@ -2,7 +2,7 @@
 
 use oxicord_model::{
     Permissions, Snowflake,
-    admin::{AuditLog, BanEntry, InviteEntry, WebhookEntry},
+    admin::{AuditLog, AutoModRule, BanEntry, InviteEntry, WebhookEntry},
 };
 use reqwest::Method;
 use serde_json::{Value, json};
@@ -228,6 +228,19 @@ impl ApiClient {
     /// Changes a channel: `name`, `topic`, `nsfw`, `rate_limit_per_user`.
     pub async fn edit_channel(&self, channel: Snowflake, fields: &Value) -> Result<(), ApiError> {
         self.empty(Method::PATCH, &format!("/channels/{channel}"), "PATCH /channels/:id", Some(fields)).await
+    }
+
+    /// Every AutoMod rule in the server. Needs `Manage Server`.
+    pub async fn automod_rules(&self, guild: Snowflake) -> Result<Vec<AutoModRule>, ApiError> {
+        let body: Value = self
+            .json(
+                Method::GET,
+                &format!("/guilds/{guild}/auto-moderation/rules"),
+                "GET /guilds/:id/auto-moderation/rules",
+                None,
+            )
+            .await?;
+        Ok(AutoModRule::parse_list(&body))
     }
 
     /// Every webhook in the server. Needs `Manage Webhooks`.

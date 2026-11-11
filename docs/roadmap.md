@@ -789,7 +789,22 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       (the port's rule for which pages an account sees differs from the web
       client's), and the list does not show the new webhook expanded after New
       Webhook.
-- [ ] AutoMod rules: list
+- [x] AutoMod rules: list. The AutoMod page loads `GET
+      /guilds/{id}/auto-moderation/rules` (route names from the web client's
+      module 652215 and its REST helpers in module 179832) and lists each rule
+      as a card with its name, what it watches for (custom words, spam,
+      commonly flagged words, mention spam, member profile), its actions,
+      its exemption count and an On or Off mark. An empty list, a loading line
+      and a failure line are handled. `automod <server id>` in the dev control
+      opens it. Unit tested: the rule parse, the trigger and action words and
+      the off-by-default flag. NOT measured and NOT seen on screen: the test
+      account has no AutoMod page on the live client (it lacks Manage Server),
+      the AutoMod screen code is not in the extracted reference, and the
+      running app could not be rebuilt without closing it. So the card layout,
+      the wording and the blurb are a best guess and still need a pass against
+      an account that can open the page. Also missing: the per trigger setup
+      cards the live page shows above the list, and the toggle to switch a
+      rule on or off (that belongs to the next item).
 - [ ] AutoMod rules: create and edit
 - [ ] Integrations list
 - [ ] Welcome screen setup

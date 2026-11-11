@@ -95,6 +95,70 @@ impl WebhookEntry {
     }
 }
 
+/// One AutoMod rule as the server lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AutoModRule {
+    pub id: Snowflake,
+    pub name: String,
+    /// 1 keyword, 3 spam, 4 keyword preset, 5 mention spam, 6 member profile.
+    pub trigger: u8,
+    pub enabled: bool,
+    /// The action types: 1 block the message, 2 send an alert, 3 time the
+    /// member out, 4 block the member from interacting.
+    pub actions: Vec<u8>,
+    pub exempt_channels: usize,
+    pub exempt_roles: usize,
+}
+
+impl AutoModRule {
+    pub fn parse_list(body: &Value) -> Vec<Self> {
+        body.as_array().map(|list| list.iter().filter_map(Self::parse).collect()).unwrap_or_default()
+    }
+
+    pub fn parse(value: &Value) -> Option<Self> {
+        let size = |key: &str| value.get(key).and_then(Value::as_array).map_or(0, Vec::len);
+        Some(Self {
+            id: id(value, "id")?,
+            name: text(value, "name").unwrap_or_default(),
+            trigger: u8::try_from(count(value, "trigger_type")).unwrap_or(0),
+            enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(false),
+            actions: value
+                .get("actions")
+                .and_then(Value::as_array)
+                .map(|list| list.iter().filter_map(|a| u8::try_from(a.get("type")?.as_u64()?).ok()).collect())
+                .unwrap_or_default(),
+            exempt_channels: size("exempt_channels"),
+            exempt_roles: size("exempt_roles"),
+        })
+    }
+
+    /// What the rule watches for, in the words the web client uses.
+    pub fn trigger_name(&self) -> &'static str {
+        match self.trigger {
+            1 => "Block Custom Words",
+            3 => "Block Spam Content",
+            4 => "Block Commonly Flagged Words",
+            5 => "Block Mention Spam",
+            6 => "Block Members Profile Content",
+            _ => "Custom Rule",
+        }
+    }
+
+    /// What the rule does, one short phrase per action.
+    pub fn action_names(&self) -> Vec<&'static str> {
+        self.actions
+            .iter()
+            .filter_map(|a| match a {
+                1 => Some("Block Message"),
+                2 => Some("Send Alert"),
+                3 => Some("Timeout Member"),
+                4 => Some("Block Interactions"),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
 /// Someone banned from the server.
 #[derive(Clone, Debug)]
 pub struct BanEntry {
@@ -249,6 +313,25 @@ mod tests {
         assert_eq!(list[0].url().as_deref(), Some("https://discord.com/api/webhooks/5/tok"));
         assert_eq!(list[1].url(), None);
         assert_eq!(list[1].kind, 2);
+    }
+
+    #[test]
+    fn automod_rules_read_their_trigger_actions_and_exemptions() {
+        let list = AutoModRule::parse_list(&json!([
+            { "id": "3", "name": "Bad words", "trigger_type": 1, "enabled": true,
+              "actions": [{ "type": 1 }, { "type": 2, "metadata": { "channel_id": "9" } }, { "type": 9 }],
+              "exempt_channels": ["1", "2"], "exempt_roles": [] },
+            { "id": "4", "trigger_type": 5 },
+            { "name": "no id" }
+        ]));
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].trigger_name(), "Block Custom Words");
+        assert_eq!(list[0].action_names(), vec!["Block Message", "Send Alert"]);
+        assert_eq!((list[0].exempt_channels, list[0].exempt_roles), (2, 0));
+        assert!(list[0].enabled);
+        assert!(!list[1].enabled, "a rule that does not say is off");
+        assert_eq!(list[1].trigger_name(), "Block Mention Spam");
+        assert!(list[1].actions.is_empty());
     }
 
     #[test]
