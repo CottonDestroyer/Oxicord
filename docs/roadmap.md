@@ -843,7 +843,7 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       `welcome_channels`, the body from the web client's module 225315, and
       shows what the server answers. Unit tested: the body (trimmed text, blank
       description as null, emoji fields) and the add rules (no duplicates, five
-      at most). Never sent from the real account and NOT seen on screen: the
+      at most). Never sent from the real account. Seen on a non-Community server: the live GET answers 404 and the page shows "That no longer exists.", which misleads (a Community prompt would be better); the loaded layout is unseen, and the
       layout and wording are a best guess and the live page was not measured.
       Missing: channel emoji cannot be picked (a loaded one is kept), the page
       is listed even for servers without Community, and there is no preview.
@@ -861,7 +861,7 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       requirement check (7 default channels) before enabling, and the page
       route was read from the web client but the settings chunk that sends it
       is not in the reference. Layout is a best guess. Never sent and not
-      seen on screen.)
+      seen as the empty, disabled state on a real server (loads, switch off, Add Channel and Add Question).)
 - [x] Server templates (Server Template page: loads `GET /guilds/:id/templates`;
       with none, a name (prefilled with the server name) and description and a
       Generate a Template Link button (`POST`); with one, the discord.new link,
@@ -875,7 +875,7 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       Missing: the settings chunk that draws the page is not in the reference,
       so layout and wording are a best guess, and the web client's
       "Template has been synced" toasts and the dirty dot on the settings
-      button are not there. Never sent and not seen on screen.)
+      button are not there. Never sent. Seen on screen (dev `settings` command): only the 403 state, the one server this account manages lacks Manage Server, so the loaded layout is still unseen.)
 - [ ] Prune members: count preview and confirm
 
 ## Voice

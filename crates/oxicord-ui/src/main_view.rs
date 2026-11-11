@@ -1399,10 +1399,27 @@ impl MainView {
                 self.server_settings.update(cx, |view, cx| view.opened_automod(guild, window, cx));
                 cx.notify();
             }
+            DevCommand::Settings(guild, page) => {
+                self.server_settings_open = true;
+                self.server_settings.update(cx, |view, cx| view.opened_page(guild, &page, window, cx));
+                cx.notify();
+            }
             DevCommand::Webhooks(guild) => {
                 self.server_settings_open = true;
                 self.server_settings.update(cx, |view, cx| view.opened_webhooks(guild, window, cx));
                 cx.notify();
+            }
+            DevCommand::Manageable => {
+                let lines: Vec<String> = {
+                    let s = self.session.read(cx);
+                    s.store
+                        .guilds()
+                        .filter(|g| crate::server_settings::can_manage(s.store.guild_permissions(g.id)))
+                        .map(|g| format!("{} {}", g.id.0, g.name))
+                        .collect()
+                };
+                let _ = std::fs::write(std::env::temp_dir().join("oxicord-manageable.txt"), lines.join("
+"));
             }
             DevCommand::TotpCodes => {
                 self.totp_open = true;

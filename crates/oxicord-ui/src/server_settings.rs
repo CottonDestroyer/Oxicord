@@ -403,6 +403,15 @@ impl ServerSettings {
         self.webhooks_open = true;
     }
 
+    /// Opens straight on the page with this label, for the dev control.
+    pub fn opened_page(&mut self, guild: Snowflake, label: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.opened(guild, window, cx);
+        let want = label.to_lowercase();
+        if let Some(page) = Page::ALL.into_iter().find(|p| p.label().to_lowercase() == want) {
+            self.select(page, cx);
+        }
+    }
+
     /// Opens straight on the AutoMod page, for checking it from the dev control.
     pub fn opened_automod(&mut self, guild: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.opened(guild, window, cx);

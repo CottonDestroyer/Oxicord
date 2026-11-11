@@ -58,6 +58,10 @@ pub enum DevCommand {
     ChannelPermissions(Snowflake, bool),
     /// Server settings on the Webhooks page of a server.
     Webhooks(Snowflake),
+    /// Server settings on any page of a server, named as its label.
+    Settings(Snowflake, String),
+    /// Writes the servers this account can open settings for to a file beside the control file.
+    Manageable,
     /// Server settings on the AutoMod page of a server.
     Automod(Snowflake),
     /// A kind of the shared drastic-action dialog: 0 disable, 1 delete, 2 remove
@@ -114,7 +118,13 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         "totp-codes" => Some(DevCommand::TotpCodes),
         "chperm" => id().map(|channel| DevCommand::ChannelPermissions(channel, words.clone().nth(1) != Some("live"))),
         "webhooks" => id().map(DevCommand::Webhooks),
+        "manageable" => Some(DevCommand::Manageable),
         "automod" => id().map(DevCommand::Automod),
+        "settings" => {
+            let guild = id()?;
+            let page = words.clone().skip(1).collect::<Vec<_>>().join(" ");
+            (!page.is_empty()).then_some(DevCommand::Settings(guild, page))
+        }
         "danger" => match words.clone().next()? {
             "disable" => Some(DevCommand::Danger(0)),
             "delete" => Some(DevCommand::Danger(1)),
@@ -161,6 +171,9 @@ mod tests {
         assert_eq!(parse("full 5 9"), Some(DevCommand::Full(Snowflake(5), Some(Snowflake(9)))));
         assert_eq!(parse("profile me"), Some(DevCommand::Profile(Snowflake(0), None)));
         assert_eq!(parse("rules 9"), Some(DevCommand::Rules(Snowflake(9))));
+        assert_eq!(parse("settings 9 Server Template"), Some(DevCommand::Settings(Snowflake(9), "Server Template".into())));
+        assert_eq!(parse("settings 9"), None);
+        assert_eq!(parse("manageable"), Some(DevCommand::Manageable));
         assert_eq!(parse("tab servers"), Some(DevCommand::Tab(3)));
         assert_eq!(parse("tab nowhere"), None);
         assert_eq!(parse("close"), Some(DevCommand::Close));
