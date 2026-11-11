@@ -48,6 +48,11 @@ pub enum AdminRequest {
     /// Back to inheriting for a role or member in a channel.
     ClearOverwrite { channel: Snowflake, target: Snowflake },
     LoadAutomod(Snowflake),
+    /// A full rule body, as `oxicord_model::admin::keyword_rule_body` builds it.
+    CreateAutomod { guild: Snowflake, body: Value },
+    /// Some fields of a rule: its name, `enabled`, its words.
+    EditAutomod { guild: Snowflake, rule: Snowflake, fields: Value },
+    DeleteAutomod { guild: Snowflake, rule: Snowflake },
     LoadWebhooks(Snowflake),
     CreateWebhook { guild: Snowflake, channel: Snowflake, name: String },
     EditWebhook { guild: Snowflake, webhook: Snowflake, name: String, channel: Snowflake },

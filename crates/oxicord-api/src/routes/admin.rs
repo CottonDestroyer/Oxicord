@@ -243,6 +243,38 @@ impl ApiClient {
         Ok(AutoModRule::parse_list(&body))
     }
 
+    /// Makes an AutoMod rule from a full rule body.
+    pub async fn create_automod_rule(&self, guild: Snowflake, body: &Value) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            &format!("/guilds/{guild}/auto-moderation/rules"),
+            "POST /guilds/:id/auto-moderation/rules",
+            Some(body),
+        )
+        .await
+    }
+
+    /// Changes some fields of a rule: `name`, `enabled`, `trigger_metadata`.
+    pub async fn edit_automod_rule(&self, guild: Snowflake, rule: Snowflake, fields: &Value) -> Result<(), ApiError> {
+        self.empty(
+            Method::PATCH,
+            &format!("/guilds/{guild}/auto-moderation/rules/{rule}"),
+            "PATCH /guilds/:id/auto-moderation/rules/:id",
+            Some(fields),
+        )
+        .await
+    }
+
+    pub async fn delete_automod_rule(&self, guild: Snowflake, rule: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::DELETE,
+            &format!("/guilds/{guild}/auto-moderation/rules/{rule}"),
+            "DELETE /guilds/:id/auto-moderation/rules/:id",
+            None,
+        )
+        .await
+    }
+
     /// Every webhook in the server. Needs `Manage Webhooks`.
     pub async fn guild_webhooks(&self, guild: Snowflake) -> Result<Vec<WebhookEntry>, ApiError> {
         let body: Value = self

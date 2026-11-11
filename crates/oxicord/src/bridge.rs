@@ -1048,6 +1048,18 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
         AdminRequest::LoadAutomod(guild) => {
             say(AdminEvent::Automod(guild, api.automod_rules(guild).await.map_err(text))).await;
         }
+        AdminRequest::CreateAutomod { guild, body } => {
+            check(api.create_automod_rule(guild, &body).await, "create that AutoMod rule").await;
+            say(AdminEvent::Automod(guild, api.automod_rules(guild).await.map_err(text))).await;
+        }
+        AdminRequest::EditAutomod { guild, rule, fields } => {
+            check(api.edit_automod_rule(guild, rule, &fields).await, "save that AutoMod rule").await;
+            say(AdminEvent::Automod(guild, api.automod_rules(guild).await.map_err(text))).await;
+        }
+        AdminRequest::DeleteAutomod { guild, rule } => {
+            check(api.delete_automod_rule(guild, rule).await, "delete that AutoMod rule").await;
+            say(AdminEvent::Automod(guild, api.automod_rules(guild).await.map_err(text))).await;
+        }
         AdminRequest::LoadWebhooks(guild) => {
             say(AdminEvent::Webhooks(guild, api.guild_webhooks(guild).await.map_err(text))).await;
         }

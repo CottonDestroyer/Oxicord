@@ -108,6 +108,8 @@ pub struct AutoModRule {
     pub actions: Vec<u8>,
     pub exempt_channels: usize,
     pub exempt_roles: usize,
+    /// The words of a custom word rule, empty for the other kinds.
+    pub keywords: Vec<String>,
 }
 
 impl AutoModRule {
@@ -129,7 +131,24 @@ impl AutoModRule {
                 .unwrap_or_default(),
             exempt_channels: size("exempt_channels"),
             exempt_roles: size("exempt_roles"),
+            keywords: value
+                .get("trigger_metadata")
+                .and_then(|m| m.get("keyword_filter"))
+                .and_then(Value::as_array)
+                .map(|list| list.iter().filter_map(|w| w.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default(),
         })
+    }
+
+    /// The change that saves a new name and word list on a custom word rule.
+    /// Only the two fields travel, so the rule's actions and exemptions stay.
+    pub fn edit_body(name: &str, keywords: &[String]) -> Value {
+        serde_json::json!({ "name": name, "trigger_metadata": { "keyword_filter": keywords } })
+    }
+
+    /// Whether the editor holds something other than what the server has.
+    pub fn changed(&self, name: &str, keywords: &[String]) -> bool {
+        name.trim() != self.name || (self.trigger == 1 && keywords != self.keywords)
     }
 
     /// What the rule watches for, in the words the web client uses.
@@ -157,6 +176,33 @@ impl AutoModRule {
             })
             .collect()
     }
+}
+
+/// The words typed into the keyword box, split on commas and new lines, with
+/// blanks dropped and repeats ignoring case.
+pub fn parse_keywords(text: &str) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    for word in text.split([',', '\n']).map(str::trim).filter(|w| !w.is_empty()) {
+        if !words.iter().any(|w| w.eq_ignore_ascii_case(word)) {
+            words.push(word.to_owned());
+        }
+    }
+    words
+}
+
+/// The body that makes a custom word rule: it watches messages for the words
+/// and blocks the ones that hold any. The rule starts on.
+pub fn keyword_rule_body(name: &str, keywords: &[String]) -> Value {
+    serde_json::json!({
+        "name": name,
+        "event_type": 1,
+        "trigger_type": 1,
+        "trigger_metadata": { "keyword_filter": keywords },
+        "actions": [{ "type": 1, "metadata": {} }],
+        "enabled": true,
+        "exempt_channels": [],
+        "exempt_roles": [],
+    })
 }
 
 /// Someone banned from the server.
@@ -319,6 +365,7 @@ mod tests {
     fn automod_rules_read_their_trigger_actions_and_exemptions() {
         let list = AutoModRule::parse_list(&json!([
             { "id": "3", "name": "Bad words", "trigger_type": 1, "enabled": true,
+              "trigger_metadata": { "keyword_filter": ["spam", "ads"] },
               "actions": [{ "type": 1 }, { "type": 2, "metadata": { "channel_id": "9" } }, { "type": 9 }],
               "exempt_channels": ["1", "2"], "exempt_roles": [] },
             { "id": "4", "trigger_type": 5 },
@@ -329,9 +376,44 @@ mod tests {
         assert_eq!(list[0].action_names(), vec!["Block Message", "Send Alert"]);
         assert_eq!((list[0].exempt_channels, list[0].exempt_roles), (2, 0));
         assert!(list[0].enabled);
+        assert_eq!(list[0].keywords, vec!["spam", "ads"]);
+        assert!(list[1].keywords.is_empty());
         assert!(!list[1].enabled, "a rule that does not say is off");
         assert_eq!(list[1].trigger_name(), "Block Mention Spam");
         assert!(list[1].actions.is_empty());
+    }
+
+    #[test]
+    fn keywords_are_split_trimmed_and_deduplicated() {
+        assert_eq!(parse_keywords(" spam, Ads\nspam ,, SPAM "), vec!["spam", "Ads"]);
+        assert!(parse_keywords(" , \n").is_empty());
+    }
+
+    #[test]
+    fn a_new_keyword_rule_blocks_messages_and_starts_on() {
+        let body = keyword_rule_body("No ads", &["ads".into(), "promo".into()]);
+        assert_eq!(body["trigger_type"], 1);
+        assert_eq!(body["event_type"], 1);
+        assert_eq!(body["enabled"], true);
+        assert_eq!(body["actions"][0]["type"], 1);
+        assert_eq!(body["trigger_metadata"]["keyword_filter"], json!(["ads", "promo"]));
+    }
+
+    #[test]
+    fn a_rule_edit_sends_only_the_name_and_words_and_knows_when_it_changed() {
+        let rule = AutoModRule::parse(&json!({
+            "id": "3", "name": "Ads", "trigger_type": 1, "trigger_metadata": { "keyword_filter": ["ads"] }
+        }))
+        .unwrap();
+        assert_eq!(
+            AutoModRule::edit_body("Promo", &["ads".into()]),
+            json!({ "name": "Promo", "trigger_metadata": { "keyword_filter": ["ads"] } })
+        );
+        assert!(!rule.changed(" Ads ", &["ads".into()]));
+        assert!(rule.changed("Ads", &["ads".into(), "x".into()]));
+        assert!(rule.changed("Other", &["ads".into()]));
+        let spam = AutoModRule::parse(&json!({ "id": "4", "name": "Spam", "trigger_type": 3 })).unwrap();
+        assert!(!spam.changed("Spam", &["ignored".into()]), "only word rules own a word list");
     }
 
     #[test]

@@ -805,7 +805,20 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       an account that can open the page. Also missing: the per trigger setup
       cards the live page shows above the list, and the toggle to switch a
       rule on or off (that belongs to the next item).
-- [ ] AutoMod rules: create and edit
+- [x] AutoMod rules: create and edit. A rule's card opens an editor with its
+      name, its words (custom word rules only), Save Changes (shown only when
+      something changed), Turn On or Turn Off and a two click Delete Rule. A
+      form above the list makes a custom word rule from a name and comma
+      separated words: it watches messages, blocks the ones holding a word and
+      starts on. The requests are `POST`, `PATCH` and `DELETE` on
+      `/guilds/{id}/auto-moderation/rules[/{rule}]`, and each re-fetches the
+      list. Unit tested: the create body, the edit body (only name and words
+      travel, so actions and exemptions stay), the change check and the word
+      splitting. Never sent from the real account and NOT seen on screen (same
+      reasons as the list). Missing against the live page: spam, mention spam,
+      commonly flagged and member profile rules cannot be created, the actions
+      (alert channel, timeout length) and exemptions cannot be edited, the
+      block message custom text is absent, and `rules/validate` is not called.
 - [ ] Integrations list
 - [ ] Welcome screen setup
 - [ ] Onboarding setup

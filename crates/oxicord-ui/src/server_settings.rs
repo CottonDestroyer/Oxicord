@@ -12,7 +12,7 @@ use gpui_kit::{
 use oxicord_media::cdn;
 use oxicord_model::{
     ChannelType, Permissions, Snowflake,
-    admin::{AutoModRule, WebhookEntry, action_name},
+    admin::{AutoModRule, WebhookEntry, action_name, keyword_rule_body, parse_keywords},
 };
 use serde_json::json;
 
@@ -191,6 +191,7 @@ enum Armed {
     Channel(Snowflake),
     Emoji(Snowflake),
     Webhook(Snowflake),
+    Rule(Snowflake),
 }
 
 /// The webhooks grouped by the channel they post to, in the order each
@@ -211,9 +212,8 @@ fn webhook_changed(hook: &WebhookEntry, name: &str, channel: Option<Snowflake>) 
     name.trim() != hook.name || channel.is_some_and(|c| Some(c) != hook.channel)
 }
 
-/// One AutoMod rule: its name, what it watches for and does, and whether it
-/// is on.
-fn automod_card(rule: &AutoModRule) -> AnyElement {
+/// What a rule's card says under its name: what it watches for and does.
+fn automod_detail(rule: &AutoModRule) -> String {
     let actions = rule.action_names();
     let mut detail = rule.trigger_name().to_owned();
     if !actions.is_empty() {
@@ -223,27 +223,7 @@ fn automod_card(rule: &AutoModRule) -> AnyElement {
     if exempt > 0 {
         detail = format!("{detail} \u{b7} {}", counted(exempt, "exemption", "exemptions"));
     }
-    let (state, color) = if rule.enabled { ("On", theme::ONLINE) } else { ("Off", theme::TEXT_MUTED) };
-    div()
-        .h(px(72.))
-        .px_4()
-        .flex()
-        .items_center()
-        .gap_4()
-        .rounded(px(theme::RADIUS))
-        .bg(rgb(theme::BG_PANEL))
-        .child(icon("shield-check", 24., theme::TEXT_MUTED))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(rule.name.clone()))
-                .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT)).child(detail)),
-        )
-        .child(div().text_size(px(12.)).font_weight(FontWeight::MEDIUM).text_color(rgb(color)).child(state))
-        .into_any_element()
+    detail
 }
 
 /// "2 webhooks", "1 webhook".
@@ -276,6 +256,12 @@ pub struct ServerSettings {
     webhook: Option<Snowflake>,
     webhook_channel: Option<Snowflake>,
     channel_menu: bool,
+    /// The AutoMod form that makes a rule, and the editor of the open rule.
+    new_rule_name: Entity<InputState>,
+    new_rule_words: Entity<InputState>,
+    rule_name: Entity<InputState>,
+    rule_words: Entity<InputState>,
+    rule: Option<Snowflake>,
     role: Option<Snowflake>,
     role_perms: Permissions,
     role_hoist: bool,
@@ -315,6 +301,11 @@ impl ServerSettings {
             webhook: None,
             webhook_channel: None,
             channel_menu: false,
+            new_rule_name: input(cx, window, "Rule name"),
+            new_rule_words: input(cx, window, "Words to block, separated by commas"),
+            rule_name: input(cx, window, "Rule name"),
+            rule_words: input(cx, window, "Words to block, separated by commas"),
+            rule: None,
             session,
             media,
             backend,
@@ -374,6 +365,7 @@ impl ServerSettings {
         self.armed = None;
         self.webhooks_open = false;
         self.webhook = None;
+        self.rule = None;
         self.channel_menu = false;
         let Some(guild) = self.guild else { return };
         let request = match page {
@@ -1135,7 +1127,183 @@ impl ServerSettings {
             .into_any_element()
     }
 
+    /// Opens one rule's editor with what the server has for it.
+    fn pick_rule(&mut self, rule: &AutoModRule, window: &mut Window, cx: &mut Context<Self>) {
+        self.rule = Some(rule.id);
+        self.armed = None;
+        self.rule_name.update(cx, |i, cx| i.set_value(rule.name.clone(), window, cx));
+        self.rule_words.update(cx, |i, cx| i.set_value(rule.keywords.join(", "), window, cx));
+        cx.notify();
+    }
+
+    /// The form that makes a custom word rule: a name and the words to block.
+    fn new_rule_form(&mut self, guild: Snowflake, cx: &mut Context<Self>) -> AnyElement {
+        let name = self.new_rule_name.read(cx).value().trim().to_owned();
+        let words = parse_keywords(self.new_rule_words.read(cx).value().as_ref());
+        let ready = !name.is_empty() && !words.is_empty();
+        let label = |text: &'static str| div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(text);
+        let mut form = div()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .rounded(px(theme::RADIUS))
+            .bg(rgb(theme::BG_PANEL))
+            .child(label("Create a custom word rule"))
+            .child(
+                div()
+                    .flex()
+                    .gap_4()
+                    .child(div().flex_1().child(Input::new(&self.new_rule_name)))
+                    .child(div().flex_1().child(Input::new(&self.new_rule_words))),
+            );
+        if ready {
+            form = form.child(div().flex().child(button("create-rule", "Create Rule", Tone::Primary, {
+                let view = cx.weak_entity();
+                move |_, window, cx| {
+                    view.update(cx, |this, cx| {
+                        let name = this.new_rule_name.read(cx).value().trim().to_owned();
+                        let words = parse_keywords(this.new_rule_words.read(cx).value().as_ref());
+                        if name.is_empty() || words.is_empty() {
+                            return;
+                        }
+                        this.new_rule_name.update(cx, |i, cx| i.set_value("", window, cx));
+                        this.new_rule_words.update(cx, |i, cx| i.set_value("", window, cx));
+                        this.send(AdminRequest::CreateAutomod { guild, body: keyword_rule_body(&name, &words) }, cx);
+                    })
+                    .ok();
+                }
+            })));
+        }
+        form.into_any_element()
+    }
+
+    /// One AutoMod rule: its name, what it watches for and does, and whether it
+    /// is on. Clicking it opens the editor.
+    fn automod_card(&mut self, guild: Snowflake, rule: &AutoModRule, cx: &mut Context<Self>) -> AnyElement {
+        let id = rule.id;
+        let open = self.rule == Some(id);
+        let (state, color) = if rule.enabled { ("On", theme::ONLINE) } else { ("Off", theme::TEXT_MUTED) };
+        let header = div()
+            .id(("automod-rule", id.0))
+            .h(px(72.))
+            .px_4()
+            .flex()
+            .items_center()
+            .gap_4()
+            .cursor_pointer()
+            .child(icon("shield-check", 24., theme::TEXT_MUTED))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(rule.name.clone()))
+                    .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT)).child(automod_detail(rule))),
+            )
+            .child(div().text_size(px(12.)).font_weight(FontWeight::MEDIUM).text_color(rgb(color)).child(state))
+            .child(icon(if open { "chevron-down" } else { "chevron-right" }, 16., theme::TEXT_MUTED))
+            .on_click({
+                let rule = rule.clone();
+                cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    if this.rule == Some(rule.id) {
+                        this.rule = None;
+                        cx.notify();
+                    } else {
+                        this.pick_rule(&rule, window, cx);
+                    }
+                })
+            });
+
+        let mut card = div().flex().flex_col().rounded(px(theme::RADIUS)).bg(rgb(theme::BG_PANEL)).child(header);
+        if open {
+            card = card.child(self.automod_editor(guild, rule, cx));
+        }
+        card.into_any_element()
+    }
+
+    fn automod_editor(&mut self, guild: Snowflake, rule: &AutoModRule, cx: &mut Context<Self>) -> AnyElement {
+        let id = rule.id;
+        let name = self.rule_name.read(cx).value().to_string();
+        let words = parse_keywords(self.rule_words.read(cx).value().as_ref());
+        let changed = rule.changed(&name, &words) && !name.trim().is_empty();
+        let armed = self.armed == Some(Armed::Rule(id));
+        let label = |text: &'static str| div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(text);
+        let column = |title: &'static str, input: &Entity<InputState>| {
+            div().flex_1().flex().flex_col().gap_2().child(label(title)).child(Input::new(input))
+        };
+
+        let mut fields = div().flex().gap_4().child(column("Name", &self.rule_name));
+        if rule.trigger == 1 {
+            fields = fields.child(column("Words", &self.rule_words));
+        }
+
+        let mut actions = div().flex().gap_2();
+        if changed {
+            actions = actions.child(button("save-rule", "Save Changes", Tone::Primary, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        let name = this.rule_name.read(cx).value().trim().to_owned();
+                        let words = parse_keywords(this.rule_words.read(cx).value().as_ref());
+                        // Only word rules own a word list to send.
+                        let fields = if words.is_empty() { json!({ "name": name }) } else { AutoModRule::edit_body(&name, &words) };
+                        this.send(AdminRequest::EditAutomod { guild, rule: id, fields }, cx);
+                    })
+                    .ok();
+                }
+            }));
+        }
+        let enabled = rule.enabled;
+        actions = actions.child(button(
+            "toggle-rule",
+            if enabled { "Turn Off" } else { "Turn On" },
+            Tone::Plain,
+            {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        this.send(AdminRequest::EditAutomod { guild, rule: id, fields: json!({ "enabled": !enabled }) }, cx);
+                    })
+                    .ok();
+                }
+            },
+        ));
+        actions = actions.child(button(
+            "delete-rule",
+            if armed { "Click again to delete" } else { "Delete Rule" },
+            Tone::Danger,
+            {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        if this.confirm(Armed::Rule(id), cx) {
+                            this.rule = None;
+                            this.send(AdminRequest::DeleteAutomod { guild, rule: id }, cx);
+                        }
+                    })
+                    .ok();
+                }
+            },
+        ));
+
+        div()
+            .mx_4()
+            .pt_4()
+            .pb_4()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .border_t_1()
+            .border_color(rgb(theme::BORDER))
+            .child(fields)
+            .child(actions)
+            .into_any_element()
+    }
+
     fn automod(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(guild) = self.guild else { return div().into_any_element() };
         let state = self.session.read(cx).admin.automod.clone();
         let mut body = div().flex().flex_col().gap_3();
         match state {
@@ -1144,7 +1312,7 @@ impl ServerSettings {
             }
             Load::Ready(rules) => {
                 for rule in &rules {
-                    body = body.child(automod_card(rule));
+                    body = body.child(self.automod_card(guild, rule, cx));
                 }
             }
             Load::Failed(error) => body = body.child(status_line("circle-alert", error, theme::DANGER)),
@@ -1160,6 +1328,7 @@ impl ServerSettings {
                 "Set up automated moderation to keep your community safe. AutoMod rules can block messages, send alerts to moderators and time out members.",
             ))
             .child(div().h(px(1.)).mb_2().bg(rgb(theme::BORDER)))
+            .child(self.new_rule_form(guild, cx))
             .child(body)
             .into_any_element()
     }
