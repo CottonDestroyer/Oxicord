@@ -1005,12 +1005,24 @@ the build moves.
       Remaining differences: gradient and holographic role styles draw as the
       flat role colour; the member list still reads its own entries; reply
       line text, server tag chips and timestamps are their own items below.
-- [ ] Reply line as the live client draws it: a 16 px avatar, the author in the
-      role colour, the server tag chip, then the text with mentions, custom
-      emoji and timestamps resolved. Ours prints raw markup
-      (`@Cotton <@1272377551070144138> welcom back`, `<:Enstein:155704...>`).
-      Also the "Blocked message" and "Original message was deleted" variants
-      and the connector line from the arrow to the avatar.
+- [x] Reply line as the live client draws it. The quoted line now sits above
+      the name (the avatar column drops by 22 px), 18 px high, with the 2 px
+      connector (`#383940`, 6 px radius, from the avatar centre line to the
+      line), a 16 px avatar of the replied person, their server nickname in the
+      top role colour at 0.64 opacity, an APP badge for bots, and the text as
+      `markdown::preview`: first line only, mentions, timestamps and formatting
+      resolved through the same path as messages, custom emoji as 18 px
+      pictures, truncated. Variants: "Original message was deleted" and
+      "Blocked message" (blocked author, reply badge instead of the avatar), both
+      italic, and "Click to see attachment" with an image icon or "Click to see
+      command" when the original has no text. Checked at 1920 x 1080 on Low iq
+      gaymers #yap-yap against the live DOM (sizes, colours, opacity).
+      Remaining differences: the server tag chip after the name (next item);
+      gradient role names draw flat; the connector does not brighten when the
+      line is hovered over the text, only over itself; rows with a reply may be
+      a few pixels off the live spacing; "Message could not be loaded" (original
+      not fetched) is shown as deleted; the deleted variant was not on screen in
+      the live channel so it is unverified against it.
 - [ ] Server tag chip (guild badge and four letter tag) after names in
       messages, reply lines, the member list, the DM list and the DM header.
       The model already parses `primary_guild`; only the profile card shows it.

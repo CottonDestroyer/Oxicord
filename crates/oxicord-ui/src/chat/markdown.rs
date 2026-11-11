@@ -217,6 +217,50 @@ pub fn render(blocks: &[Block], opts: &Options, window: &mut Window, cx: &mut Ap
     column.into_any_element()
 }
 
+/// The first line of a message as the reply line quotes it: mentions and
+/// timestamps resolved, custom emoji as small pictures, nothing but one line.
+/// `None` when the message has no text to quote.
+pub fn preview(blocks: &[Block], opts: &Options, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+    let content: &[Inline] = match blocks.first()? {
+        Block::Paragraph(c) | Block::Subtext(c) => c,
+        Block::Heading { content, .. } => content,
+        Block::List { items, .. } => items.first()?,
+        Block::Quote(inner) => match inner.first()? {
+            Block::Paragraph(c) | Block::Subtext(c) => c,
+            _ => return None,
+        },
+        Block::Code { code, .. } => {
+            let line = code.lines().next().unwrap_or_default().to_owned();
+            return Some(div().font_family(MONO).child(line).into_any_element());
+        }
+    };
+    let content = &content[..content.iter().position(|i| matches!(i, Inline::LineBreak)).unwrap_or(content.len())];
+
+    let mut row = div().flex().items_center().min_w_0().overflow_hidden().whitespace_nowrap();
+    let mut spoilers = 0;
+    let mut from = 0;
+    let mut text_run = |row: gpui_kit::Div, to: usize, from: usize, window: &mut Window| {
+        if to <= from {
+            return row;
+        }
+        let id = SharedString::from(format!("reply-{}-{from}", opts.key));
+        row.child(text_element(id, &content[from..to], Base::default(), false, opts, &mut spoilers, window))
+    };
+    for (ix, inline) in content.iter().enumerate() {
+        let Inline::Emoji { id, name, .. } = inline else { continue };
+        row = text_run(row, ix, from, window);
+        from = ix + 1;
+        let url = cdn::emoji(*id, 48);
+        let image = opts.media.update(cx, |media, _| media.get(&url));
+        row = row.child(match image {
+            Some(image) => img(ImageSource::Image(image)).size(px(18.)).flex_none().mx(px(1.)).into_any_element(),
+            None => div().child(format!(":{name}:")).into_any_element(),
+        });
+    }
+    row = text_run(row, content.len(), from, window);
+    Some(row.into_any_element())
+}
+
 fn render_block(
     block: &Block,
     ix: usize,

@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 use oxicord_markdown::Block;
 use oxicord_media::cdn;
-use oxicord_model::{ChannelType, Emoji, Message, MessageType, Permissions, Snowflake, User};
+use oxicord_model::{ChannelType, Emoji, Message, MessageType, Permissions, RelationshipKind, Snowflake, User};
 use oxicord_settings::Key;
 use oxicord_store::Changes;
 
@@ -43,6 +43,12 @@ use crate::{
 /// Width of the avatar column, which grouped messages leave empty so the
 /// text lines up.
 const GUTTER: f32 = 40.;
+
+/// The line that joins a reply to the avatar under it.
+const SPINE: u32 = 0x383940;
+
+/// Height of the quoted line above a reply and the gap under it.
+const REPLY_HEIGHT: f32 = 22.;
 
 mod commands;
 mod components;
@@ -1156,6 +1162,41 @@ impl ChatView {
         markdown::render(&blocks, &options, window, cx)
     }
 
+    /// What a reply line quotes of the message it answers.
+    fn quoted(&mut self, message: &Message, window: &mut Window, cx: &mut Context<Self>) -> Quoted {
+        let Some(original) = message.referenced_message.as_deref() else {
+            return Quoted::Deleted;
+        };
+        let blocked = self.session.read(cx).store.relationship(original.author.id) == Some(RelationshipKind::Blocked);
+        if blocked {
+            return Quoted::Blocked;
+        }
+
+        let blocks = oxicord_markdown::parse(&original.content);
+        let names = self.names_for(original, &blocks, cx);
+        let prefs = self.view_prefs(cx);
+        let options = Options {
+            names: &names,
+            revealed: &HashSet::new(),
+            media: &self.media,
+            now: Utc::now(),
+            offset: *Local::now().offset(),
+            hour12: prefs.hour12,
+            reveal_spoilers: prefs.reveal_spoilers,
+            edited: false,
+            key: original.id.0 ^ message.id.0.rotate_left(17),
+            on_spoiler: Rc::new(|_, _, _| {}),
+        };
+        if let Some(text) = markdown::preview(&blocks, &options, window, cx) {
+            return Quoted::Text(text);
+        }
+        if original.attachments.is_empty() && (original.author.bot || original.application_id.is_some()) {
+            Quoted::Placeholder { text: "Click to see command", trailing_icon: false }
+        } else {
+            Quoted::Placeholder { text: "Click to see attachment", trailing_icon: true }
+        }
+    }
+
     /// The reader's preferences that change how a message is drawn.
     fn view_prefs(&self, cx: &App) -> ViewPrefs {
         let account = &self.session.read(cx).account;
@@ -1333,6 +1374,7 @@ impl ChatView {
                 .and_then(|c| self.session.read(cx).store.channel(c))
                 .is_some_and(|c| !c.kind.is_thread());
 
+        let has_reply = message.kind == MessageType::Reply || message.referenced_message.is_some();
         let prefs = self.view_prefs(cx);
         let (author, name_color) = self.author_look(&message.author, message.guild_id, cx);
         let reply_look = message
@@ -1385,6 +1427,17 @@ impl ChatView {
         };
 
         let mut body = div().flex_1().min_w_0().flex().flex_col().line_height(px(22.));
+        let replied_to = message.message_reference.as_ref().and_then(|r| r.message_id);
+        let open_original = cx.listener(move |this, _: &ClickEvent, _, cx| {
+            if let Some(original) = replied_to {
+                this.focus_message(original, cx);
+            }
+        });
+        let quoted = if has_reply { self.quoted(&message, window, cx) } else { Quoted::Deleted };
+        // The quoted line is the top of the message, above the name.
+        if let Some(reply) = reply_line(&message, reply_look, quoted, &self.media, open_original, cx) {
+            body = body.child(reply);
+        }
         if !grouped {
             body = body.child(
                 div()
@@ -1416,15 +1469,6 @@ impl ChatView {
                             .child(format::message_time(message.timestamp, Utc::now(), offset, prefs.hour12)),
                     ),
             );
-        }
-        let replied_to = message.message_reference.as_ref().and_then(|r| r.message_id);
-        let open_original = cx.listener(move |this, _: &ClickEvent, _, cx| {
-            if let Some(original) = replied_to {
-                this.focus_message(original, cx);
-            }
-        });
-        if let Some(reply) = reply_line(&message, reply_look, open_original) {
-            body = body.child(reply);
         }
         body = body.child(self.render_content(&message, window, cx));
         if let Some(files) = render_attachments(&message, &self.media, prefs.attachment_media, cx) {
@@ -1487,7 +1531,7 @@ impl ChatView {
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, _, cx| this.right_click_message(id, event, allowed, cx)),
             )
-            .child(left)
+            .child(div().flex_none().mt(px(if has_reply { REPLY_HEIGHT } else { 0. })).child(left))
             .child(body)
             .child(bar);
         if self.highlight == Some(id) {
@@ -2494,65 +2538,105 @@ fn divider(day: NaiveDate) -> impl IntoElement {
         .child(line())
 }
 
-/// The quoted line above a reply: who it answers and what they said.
+/// What the reply line quotes of the original message.
+enum Quoted {
+    /// The original was deleted.
+    Deleted,
+    /// Its author is blocked.
+    Blocked,
+    /// There is no text to show: a command's reply or a bare attachment.
+    Placeholder { text: &'static str, trailing_icon: bool },
+    Text(AnyElement),
+}
+
+/// The quoted line above a reply: who it answers and what they said, with the
+/// spine that connects it to the avatar below.
 fn reply_line(
     message: &Message,
     look: Option<(String, Option<u32>)>,
+    quoted: Quoted,
+    media: &Entity<Media>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &mut App,
 ) -> Option<AnyElement> {
     if message.kind != MessageType::Reply && message.referenced_message.is_none() {
         return None;
     }
 
-    let content = match &message.referenced_message {
-        Some(original) => {
-            let (name, color) = look.unwrap_or_else(|| (original.author.display_name().to_owned(), None));
-            div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .min_w_0()
+    let mut content = div().flex().items_center().min_w_0().flex_1().overflow_hidden();
+    if let Some(original) = &message.referenced_message {
+        let (name, color) = look.unwrap_or_else(|| (original.author.display_name().to_owned(), None));
+        content = if matches!(quoted, Quoted::Blocked) {
+            content.child(
+                div()
+                    .size(px(16.))
+                    .flex_none()
+                    .mr(px(4.))
+                    .rounded_full()
+                    .bg(rgb(theme::BG_PANEL))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icon("reply", 10., theme::TEXT)),
+            )
+        } else {
+            let url = cdn::user_avatar(original.author.id, original.author.avatar.as_deref(), 32);
+            content.child(div().mr(px(4.)).child(avatar(media, &url, 16., &name, cx)))
+        };
+        content = content
             .child(
                 div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(color.unwrap_or(theme::TEXT_MUTED)))
+                    .flex_none()
+                    .mr(px(4.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(color.unwrap_or(theme::TEXT_BRIGHT)))
+                    .opacity(0.64)
                     .child(format!("@{name}")),
             )
-            .child(div().truncate().child(snippet(&original.content)))
-            .into_any_element()
-        }
-        None => div()
-            .italic()
-            .child("Original message was deleted")
+            .children(original.author.bot.then(crate::member_list::app_badge).map(|b| b.mr(px(4.))));
+    }
+    let placeholder = |text: &str| div().italic().truncate().child(text.to_owned()).into_any_element();
+    content = content.child(match quoted {
+        Quoted::Deleted => placeholder("Original message was deleted"),
+        Quoted::Blocked => placeholder("Blocked message"),
+        Quoted::Placeholder { text, trailing_icon } => div()
+            .flex()
+            .items_center()
+            .child(placeholder(text))
+            .children(trailing_icon.then(|| div().ml(px(4.)).child(icon("image", 18., theme::TEXT))))
             .into_any_element(),
-    };
+        Quoted::Text(text) => text,
+    });
 
     Some(
         div()
             .id(("reply-line", message.id.0))
+            .relative()
             .flex()
             .items_center()
-            .gap_2()
-            .mb_1()
-            .text_size(px(13.))
-            .text_color(rgb(theme::TEXT_MUTED))
+            .h(px(18.))
+            .mb(px(4.))
+            .text_size(px(14.))
+            .line_height(px(18.))
+            .text_color(rgb(theme::TEXT))
             .cursor_pointer()
-            .hover(|s| s.text_color(rgb(theme::TEXT)))
             .on_click(on_click)
-            .child(icon("reply", 14., theme::TEXT_MUTED))
+            .child(
+                div()
+                    .absolute()
+                    .left(px(-37.))
+                    .top(px(8.))
+                    .w(px(33.))
+                    .h(px(12.))
+                    .border_t_2()
+                    .border_l_2()
+                    .border_color(rgb(SPINE))
+                    .rounded_tl(px(6.))
+                    .hover(|s| s.border_color(rgb(theme::TEXT_BRIGHT))),
+            )
             .child(content)
             .into_any_element(),
     )
-}
-
-/// One line of a quoted message, cut short.
-fn snippet(content: &str) -> String {
-    let line = content.lines().next().unwrap_or_default();
-    if line.is_empty() {
-        "Click to see attachment".to_owned()
-    } else {
-        line.to_owned()
-    }
 }
 
 /// Joins, pins and other notices the server posts as messages.
