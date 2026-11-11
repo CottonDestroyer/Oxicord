@@ -12,7 +12,7 @@ use gpui_kit::{
 use oxicord_media::cdn;
 use oxicord_model::{
     ChannelType, MAX_ONBOARDING_OPTIONS, Onboarding, OnboardingOption, OnboardingPrompt, Permissions, Snowflake,
-    WelcomeChannel, WelcomeScreen, template_body,
+    WelcomeChannel, WelcomeScreen, members_label, template_body,
     admin::{AutoModRule, IntegrationEntry, WebhookEntry, action_name, keyword_rule_body, parse_keywords},
     welcome::MAX_WELCOME_CHANNELS,
 };
@@ -211,6 +211,7 @@ enum Armed {
     Rule(Snowflake),
     Integration(Snowflake),
     Template,
+    Prune,
 }
 
 /// The line under an integration's name: its kind, the linked account, the
@@ -317,6 +318,7 @@ pub struct ServerSettings {
     template_name: Entity<InputState>,
     template_description: Entity<InputState>,
     template_seeded: bool,
+    prune_days: u32,
     role: Option<Snowflake>,
     role_perms: Permissions,
     role_hoist: bool,
@@ -372,6 +374,7 @@ impl ServerSettings {
             template_name: input(cx, window, "Template name"),
             template_description: input(cx, window, "What is this template for?"),
             template_seeded: false,
+            prune_days: 7,
             session,
             media,
             backend,
@@ -447,6 +450,9 @@ impl ServerSettings {
         self.onboarding = None;
         self.onboarding_menu = false;
         self.template_seeded = false;
+        if page == Page::Members {
+            self.session.update(cx, |s, _| s.admin.prune = Load::Idle);
+        }
         let Some(guild) = self.guild else { return };
         let request = match page {
             Page::ServerTemplate => Some(AdminRequest::LoadTemplates(guild)),
@@ -763,6 +769,86 @@ impl ServerSettings {
             .into_any_element()
     }
 
+    /// The prune section of the Members page: pick the days, count who would
+    /// go, then remove them with a second click.
+    fn prune_section(&mut self, guild: Snowflake, cx: &mut Context<Self>) -> AnyElement {
+        let days = self.prune_days;
+        let mut picker = div().flex().gap_2();
+        for (n, id, label) in [(1, "prune-1d", "1 day"), (7, "prune-7d", "7 days"), (30, "prune-30d", "30 days")] {
+            let tone = if days == n { Tone::Primary } else { Tone::Plain };
+            picker = picker.child(button(id, label, tone, {
+                let view = cx.weak_entity();
+                move |_, _, cx| {
+                    view.update(cx, |this, cx| {
+                        this.prune_days = n;
+                        this.armed = None;
+                        this.session.update(cx, |s, _| s.admin.prune = Load::Idle);
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            }));
+        }
+        let mut rows = vec![
+            widgets::blurb("Remove members who have not been seen for a while and have no roles. Count them first, nothing is removed until you confirm.").into_any_element(),
+            picker.into_any_element(),
+            div()
+                .flex()
+                .child(button("prune-preview", "Count Members", Tone::Plain, {
+                    let view = cx.weak_entity();
+                    move |_, _, cx| {
+                        view.update(cx, |this, cx| {
+                            this.armed = None;
+                            let days = this.prune_days;
+                            this.send(AdminRequest::PreviewPrune { guild, days }, cx);
+                        })
+                        .ok();
+                    }
+                }))
+                .into_any_element(),
+        ];
+        match self.session.read(cx).admin.prune.clone() {
+            Load::Idle => {}
+            Load::Loading => rows.push(status_line("loader", "Working...".into(), theme::TEXT_MUTED)),
+            Load::Failed(error) => rows.push(status_line("circle-alert", error, theme::DANGER)),
+            Load::Ready(state) if state.done => rows.push(status_line(
+                "check",
+                format!("Pruned {}.", members_label(state.count)),
+                theme::TEXT_MUTED,
+            )),
+            Load::Ready(state) => {
+                let text = format!(
+                    "{} would be removed after {} without activity.",
+                    members_label(state.count),
+                    if state.days == 1 { "1 day".to_owned() } else { format!("{} days", state.days) },
+                );
+                rows.push(status_line("circle-alert", text, theme::TEXT_MUTED));
+                if state.count > 0 {
+                    let armed = self.armed == Some(Armed::Prune);
+                    let label: &'static str = if armed { "Click again to prune" } else { "Prune Members" };
+                    rows.push(
+                        div()
+                            .flex()
+                            .child(button("prune-confirm", label, Tone::Danger, {
+                                let view = cx.weak_entity();
+                                move |_, _, cx| {
+                                    view.update(cx, |this, cx| {
+                                        if this.confirm(Armed::Prune, cx) {
+                                            let days = this.prune_days;
+                                            this.send(AdminRequest::PruneMembers { guild, days }, cx);
+                                        }
+                                    })
+                                    .ok();
+                                }
+                            }))
+                            .into_any_element(),
+                    );
+                }
+            }
+        }
+        group("Prune", rows).into_any_element()
+    }
+
     fn members(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(guild) = self.guild else { return div().into_any_element() };
         let members = self
@@ -782,6 +868,7 @@ impl ServerSettings {
                 "Members",
                 vec![widgets::info_row("Member Count", members)],
             ))
+            .child(self.prune_section(guild, cx))
             .into_any_element()
     }
 

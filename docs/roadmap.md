@@ -876,7 +876,19 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       so layout and wording are a best guess, and the web client's
       "Template has been synced" toasts and the dirty dot on the settings
       button are not there. Never sent. Seen on screen (dev `settings` command): only the 403 state, the one server this account manages lacks Manage Server, so the loaded layout is still unseen.)
-- [ ] Prune members: count preview and confirm
+- [x] Prune members (a Prune group on the Members page: 1, 7 or 30 days, Count
+      Members sends `GET /guilds/:id/prune?days=N`, then the page says how many
+      would go and offers a two click Prune Members that sends `POST
+      /guilds/:id/prune` with `{days, compute_prune_count: true}` and reports
+      how many went. Changing the days or reopening the page clears the
+      result. Unit tested: the body and its day clamp, the answer with or
+      without a count, the plural label, per server event handling. Seen on
+      screen: the group, the day picker and the live count request, which this
+      account gets a 403 for (no Kick Members), shown as an error. Never sent
+      as a write and the count and confirm states are unseen. Missing: the
+      include-roles option, the async v2 route and its `GUILD_PRUNE_UPDATE`
+      progress event, and the settings chunk that draws the real dialog is not
+      in the reference, so layout and wording are a best guess.)
 
 ## Voice
 

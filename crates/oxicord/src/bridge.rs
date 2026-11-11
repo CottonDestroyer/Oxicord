@@ -1091,6 +1091,15 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
             check(api.delete_guild_template(guild, &code).await, "delete that template").await;
             say(AdminEvent::Templates(guild, api.guild_templates(guild).await.map_err(text))).await;
         }
+        AdminRequest::PreviewPrune { guild, days } => {
+            let found = api.prune_count(guild, days).await.map_err(text);
+            say(AdminEvent::Prune(guild, days, false, found.map(|r| r.pruned.unwrap_or(0)))).await;
+        }
+        AdminRequest::PruneMembers { guild, days } => {
+            let body = oxicord_model::prune_body(days);
+            let done = api.prune_members(guild, &body).await.map_err(text);
+            say(AdminEvent::Prune(guild, days, true, done.map(|r| r.pruned.unwrap_or(0)))).await;
+        }
         AdminRequest::LoadIntegrations(guild) => {
             say(AdminEvent::Integrations(guild, api.guild_integrations(guild).await.map_err(text))).await;
         }

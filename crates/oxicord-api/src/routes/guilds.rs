@@ -153,6 +153,38 @@ impl ApiClient {
         .await
     }
 
+    /// How many members a prune of `days` inactive days would remove. Read only.
+    pub async fn prune_count(
+        &self,
+        guild: Snowflake,
+        days: u32,
+    ) -> Result<oxicord_model::PruneResult, ApiError> {
+        self.json(
+            Method::GET,
+            &format!("/guilds/{guild}/prune?days={days}"),
+            "GET /guilds/:id/prune",
+            None,
+        )
+        .await
+    }
+
+    /// Removes members inactive for the days in `body`, from
+    /// `oxicord_model::prune_body`. Admin write: built and unit tested, not
+    /// sent from the real account.
+    pub async fn prune_members(
+        &self,
+        guild: Snowflake,
+        body: &Value,
+    ) -> Result<oxicord_model::PruneResult, ApiError> {
+        self.json(
+            Method::POST,
+            &format!("/guilds/{guild}/prune"),
+            "POST /guilds/:id/prune",
+            Some(body),
+        )
+        .await
+    }
+
     /// The templates made from a server. Discord allows one per server.
     pub async fn guild_templates(
         &self,

@@ -32,6 +32,7 @@ pub mod role;
 pub mod scheduled_event;
 pub mod search;
 pub mod snowflake;
+pub mod prune;
 pub mod template;
 pub mod user;
 pub mod verification;
@@ -77,6 +78,7 @@ pub use role::Role;
 pub use scheduled_event::{EventPlace, EventRsvp, EventStatus, EventUserChange, EventUserCounts, ScheduledEvent};
 pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
+pub use prune::{PRUNE_DAYS, PruneResult, PruneState, members_label, prune_body};
 pub use template::{GuildTemplate, MAX_TEMPLATE_DESCRIPTION, MAX_TEMPLATE_NAME, template_body};
 pub use user::{
     AccountMetadata, Badge, Game, GameEntry, GameEntrySubmission, LinkedAccount, MutualGuild, Profile,

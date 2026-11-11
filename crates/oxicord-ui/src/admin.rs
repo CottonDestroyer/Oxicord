@@ -67,6 +67,10 @@ pub enum AdminRequest {
     EditTemplate { guild: Snowflake, code: String, body: Value },
     SyncTemplate { guild: Snowflake, code: String },
     DeleteTemplate { guild: Snowflake, code: String },
+    /// How many members a prune of this many days would remove.
+    PreviewPrune { guild: Snowflake, days: u32 },
+    /// Removes them. Admin write, never sent from the real account in tests.
+    PruneMembers { guild: Snowflake, days: u32 },
     LoadWebhooks(Snowflake),
     CreateWebhook { guild: Snowflake, channel: Snowflake, name: String },
     EditWebhook { guild: Snowflake, webhook: Snowflake, name: String, channel: Snowflake },
@@ -84,6 +88,8 @@ pub enum AdminEvent {
     Welcome(Snowflake, Result<oxicord_model::WelcomeScreen, String>),
     OnboardingSetup(Snowflake, Result<oxicord_model::Onboarding, String>),
     Templates(Snowflake, Result<Vec<oxicord_model::GuildTemplate>, String>),
+    /// A prune preview (`done` false) or its result (true), with its days.
+    Prune(Snowflake, u32, bool, Result<u64, String>),
     Audit(Snowflake, Result<AuditLog, String>),
     MemberVerification(Snowflake, Box<Result<oxicord_model::VerificationInfo, String>>),
     /// How answering the screening form went.
@@ -102,6 +108,7 @@ pub struct AdminState {
     pub welcome: Load<oxicord_model::WelcomeScreen>,
     pub onboarding: Load<oxicord_model::Onboarding>,
     pub templates: Load<Vec<oxicord_model::GuildTemplate>>,
+    pub prune: Load<oxicord_model::PruneState>,
     pub audit: Load<AuditLog>,
 }
 
@@ -123,6 +130,9 @@ impl AdminState {
             AdminEvent::Welcome(g, r) if self.guild == Some(g) => self.welcome = Load::from_result(r),
             AdminEvent::OnboardingSetup(g, r) if self.guild == Some(g) => self.onboarding = Load::from_result(r),
             AdminEvent::Templates(g, r) if self.guild == Some(g) => self.templates = Load::from_result(r),
+            AdminEvent::Prune(g, days, done, r) if self.guild == Some(g) => {
+                self.prune = Load::from_result(r.map(|count| oxicord_model::PruneState { days, count, done }));
+            }
             AdminEvent::Audit(g, r) if self.guild == Some(g) => self.audit = Load::from_result(r),
             AdminEvent::MemberVerification(..) | AdminEvent::Verified(..) => {}
             _ => {}
@@ -149,6 +159,19 @@ mod tests {
 
     fn user(id: u64) -> oxicord_model::User {
         serde_json::from_value(serde_json::json!({ "id": id.to_string(), "username": "u" })).unwrap()
+    }
+
+    #[test]
+    fn a_prune_answer_lands_for_the_open_server_only() {
+        let mut state = AdminState::default();
+        state.switch_to(Snowflake(1));
+        state.apply(AdminEvent::Prune(Snowflake(2), 7, false, Ok(4)));
+        assert!(matches!(state.prune, Load::Idle), "another server's answer is dropped");
+        state.apply(AdminEvent::Prune(Snowflake(1), 7, false, Ok(4)));
+        let Load::Ready(preview) = &state.prune else { panic!("not loaded") };
+        assert_eq!((preview.days, preview.count, preview.done), (7, 4, false));
+        state.apply(AdminEvent::Prune(Snowflake(1), 7, true, Err("no".into())));
+        assert!(matches!(state.prune, Load::Failed(_)));
     }
 
     #[test]

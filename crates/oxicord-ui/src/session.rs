@@ -955,6 +955,10 @@ impl Session {
                 self.admin.switch_to(*g);
                 self.admin.templates = Load::Loading;
             }
+            R::PreviewPrune { guild: g, .. } | R::PruneMembers { guild: g, .. } => {
+                self.admin.switch_to(*g);
+                self.admin.prune = Load::Loading;
+            }
             R::LoadAudit(g) => {
                 self.admin.switch_to(*g);
                 self.admin.audit = Load::Loading;
