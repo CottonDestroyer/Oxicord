@@ -68,6 +68,8 @@ pub(crate) enum Command {
     SetInputDevice(Option<String>),
     SetOutputDevice(Option<String>),
     SetInputVolume(u8),
+    /// Whether the microphone goes through noise suppression.
+    SetNoiseSuppression(bool),
     /// Whether the microphone opens only while the talk key is held.
     SetPushToTalk(bool),
     /// The talk key went down or up.
@@ -105,6 +107,11 @@ impl VoiceHandle {
     /// Sends the microphone at this percent of its level, 0 to 100.
     pub fn set_input_volume(&self, percent: u8) {
         let _ = self.tx.send(Command::SetInputVolume(percent));
+    }
+
+    /// Takes background noise out of the microphone before it is sent.
+    pub fn set_noise_suppression(&self, on: bool) {
+        let _ = self.tx.send(Command::SetNoiseSuppression(on));
     }
 
     /// Plays this person at this percent of how loud they were sent, 0 to 200.

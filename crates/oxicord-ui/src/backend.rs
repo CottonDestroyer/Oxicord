@@ -414,6 +414,8 @@ pub enum Command {
     SetAudioDevices { input: Option<String>, output: Option<String> },
     /// The Input Volume setting, 0 to 100 percent of the microphone.
     SetInputVolume(u8),
+    /// Whether the microphone is cleaned of background noise.
+    SetNoiseSuppression(bool),
     /// The key that opens the microphone while held, or none to talk by voice
     /// activity.
     SetPushToTalk(Option<String>),

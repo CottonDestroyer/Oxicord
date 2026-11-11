@@ -19,7 +19,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
     Command, VoiceEvent, VoiceParams,
-    capture::{Capture, Gate, with_volume},
+    capture::{Capture, Denoiser, Gate, with_volume},
     dave::{self, Dave, Out},
     opus::{Decoder, Encoder, FRAME},
     playback::{MAX_USER_VOLUME, Playback, with_gain},
@@ -138,6 +138,8 @@ struct Call {
     output_device: Option<String>,
     encoder: Option<Encoder>,
     gate: Gate,
+    /// Noise suppression, which exists only while it is switched on.
+    denoiser: Option<Denoiser>,
     /// The input volume slider, 0 to 100.
     input_volume: u8,
     /// How loud each person is played, by user id. Missing means 100.
@@ -188,6 +190,7 @@ async fn serve(
         output_device: None,
         encoder: None,
         gate: Gate::default(),
+        denoiser: None,
         input_volume: 100,
         user_volumes: HashMap::new(),
         push_to_talk: false,
@@ -341,6 +344,7 @@ impl Call {
             Some(Command::SetInputDevice(device)) => self.set_input_device(device),
             Some(Command::SetOutputDevice(device)) => self.set_output_device(device),
             Some(Command::SetInputVolume(percent)) => self.set_input_volume(percent),
+            Some(Command::SetNoiseSuppression(on)) => self.denoiser = on.then(Denoiser::default),
             Some(Command::SetPushToTalk(on)) => self.set_push_to_talk(on, out),
             Some(Command::SetTalkKey(down)) => self.set_talk_key(down, out),
             Some(Command::SetUserVolume { user, percent }) => {
@@ -476,6 +480,15 @@ impl Call {
         if self.muted || frame.len() != FRAME {
             return;
         }
+        // Cleaned first, so the gate listens to the voice and not the fan.
+        let cleaned;
+        let frame = match self.denoiser.as_mut() {
+            Some(denoiser) => {
+                cleaned = denoiser.clean(frame);
+                &cleaned[..]
+            }
+            None => frame,
+        };
         // Holding the key sends everything, so the gate is not asked.
         let sending = sends(self.push_to_talk, self.key_down, || self.gate.passes(frame));
         if sending {

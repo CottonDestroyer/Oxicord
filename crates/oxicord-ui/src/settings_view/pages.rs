@@ -864,6 +864,16 @@ impl SettingsView {
                     .child(format!("{percent}%")),
             )
             .into_any_element();
+        let suppression = switch_row(
+            "noise-suppression",
+            "Enable noise suppression",
+            Some("Takes keyboard clatter, fans and hiss out of your microphone. Uses RNNoise, not Krisp."),
+            self.session.read(cx).settings.noise_suppression,
+            cx.listener(|this, _: &ClickEvent, _, cx| {
+                let backend = this.backend.clone();
+                this.session.update(cx, |s, cx| s.change_settings(&backend, |st| st.noise_suppression = !st.noise_suppression, cx));
+            }),
+        );
         let (on, key) = {
             let settings = &self.session.read(cx).settings;
             (settings.push_to_talk, settings.push_to_talk_key.clone())
@@ -946,6 +956,8 @@ impl SettingsView {
             .child(title("Voice & Video"))
             .child(group("Input Volume", vec![slider]))
             .child(blurb("How loud your microphone is for everyone in the call."))
+            .child(group("Noise Suppression", vec![suppression]))
+            .child(blurb("Applies before your voice is sent, so everyone in the call hears it."))
             .child(group("Input Mode", vec![toggle, shortcut]))
             .child(blurb(
                 "Push to talk needs a shortcut. Any letter, number or function key works. Escape cancels.",

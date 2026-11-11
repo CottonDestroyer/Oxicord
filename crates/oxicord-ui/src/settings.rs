@@ -13,6 +13,8 @@ pub struct Settings {
     /// How loud the microphone is sent in a call, 0 to 100 like the official
     /// client's Input Volume slider.
     pub input_volume: u8,
+    /// Clean the microphone of background noise before it is sent.
+    pub noise_suppression: bool,
     /// How loud each person is played to us, 0 to 200, by user id. Anyone
     /// at the normal 100 is left out.
     pub user_volumes: BTreeMap<u64, u16>,
@@ -29,6 +31,7 @@ impl Default for Settings {
             desktop_notifications: true,
             show_members: true,
             input_volume: 100,
+            noise_suppression: false,
             user_volumes: BTreeMap::new(),
             push_to_talk: false,
             push_to_talk_key: String::new(),

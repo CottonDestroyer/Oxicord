@@ -50,6 +50,8 @@ struct Inner {
     output_device: Option<String>,
     /// The Input Volume setting, 0 to 100.
     input_volume: u8,
+    /// Whether the microphone goes through noise suppression.
+    noise_suppression: bool,
     /// How loud each person is played, 0 to 200, by user id.
     user_volumes: HashMap<u64, u16>,
     /// The push to talk key, while push to talk is on.
@@ -81,6 +83,7 @@ impl Voice {
                 input_device: None,
                 output_device: None,
                 input_volume: 100,
+                noise_suppression: false,
                 user_volumes: HashMap::new(),
                 talk_key: None,
                 talk_key_down: false,
@@ -138,6 +141,7 @@ impl Voice {
             output_device: inner.output_device.clone(),
         });
         handle.set_input_volume(inner.input_volume);
+        handle.set_noise_suppression(inner.noise_suppression);
         for (user, percent) in &inner.user_volumes {
             handle.set_user_volume(*user, *percent);
         }
@@ -277,6 +281,16 @@ impl Voice {
         inner.input_volume = percent.min(100);
         if let Some(call) = &inner.call {
             call.set_input_volume(inner.input_volume);
+        }
+    }
+
+    /// Cleans the microphone of background noise, for this call and the next
+    /// ones.
+    pub fn set_noise_suppression(&self, on: bool) {
+        let mut inner = self.lock();
+        inner.noise_suppression = on;
+        if let Some(call) = &inner.call {
+            call.set_noise_suppression(on);
         }
     }
 

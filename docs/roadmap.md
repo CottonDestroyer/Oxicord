@@ -966,8 +966,18 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       call. Missing: the pop out has no device menus, camera or share
       buttons, and no right click menu on a tile, and it is a native
       titlebar window rather than the official always-on-top mini window.)
-- [ ] Noise suppression toggle (Krisp is proprietary: use RNNoise and note
+- [x] Noise suppression toggle (Krisp is proprietary: use RNNoise and note
       the difference)
+      (a Noise Suppression switch on the Voice & Video page, saved with the
+      settings and off by default. It runs the microphone through RNNoise
+      via the pure Rust nnnoiseless crate, two 10 ms halves per 20 ms frame,
+      before the voice gate, input volume and Opus, and applies to the
+      running call at once. The page says it is RNNoise, not Krisp, which
+      cleans differently. A unit test checks steady noise is quieted and the
+      frame length kept. The page and the saved setting were checked live and
+      a call was joined with it on, but muted, so the denoised microphone
+      audio itself was not heard. Missing: the official Krisp and Standard
+      choice, and the official default of on.)
 
 ## Out of scope
 

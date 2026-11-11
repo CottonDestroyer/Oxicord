@@ -45,6 +45,43 @@ pub fn with_volume(frame: &[i16], percent: u8) -> Vec<i16> {
     frame.iter().map(|&s| (i32::from(s) * percent / 100) as i16).collect()
 }
 
+/// RNNoise, which takes the hiss, fans and keyboard out of the microphone.
+/// It works on 10 ms at a time, so a 20 ms frame goes through in two halves.
+/// The official client uses Krisp, which is proprietary, so this is the
+/// closest thing that can ship in the open.
+pub struct Denoiser {
+    state: Box<nnnoiseless::DenoiseState<'static>>,
+}
+
+impl Default for Denoiser {
+    fn default() -> Self {
+        Self { state: nnnoiseless::DenoiseState::new() }
+    }
+}
+
+impl Denoiser {
+    /// The same frame with the noise taken out.
+    pub fn clean(&mut self, frame: &[i16]) -> Vec<i16> {
+        const HALF: usize = nnnoiseless::FRAME_SIZE;
+        let mut out = Vec::with_capacity(frame.len());
+        let mut input = [0.0f32; HALF];
+        let mut cleaned = [0.0f32; HALF];
+        for part in frame.chunks(HALF) {
+            if part.len() < HALF {
+                // Not a whole 10 ms: nothing to run it on.
+                out.extend_from_slice(part);
+                continue;
+            }
+            for (to, &from) in input.iter_mut().zip(part) {
+                *to = f32::from(from);
+            }
+            self.state.process_frame(&mut cleaned, &input);
+            out.extend(cleaned.iter().map(|&s| s.round().clamp(-32768.0, 32767.0) as i16));
+        }
+        out
+    }
+}
+
 /// Turns whatever the device delivers into 20 ms mono frames at 48 kHz:
 /// channels are averaged and the rate is converted by linear interpolation.
 pub struct Framer {
@@ -223,6 +260,29 @@ mod tests {
         assert_eq!(with_volume(&frame, 250), frame, "above 100 is capped");
     }
 
+
+    #[test]
+    fn the_denoiser_keeps_the_length_and_quiets_steady_noise() {
+        let mut denoiser = Denoiser::default();
+        let mut seed = 12345u32;
+        let mut noise = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            ((seed >> 16) as i16 % 800) as i16
+        };
+        let rms = |frame: &[i16]| (frame.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>() / frame.len() as f64).sqrt();
+        let (mut before, mut after) = (0.0, 0.0);
+        for i in 0..100 {
+            let frame: Vec<i16> = (0..FRAME).map(|_| noise()).collect();
+            let cleaned = denoiser.clean(&frame);
+            assert_eq!(cleaned.len(), FRAME);
+            // The first frames are the model warming up.
+            if i >= 50 {
+                before += rms(&frame);
+                after += rms(&cleaned);
+            }
+        }
+        assert!(after < before * 0.5, "{after} vs {before}");
+    }
     #[test]
     fn the_gate_opens_on_speech_and_closes_after_the_hangover() {
         let mut gate = Gate::default();

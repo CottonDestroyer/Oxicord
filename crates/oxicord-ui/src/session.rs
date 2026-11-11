@@ -447,6 +447,7 @@ impl Session {
         };
         // The saved slider position, which the call has not heard of yet.
         backend.send(Command::SetInputVolume(self.settings.input_volume));
+        backend.send(Command::SetNoiseSuppression(self.settings.noise_suppression));
         backend.send(Command::SetPushToTalk(self.settings.talk_key()));
         for (user, percent) in &self.settings.user_volumes {
             backend.send(Command::SetUserVolume { user: Snowflake(*user), percent: *percent });
@@ -1047,6 +1048,7 @@ impl Session {
         change(&mut self.settings);
         backend.send(Command::SaveSettings(self.settings.clone()));
         backend.send(Command::SetInputVolume(self.settings.input_volume));
+        backend.send(Command::SetNoiseSuppression(self.settings.noise_suppression));
         backend.send(Command::SetPushToTalk(self.settings.talk_key()));
         cx.notify();
     }
