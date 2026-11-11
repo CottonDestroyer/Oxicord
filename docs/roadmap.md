@@ -1067,8 +1067,25 @@ the build moves.
       and the date shape is fixed to the US short form while live follows the
       browser locale. The 12 hour or 24 hour clock follows the account setting,
       so our window shows 24 hour where the live browser shows 12 hour.
-- [ ] Blocked and ignored messages collapse into "N blocked messages - Show"
+- [x] Blocked and ignored messages collapse into "N blocked messages - Show"
       rows (the live client groups consecutive ones). Verify what ours does.
+      Done: live checked in the DM with a blocked account (two bars, one per
+      day, each "1 blocked message" with a slash circle in the 72px gutter, 16px
+      text, "Show" in the muted color, 32px from the day line to the text; once
+      opened the action reads "Hide" and the bar and message sit on one 12%
+      panel). Ours had nothing: blocked authors were drawn as normal rows. Now
+      consecutive blocked messages fold into one `Row::Blocked` bar (split by a
+      day divider, the NEW line or a visible message), clicking the action opens
+      or closes the run, and the opened messages share the panel. The open state
+      was checked against our window once; the closed state matches live.
+      Remaining: ignored users are not modelled in the store, so only blocked
+      authors fold; the action has no hover style (not captured live); the
+      panel does not cover the gap between messages exactly; the day divider
+      above paints 24px low in our list, so the bar adds 16px of top padding to
+      land on live's spacing, and the gap below a bar is about 6px more than
+      live; live shows a blocked-DM composer ("You cannot send messages to a user
+      you have blocked." and Unblock) and an invite embed under the revealed
+      message, neither of which ours does.
 - [ ] Search box in the channel header: placeholder "Search <server name>",
       wider than ours, with the filter chips dropdown on focus. Ours is a small
       "Search" field.

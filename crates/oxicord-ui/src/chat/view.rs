@@ -88,6 +88,10 @@ pub struct ChatView {
     confirm_delete: Option<Snowflake>,
     /// Spoilers the reader has clicked open, as (message, index in message).
     revealed: HashSet<(Snowflake, usize)>,
+    /// Runs of blocked messages the reader opened, by the id of their first message.
+    opened_runs: HashSet<Snowflake>,
+    /// Messages drawn on an opened run's panel.
+    run_members: HashSet<Snowflake>,
     /// The message whose quick-reaction row is open.
     picker_for: Option<Snowflake>,
     /// A message briefly marked after jumping to it.
@@ -233,6 +237,8 @@ impl ChatView {
     alt_inputs: Vec::new(),
             confirm_delete: None,
             revealed: HashSet::new(),
+            opened_runs: HashSet::new(),
+            run_members: HashSet::new(),
             picker_for: None,
             open_menu: None,
             highlight: None,
@@ -627,10 +633,12 @@ impl ChatView {
     /// changed so the scroll position and measured heights survive.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         let offset = *Local::now().offset();
+        let store = &self.session.read(cx).store;
+        let blocked = |m: &Message| store.relationship(m.author.id) == Some(RelationshipKind::Blocked);
         let mut new = self
             .channel
-            .and_then(|c| self.session.read(cx).store.timeline(c))
-            .map(|t| build_rows(t.messages(), offset, self.unread_after))
+            .and_then(|c| store.timeline(c))
+            .map(|t| build_rows(t.messages(), offset, self.unread_after, &blocked, &self.opened_runs))
             .unwrap_or_default();
         if self.shows_intro(cx) {
             new.insert(0, Row::Intro);
@@ -641,6 +649,17 @@ impl ChatView {
             // Same rows, but a message may have been edited or reacted to,
             // which changes its height.
             None => self.list.remeasure(),
+        }
+        self.run_members.clear();
+        let mut open = false;
+        for row in &new {
+            match row {
+                Row::Blocked { shown, .. } => open = *shown,
+                Row::Message { id, .. } if open => {
+                    self.run_members.insert(*id);
+                }
+                _ => open = false,
+            }
         }
         self.rows = new;
     }
@@ -1336,11 +1355,28 @@ impl ChatView {
             Some(Row::Intro) => self.render_intro(cx),
             Some(Row::Divider(day)) => divider(day).into_any_element(),
             Some(Row::NewMessages) => new_messages_line().into_any_element(),
+            Some(Row::Blocked { first, count, shown }) => blocked_bar(
+                first,
+                count,
+                shown,
+                cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    if !this.opened_runs.remove(&first) {
+                        this.opened_runs.insert(first);
+                    }
+                    this.rebuild(cx);
+                    cx.notify();
+                }),
+            )
+            .into_any_element(),
             Some(Row::Message { id, grouped }) => match self.message(id, cx) {
                 Some(message) => {
                     let element = self.render_message(message, grouped, window, cx);
                     self.fetch_unknown_users(cx);
-                    element
+                    if self.run_members.contains(&id) {
+                        div().w_full().bg(rgba(RUN_PANEL)).child(element).into_any_element()
+                    } else {
+                        element
+                    }
                 }
                 None => div().into_any_element(),
             },
@@ -2575,6 +2611,60 @@ fn new_messages_line() -> impl IntoElement {
                 .child("NEW"),
         )
 }
+
+/// The row a run of blocked messages folds into: "3 blocked messages", then a dash and "Show",
+/// which opens or closes the run when its action is clicked. An opened run
+/// sits on a pale panel together with its messages.
+fn blocked_bar(
+    first: Snowflake,
+    count: usize,
+    shown: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let noun = if count == 1 { "message" } else { "messages" };
+    let label = format!("{count} blocked {noun} \u{2014} ");
+    let action = if shown { "Hide" } else { "Show" };
+    // Live leaves 17px above the row and a day divider with no bottom margin
+    // above that. Ours paints its divider 24px lower than its slot, so the
+    // 16px it overlaps the row by is added back here.
+    div().w_full().pt(px(33.)).child(
+        div()
+            .w_full()
+            .bg(rgba(if shown { RUN_PANEL } else { 0 }))
+            .child(
+            div()
+                .relative()
+                .w_full()
+                .flex()
+                .pl(px(72.))
+                .pr(px(16.))
+                .py(px(2.))
+                .text_size(px(16.))
+                .line_height(px(22.))
+                .text_color(rgb(theme::TEXT))
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(28.))
+                        .top(px(5.))
+                        .child(icon("slash-circle", 16., theme::TEXT_FAINT)),
+                )
+                .child(label)
+                .child(
+                    div()
+                        .id(("blocked-run", first.0))
+                        .cursor_pointer()
+                        .text_color(rgb(theme::TEXT_FAINT))
+                        .on_click(on_click)
+                        .child(action),
+                ),
+        )
+    )
+}
+
+/// The panel behind an opened run of blocked messages: the muted text color
+/// at 12% opacity.
+const RUN_PANEL: u32 = 0x96979e1f;
 
 fn divider(day: NaiveDate) -> impl IntoElement {
     let line = || div().flex_1().h(px(1.)).bg(rgb(theme::BORDER));
