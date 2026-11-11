@@ -68,13 +68,39 @@ impl Talkers {
 pub(crate) struct Closed {
     pub code: Option<u16>,
     pub reason: String,
+    /// The session is still good on Discord's side, so reconnecting and
+    /// resuming can bring the call back.
+    pub resumable: bool,
 }
 
 impl Closed {
+    /// The call is over.
     fn new(reason: impl Into<String>) -> Self {
-        Self { code: None, reason: reason.into() }
+        Self { code: None, reason: reason.into(), resumable: false }
+    }
+
+    /// The websocket went away but the call may carry on.
+    fn dropped(reason: impl Into<String>) -> Self {
+        Self { code: None, reason: reason.into(), resumable: true }
     }
 }
+
+/// Whether a close code leaves the session alive. No code means the socket
+/// broke without a goodbye, and 4015 is a voice server that crashed. The
+/// rest (kicked, session expired, bad token) are final.
+fn can_resume(code: Option<u16>) -> bool {
+    matches!(code, None | Some(1001 | 1006 | 4015))
+}
+
+/// What to wait before each attempt to resume. When they run out the call ends.
+const RESUME_DELAYS: [Duration; 5] = [
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(4),
+    Duration::from_secs(8),
+];
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) async fn run(
     params: VoiceParams,
@@ -127,6 +153,10 @@ struct Call {
     sequence: u16,
     nonce: u32,
     talkers: Talkers,
+    /// The next websocket should resume the session instead of starting one.
+    resuming: bool,
+    /// Resumes tried since the last one that worked.
+    retries: usize,
 }
 
 async fn serve(
@@ -134,13 +164,6 @@ async fn serve(
     commands: &mut mpsc::UnboundedReceiver<Command>,
     events: &mpsc::UnboundedSender<VoiceEvent>,
 ) -> Result<(), Closed> {
-    let endpoint = params.endpoint.trim_start_matches("wss://").trim_end_matches('/');
-    let url = format!("wss://{endpoint}/?v=8");
-    tracing::debug!(%url, "connecting to voice gateway");
-    let (ws, _) = connect_async(url)
-        .await
-        .map_err(|err| Closed::new(format!("could not reach the voice server: {err}")))?;
-    let (mut sink, mut stream) = ws.split();
     let (frames_tx, mut frames_rx) = mpsc::unbounded_channel();
 
     let mut call = Call {
@@ -174,10 +197,55 @@ async fn serve(
         sequence: 0,
         nonce: 0,
         talkers: Talkers::default(),
+        resuming: false,
+        retries: 0,
     };
 
     call.input_device = call.params.input_device.clone();
     call.output_device = call.params.output_device.clone();
+
+    // A dropped websocket does not end the call: the session, the UDP socket
+    // and the keys all survive, so we reconnect and ask to pick up where we
+    // were. Audio keeps flowing over UDP meanwhile.
+    loop {
+        let closed = match session(&mut call, commands, &mut frames_rx).await {
+            Ok(()) => return Ok(()),
+            Err(closed) => closed,
+        };
+        let Some(&delay) = RESUME_DELAYS.get(call.retries) else { return Err(closed) };
+        if !closed.resumable || call.cipher.is_none() {
+            return Err(closed);
+        }
+        tracing::info!(attempt = call.retries + 1, reason = %closed.reason, "voice websocket dropped, resuming");
+        call.retries += 1;
+        call.resuming = true;
+        if call.pause(delay, commands, &mut frames_rx).await {
+            return Ok(());
+        }
+    }
+}
+
+/// One voice websocket, from connecting to it closing. A new one starts with
+/// identify, or with resume when the call is already running.
+async fn session(
+    call: &mut Call,
+    commands: &mut mpsc::UnboundedReceiver<Command>,
+    frames_rx: &mut mpsc::UnboundedReceiver<Vec<i16>>,
+) -> Result<(), Closed> {
+    let endpoint = call.params.endpoint.trim_start_matches("wss://").trim_end_matches('/');
+    let url = format!("wss://{endpoint}/?v=8");
+    tracing::debug!(%url, "connecting to voice gateway");
+    let resuming = call.resuming;
+    let lost = |err: String| {
+        let reason = format!("could not reach the voice server: {err}");
+        if resuming { Closed::dropped(reason) } else { Closed::new(reason) }
+    };
+    let (ws, _) = timeout(CONNECT_TIMEOUT, connect_async(url))
+        .await
+        .map_err(|_| lost("it took too long".into()))?
+        .map_err(|err| lost(err.to_string()))?;
+    let (mut sink, mut stream) = ws.split();
+    call.awaiting_ack = false;
 
     let mut beat: Option<Interval> = None;
     let mut keepalive = interval(KEEPALIVE);
@@ -217,11 +285,11 @@ async fn serve(
                 Some(Ok(Message::Close(frame))) => {
                     let code = frame.as_ref().map(|f| u16::from(f.code));
                     let reason = frame.map(|f| f.reason.to_string()).unwrap_or_default();
-                    return Err(Closed { code, reason });
+                    return Err(Closed { code, reason, resumable: can_resume(code) });
                 }
                 Some(Ok(_)) => {}
-                Some(Err(err)) => return Err(Closed::new(format!("voice connection lost: {err}"))),
-                None => return Err(Closed::new("voice connection closed")),
+                Some(Err(err)) => return Err(Closed::dropped(format!("voice connection lost: {err}"))),
+                None => return Err(Closed::dropped("voice connection closed")),
             },
 
             received = udp_recv => {
@@ -232,7 +300,7 @@ async fn serve(
 
             _ = beat_tick => {
                 if call.awaiting_ack {
-                    return Err(Closed::new("the voice server stopped answering"));
+                    return Err(Closed::dropped("the voice server stopped answering"));
                 }
                 call.awaiting_ack = true;
                 out.push(Out::Json(call.heartbeat()));
@@ -244,22 +312,12 @@ async fn serve(
 
             Some(frame) = frames_rx.recv() => call.on_frame(&frame, &mut out),
 
-            command = commands.recv() => match command {
-                Some(Command::SetDeafened(deafened)) => call.set_deafened(deafened),
-                Some(Command::SetMuted(muted)) => call.set_muted(muted, &mut out),
-                Some(Command::SetInputDevice(device)) => call.set_input_device(device),
-                Some(Command::SetOutputDevice(device)) => call.set_output_device(device),
-                Some(Command::SetInputVolume(percent)) => call.set_input_volume(percent),
-                Some(Command::SetPushToTalk(on)) => call.set_push_to_talk(on, &mut out),
-                Some(Command::SetTalkKey(down)) => call.set_talk_key(down, &mut out),
-                Some(Command::SetUserVolume { user, percent }) => {
-                    call.user_volumes.insert(user, percent.min(MAX_USER_VOLUME));
-                }
-                Some(Command::Leave) | None => {
+            command = commands.recv() => {
+                if call.on_command(command, &mut out) {
                     let _ = sink.send(Message::Close(None)).await;
                     return Ok(());
                 }
-            },
+            }
         }
 
         for message in out {
@@ -268,13 +326,56 @@ async fn serve(
                 Out::Binary(bytes) => Message::binary(bytes),
             };
             if let Err(err) = sink.send(message).await {
-                return Err(Closed::new(format!("voice connection lost: {err}")));
+                return Err(Closed::dropped(format!("voice connection lost: {err}")));
             }
         }
     }
 }
 
 impl Call {
+    /// Applies one command from the app. True when it is time to leave.
+    fn on_command(&mut self, command: Option<Command>, out: &mut Vec<Out>) -> bool {
+        match command {
+            Some(Command::SetDeafened(deafened)) => self.set_deafened(deafened),
+            Some(Command::SetMuted(muted)) => self.set_muted(muted, out),
+            Some(Command::SetInputDevice(device)) => self.set_input_device(device),
+            Some(Command::SetOutputDevice(device)) => self.set_output_device(device),
+            Some(Command::SetInputVolume(percent)) => self.set_input_volume(percent),
+            Some(Command::SetPushToTalk(on)) => self.set_push_to_talk(on, out),
+            Some(Command::SetTalkKey(down)) => self.set_talk_key(down, out),
+            Some(Command::SetUserVolume { user, percent }) => {
+                self.user_volumes.insert(user, percent.min(MAX_USER_VOLUME));
+            }
+            Some(Command::Leave) | None => return true,
+        }
+        false
+    }
+
+    /// Waits out the gap before a reconnect. The app can still change
+    /// settings meanwhile, and the microphone clock keeps counting so the
+    /// audio lines up again. True if we were told to leave.
+    async fn pause(
+        &mut self,
+        delay: Duration,
+        commands: &mut mpsc::UnboundedReceiver<Command>,
+        frames_rx: &mut mpsc::UnboundedReceiver<Vec<i16>>,
+    ) -> bool {
+        let wake = tokio::time::sleep(delay);
+        tokio::pin!(wake);
+        loop {
+            tokio::select! {
+                _ = &mut wake => return false,
+                Some(_) = frames_rx.recv() => self.heard += 1,
+                command = commands.recv() => {
+                    // Anything it would say to Discord has no socket to go to.
+                    if self.on_command(command, &mut Vec::new()) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
     fn heartbeat(&self) -> Value {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
         json!({ "op": 3, "d": { "t": nonce, "seq_ack": self.last_seq } })
@@ -438,8 +539,19 @@ impl Call {
             // Hello
             Some(8) => {
                 let millis = data["heartbeat_interval"].as_f64().unwrap_or(13_750.0);
-                out.push(Out::Json(self.identify()));
+                let hello = if self.resuming {
+                    resume_payload(&self.params, self.last_seq)
+                } else {
+                    self.identify()
+                };
+                out.push(Out::Json(hello));
                 return Ok(Some(Duration::from_millis(millis as u64)));
+            }
+            // Resumed: the session is back, nothing was missed.
+            Some(9) => {
+                tracing::info!("voice session resumed");
+                self.resuming = false;
+                self.retries = 0;
             }
             // Ready
             Some(2) => self.on_ready(data, out).await?,
@@ -649,6 +761,19 @@ fn id(value: &Value) -> Option<u64> {
     value.as_str().and_then(|s| s.parse().ok()).or_else(|| value.as_u64())
 }
 
+/// Op 7: asks the voice server to pick up our session where it left off.
+fn resume_payload(params: &VoiceParams, seq_ack: i64) -> Value {
+    json!({
+        "op": 7,
+        "d": {
+            "server_id": params.server_id.to_string(),
+            "session_id": params.session_id,
+            "token": params.token,
+            "seq_ack": seq_ack,
+        }
+    })
+}
+
 /// Whether a frame from the microphone goes out. Push to talk sends while the
 /// key is down and ignores the gate, which is only asked otherwise.
 fn sends(push_to_talk: bool, key_down: bool, gate: impl FnOnce() -> bool) -> bool {
@@ -658,6 +783,39 @@ fn sends(push_to_talk: bool, key_down: bool, gate: impl FnOnce() -> bool) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_broken_socket_or_a_crashed_server_can_be_resumed() {
+        assert!(can_resume(None), "no goodbye at all");
+        assert!(can_resume(Some(1006)));
+        assert!(can_resume(Some(4015)), "voice server crashed");
+        assert!(!can_resume(Some(4014)), "we were disconnected on purpose");
+        assert!(!can_resume(Some(4006)), "session no longer valid");
+        assert!(!can_resume(Some(4009)), "session timed out");
+        assert!(!can_resume(Some(4004)), "bad token");
+        assert!(!Closed::new("no encryption we support").resumable);
+        assert!(Closed::dropped("lost").resumable);
+    }
+
+    #[test]
+    fn resume_names_the_session_and_the_last_message_seen() {
+        let params = VoiceParams {
+            endpoint: "x.discord.media:443".into(),
+            server_id: 11,
+            channel_id: 22,
+            user_id: 33,
+            session_id: "sess".into(),
+            token: "tok".into(),
+            input_device: None,
+            output_device: None,
+        };
+        let payload = resume_payload(&params, 41);
+        assert_eq!(payload["op"], 7);
+        assert_eq!(payload["d"]["server_id"], "11");
+        assert_eq!(payload["d"]["session_id"], "sess");
+        assert_eq!(payload["d"]["token"], "tok");
+        assert_eq!(payload["d"]["seq_ack"], 41);
+    }
 
     #[test]
     fn push_to_talk_sends_only_while_the_key_is_down() {

@@ -944,7 +944,20 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
       the release delay and the sound the official client plays, other
       platforms. Only letters, digits, function keys, space, arrows and a few
       others can be picked.)
-- [ ] Resume a call after the voice websocket drops (voice resume opcode)
+- [x] Resume a call after the voice websocket drops (voice resume opcode)
+      (when the voice websocket breaks without a goodbye, times out on
+      heartbeats, or closes with 1001, 1006 or 4015, the call is no longer
+      ended. The UDP socket, keys, playback and microphone stay up, the socket
+      is reopened and op 7 resume is sent with the server id, session id,
+      token and last sequence, instead of identify. Up to five attempts, 0.5 s
+      doubling to 8 s, and the counter resets when the server answers Resumed.
+      Settings changes and leaving still work during the wait. Kicked (4014),
+      invalid session (4006), timeout (4009) and bad token still end the call
+      with the same messages. Unit tests cover which close codes resume and
+      the resume payload. Not tried against a real dropped connection, so the
+      server accepting the resume is unverified. Missing: a visible
+      reconnecting state in the call panel, and a fresh identify when the
+      session has expired instead of ending the call.)
 - [ ] Pop out the call into its own window
 - [ ] Noise suppression toggle (Krisp is proprietary: use RNNoise and note
       the difference)
