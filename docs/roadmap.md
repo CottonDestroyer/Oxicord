@@ -14,6 +14,12 @@ its endpoints and gateway events with ours (first pass 2026-11-06).
   or "unverified: <reason>".
 - Account and admin writes: build and unit test the request, wire the UI, but
   never send it from the real account. Test against a throwaway server only.
+- Open items carry an id (P8-07, CH-04, VC-06 ...). Commits, branches and the
+  plan refer to items by id. Lanes and the order of work for parallel agents
+  are in docs/plan.md; Phase 9 (foundations) goes before every other phase.
+- Measured numbers in an item are the spec. Where an item gives none, take
+  them from the CSS in reference/web/assets (see docs/plan.md, "Getting
+  measurements without vision") and say so in the tick note.
 
 ## Phase 0: shared fixes (unlock several items below)
 
@@ -1439,7 +1445,7 @@ the build moves.
       button (new item below). Inbox has no unread pulse on the title glyph.
       Message Requests and the Quests page titles are unverified (the live
       page has no title for Quests and the requests route was not reachable).
-- [ ] New Message modal for the group DM button (see the notes above for the
+- [ ] P8-01 New Message modal for the group DM button (see the notes above for the
       live layout); keep the existing create flow behind it.
 
 ### User settings (the sidebar was rebuilt in the live client)
@@ -1455,54 +1461,54 @@ is the older layout (My Account, Content & Social, Data & Privacy, Authorized
 Apps, Devices, Connections, then App settings: Appearance, Voice & Video, Chat,
 Notifications, Keybinds, Advanced).
 
-- [ ] Rebuild the settings sidebar to the live structure: group headings, the
+- [ ] P8-02 Rebuild the settings sidebar to the live structure: group headings, the
       Account sub-entries that scroll to a section, the Log Out row, the
       version footer, and the search box matching every page below.
-- [ ] Account page as one scrolling page: Account Info (Username, Email and
+- [ ] P8-03 Account page as one scrolling page: Account Info (Username, Email and
       Phone with Reveal and Edit), Password & Security (Password Edit,
       Multi-Factor Authentication "Set up", Logged-in Devices "N devices"),
       Account Status (Age Group with Confirm Age, Account Standing "All
       good"), Family Center ("Set up Family Center"), and the Disable and
       Close account rows. The existing dialogs stay, only their entry points
       move. Devices becomes the Logged-in Devices detail page.
-- [ ] Data & Privacy page: How Discord Uses My Data (use data to make Discord
+- [ ] P8-04 Data & Privacy page: How Discord Uses My Data (use data to make Discord
       work), Request my data, Profile Privacy, and the related Activity Privacy
       link.
-- [ ] Messaging Permissions page (replaces Content & Social): Content Filters
+- [ ] P8-05 Messaging Permissions page (replaces Content & Social): Content Filters
       (sensitive content filters), Spam Filters, Direct Message permissions,
       Friend Request permissions, Messaging in Connected Games, and the Ignore
       & Block list.
-- [ ] Notifications page as drawn live: Overview, Sounds, Badges, Email (with
+- [ ] P8-06 Notifications page as drawn live: Overview, Sounds, Badges, Email (with
       "Unsubscribe from all marketing emails"), and the Advanced group behind
       "Show Advanced Notification Settings".
-- [ ] Voice & Video page additions: the Voice group with "Show Advanced Voice
+- [ ] P8-07 Voice & Video page additions: the Voice group with "Show Advanced Voice
       Settings", Camera, Streaming, Sounds (with "Show 18 more sounds"),
       Soundboard with its server and sound pickers, and the Advanced group with
       "Show Diagnostic Settings" and "Reset all Voice & Video settings". Video,
       soundboard playback and streaming stay inert (see Out of scope).
-- [ ] Appearance page as drawn live: Theme with Default Themes and Color
+- [ ] P8-08 Appearance page as drawn live: Theme with Default Themes and Color
       Themes (locked ones link to Nitro), App Icon, Messages (display mode and
       spacing), Chat Box, Search, Streamer Mode. Ours has a time format and a
       members list switch only.
-- [ ] Accessibility page: the live preview message, Text Readability, Visual
+- [ ] P8-09 Accessibility page: the live preview message, Text Readability, Visual
       Density, Color & Contrast, Reduced Motion, Audio & Screen Reader.
-- [ ] System page (the old Keybinds page): Custom Keybinds and Default
+- [ ] P8-10 System page (the old Keybinds page): Custom Keybinds and Default
       Keybinds, with the record a key control.
-- [ ] Language & Time page: language and time zone choices. Capture the live
+- [ ] P8-11 Language & Time page: language and time zone choices. Capture the live
       page first, its headings did not read back.
-- [ ] Activity Privacy page: What Activity I Share, Where I Share Activity,
+- [ ] P8-12 Activity Privacy page: What Activity I Share, Where I Share Activity,
       Activity Joining.
-- [ ] Connected Apps page: Connections with Nitro Rewards, then the Authorized
+- [ ] P8-13 Connected Apps page: Connections with Nitro Rewards, then the Authorized
       Apps list (Verification and Security). Merges our Connections and
       Authorized Apps pages.
-- [ ] Developer page (Developer Mode and the related switches). Merges our
+- [ ] P8-14 Developer page (Developer Mode and the related switches). Merges our
       Advanced page.
-- [ ] Billing group shells, read only, no purchase flow: Nitro (the Nitro Basic
+- [ ] P8-15 Billing group shells, read only, no purchase flow: Nitro (the Nitro Basic
       and Nitro plan cards with the perks list), Server Boost (Server Boosts,
       perks per level, Boosting FAQ), Subscriptions, Gift Inventory (Redeem
       Codes, Gifts I Purchased), Billing (Payment Methods, Transaction
       History).
-- [ ] Menu style shared by all popup and context menus: live draws the glyph at
+- [ ] P8-16 (do it inside F-07) Menu style shared by all popup and context menus: live draws the glyph at
       the left of each label, sizes the card to its content (201px for the
       plus menu), rounds it at 8px and gives rows 36px height with a 2px
       radius. Ours is 220px wide, rows 32px with a 4px radius and glyphs on
@@ -1510,7 +1516,711 @@ Notifications, Keybinds, Advanced).
       live message, user, server and plus menus first, then restyle
       `popup.rs` and `context_menu.rs` once.
 
+## Phase 9: foundations for parallel work (do these first)
+
+Written 2026-11-12 for the multi agent plan in docs/plan.md. Every later
+phase assumes these exist. F-01 to F-04 touch the hot files and must run one
+at a time, in order, before any lane starts. F-08, F-09, F-10 and F-11 touch no
+hot file and may run beside them. F-05, F-06 and F-07 start once F-04 is
+merged.
+
+- [ ] F-01 Split `backend.rs` by area. Keep `Command` and `Event` as the two
+      channel types, but move each area's variants into its own enum in its
+      own file, the way `AccountRequest` and `AdminRequest` already are:
+      `ChatCommand` (send, edit, delete, history, reactions, pins, search,
+      uploads), `ChannelCommand` (threads, forums, channel edits),
+      `GuildCommand` (join, leave, guild reads), `SocialCommand` (friends,
+      DMs, groups, requests, notes), `VoiceCommand`, `AppCommand`
+      (interactions, commands, autocomplete), `MediaCommand` (images,
+      files). `Command` becomes `Command::Chat(ChatCommand)` and so on, plus
+      the few session level ones (login, logout, status). Same for `Event`.
+      No behaviour change. Done when `cargo test --workspace` passes and no
+      file outside `backend/` matches on more than one area enum.
+- [ ] F-02 Split `crates/oxicord/src/bridge.rs` the same way: one
+      `bridge/<area>.rs` per area enum, each with a `handle(cmd, api, live,
+      events)` function, and `bridge.rs` only routes `Command::<Area>` to it.
+      `friend_request_failure` and `describe_request` move to
+      `bridge/errors.rs`. No behaviour change.
+- [ ] F-03 Split `main_view.rs` (5.5k lines). Move every modal and overlay
+      opener (the `subscribe` blocks for `Open*` session events and the
+      fields that hold the open dialog) into `main_view/<area>.rs` files:
+      `chat.rs`, `servers.rs`, `social.rs`, `account.rs`, `admin.rs`,
+      `voice.rs`, `apps.rs`. `MainView` keeps layout, routing and focus. A
+      new overlay is then added in one area file plus one line in
+      `MainView::new`. No behaviour change.
+- [ ] F-04 Split gateway handling in `session.rs`. `Session::handle` keeps the
+      order of work but hands `DispatchEvent::Unknown { name, data }` to a
+      table of per area handlers in `session/<area>.rs`, keyed by event name,
+      so adding an event is one entry in one area file. Move the `Open*`
+      event structs into `session/events.rs`. No behaviour change.
+- [ ] F-05 Headless UI test harness. Turn on `gpui-kit`'s `test-support`
+      feature for `oxicord-ui` dev builds, add `crates/oxicord-ui/tests/ui/`
+      with a `world.rs` builder that makes a `Session` with a `Store` filled
+      from code (a guild with categories, text, voice, forum and announcement
+      channels, roles, 30 members, a DM, a group DM, 50 messages with
+      replies, reactions, embeds, attachments, a poll, a thread), a fake
+      `Backend` that records every `Command` sent, and helpers:
+      `open(view, size)`, `find(id)`, `assert_box(id, x, y, w, h, tol)`,
+      `assert_size(id, w, h, tol)`, `click(id)`, `type_text(id, s)`,
+      `sent_commands()`. Write three example tests (the friends Add Friend
+      form, the settings sidebar rows, a message row) so lanes can copy them.
+      This is how agents without vision check layout: every measured number
+      in this file becomes an `assert_box`.
+- [ ] F-06 Offline fixture mode for people. `OXICORD_OFFLINE=1` starts the app
+      with the F-05 world instead of logging in, with a fake backend that
+      answers reads from the world and drops writes with a notice. Lets the
+      owner look at screens without a token. No network code may run in
+      this mode (assert it in a test).
+- [ ] F-07 Shared UI kit in `crates/oxicord-ui/src/kit/`, one module each
+      (the values below are starting points, confirm each in the CSS),
+      built from the live CSS: modal frame (sizes 440, 480, 600, 800, header
+      20/24 semibold, close 24px, footer with secondary and primary buttons,
+      backdrop 70% black), buttons (primary blurple 5865f2, secondary
+      `rgba(151,151,159,0.12)`, danger da373c, link, sizes sm 32 / md 38 /
+      lg 44, radius 8, 14/18 medium, disabled 0.5 opacity), text field (40
+      tall, radius 8, 1px `rgba(151,151,159,0.24)` border, focus border
+      5865f2, this fixes the "focused field keeps gpui's border" leftover in
+      five dialogs), textarea with counter, switch (40 by 24, on 5865f2),
+      checkbox, radio group (card style rows), select / dropdown (40 tall,
+      chevron, floating list), slider with value bubble, segmented control,
+      tab bar (the friends header style and the underline style), tooltip
+      (the `tip.rs` style, plus a pointer variant), toast / notice bar, empty
+      state (picture, title 16/20 semibold, body 14/18 muted), pill and badge
+      (red mention badge 16 tall, NEW pill), section heading (12/16 semibold
+      uppercase muted in older pages, 14/18 medium sentence case in new
+      ones), divider, card row (icon, title, subtitle, trailing chevron, the
+      Explore Discoverable Servers row is the reference). Then do P8-16, the
+      menu restyle, on top of the kit. Existing screens move to the kit only
+      when their lane touches them.
+- [ ] F-08 Icon catalog. List every glyph the later phases name (see
+      `discord-assets/icons/` for what exists) and copy the missing ones
+      from the web bundle: the barrel module 530889 lists `XxxIcon` exports,
+      each pointing at a module whose `<path d=...>` is the glyph. Write
+      `scripts/extract-icon.js <IconName> <our-name>` that does this from
+      `reference/web/modules-main`, so lanes can add icons themselves.
+- [ ] F-09 Sounds. Copy Discord's notification sounds (message, mention,
+      deafen, undeafen, mute, unmute, join, leave, user join, user leave,
+      ptt start, ptt stop, call ringing, call calling, stream started,
+      stream ended, disconnect) from the web assets into
+      `discord-assets/sounds/` and add a `sound::play(name)` helper on the
+      existing cpal output in `oxicord-voice` (or rodio). Unit test the name
+      table only.
+- [ ] F-10 Typed parsing for every gateway event the later phases need, in
+      `oxicord-model` only, each with a JSON test written from the field
+      names in the reference bundle: CALL_CREATE, CALL_UPDATE, CALL_DELETE,
+      GUILD_MEMBER_ADD, GUILD_MEMBER_REMOVE, STAGE_INSTANCE_CREATE,
+      STAGE_INSTANCE_UPDATE, STAGE_INSTANCE_DELETE, GUILD_SOUNDBOARD_SOUND_*,
+      SOUNDBOARD_SOUNDS, VOICE_CHANNEL_EFFECT_SEND,
+      VOICE_CHANNEL_START_TIME_UPDATE, STREAM_CREATE, STREAM_UPDATE,
+      STREAM_DELETE, STREAM_SERVER_UPDATE, SAVED_MESSAGE_CREATE,
+      SAVED_MESSAGE_DELETE, NOTIFICATION_CENTER_ITEM_CREATE,
+      NOTIFICATION_CENTER_ITEM_DELETE, NOTIFICATION_CENTER_ITEMS_ACK,
+      NOTIFICATION_CENTER_ITEM_COMPLETED, USER_GUILD_SETTINGS_FULL_UPDATE,
+      USER_NON_CHANNEL_ACK, MESSAGE_POLL_VOTE_ADD_MANY, PRESENCES_REPLACE,
+      SESSIONS_REPLACE, THREAD_MEMBER_LIST_UPDATE, GUILD_JOIN_REQUEST_*,
+      GUILD_SCHEDULED_EVENT_EXCEPTION_*, GUILD_INTEGRATIONS_UPDATE,
+      INTEGRATION_*, WEBHOOKS_UPDATE, FRIEND_SUGGESTION_*,
+      GAME_RELATIONSHIP_*, GIFT_CODE_*, ENTITLEMENT_*, AUTHENTICATOR_*,
+      AUTH_SESSION_CHANGE, OAUTH2_TOKEN_*, USER_REQUIRED_ACTION_UPDATE,
+      EMBEDDED_ACTIVITY_UPDATE_V2, QUESTS_USER_STATUS_UPDATE,
+      QUESTS_USER_COMPLETION_UPDATE, CONVERSATION_SUMMARY_UPDATE,
+      GUILD_APPLIED_BOOSTS_UPDATE, AUTO_MODERATION_MENTION_RAID_DETECTION,
+      GUILD_APPLICATION_COMMAND_INDEX_UPDATE, GUILD_PRUNE_UPDATE,
+      CHANNEL_UPDATES. Store and UI handling belongs to the lane items
+      below; this item only parses. Split it by group if it runs long.
+
+- [ ] F-11 Reference lookup scripts in `scripts/ref/` (node, no deps beyond
+      what reference/tools has): `css-rule.js <regex>` prints every CSS rule in
+      reference/web/assets whose selector matches; `token.js <theme> <regex>`
+      resolves --custom and theme variables to hex for `theme-midnight` (the
+      Midnight variables live in the `.theme-midnight` block); `class.js
+      <name>` finds a readable class key in classes.json and the CSS rules
+      for its hashed name; `module.js <id>` prints a module from modules-main
+      or modules-chunks prettified; `find-string.js <text>` finds the intl
+      hash for an English string and the modules that use it. Each prints a
+      usage line with no arguments. These replace the lost scratchpad
+      scripts and are how agents measure without a browser.
+
+## Phase 10: chat and messages (lane CHAT)
+
+Sources: `crates/oxicord-ui/src/chat/`, `crates/oxicord-markdown/`, the message
+CSS (`738015...css` and the `messageContent_`, `embed`, `mosaic` rules in
+`reference/web/assets/*.css`), docs/discord-reference.md "Message row
+structure". Message row numbers already measured live are in the Phase 8
+notes and in the memory of the 1:1 pass: padding 2/24/2/72, avatar 40,
+group gap 17, name 16/500, time 12/500 #73747d, text 16/22 #d4d5d8.
+
+- [ ] CH-01 Message context menu, the full live set in live order: Add
+      Reaction (submenu with recent emoji and View More), Edit Message (own),
+      Reply, Forward, Create Thread, Copy Text, Pin / Unpin, Apps (submenu,
+      AP-03), Mark Unread, Copy Message Link, Speak Message, Report Message
+      (others, built only), Delete Message (own or manage messages, red),
+      separator, Copy Message ID (Developer Mode). Needs F-07 menus.
+- [ ] CH-02 Hover action bar: three most recent reactions, Add Reaction, Add
+      Super Reaction, Reply, Forward, Create Thread, More (opens CH-01).
+      36px tall, 8px radius card, buttons 32 with 20px glyphs. Shift held
+      swaps in quick actions (pin, copy link, delete without confirm, mark
+      unread, Copy Message ID).
+- [ ] CH-03 Delete confirm modal ("Delete Message", the message preview,
+      "Protip: hold Shift"), Pin confirm modal (preview, "Oh yeah. Pin it."),
+      Unpin confirm. Shift click skips them.
+- [ ] CH-04 Markdown parity in `oxicord-markdown`: `#`, `##`, `###` headings
+      (24/30, 20/24, 16/20 semibold), `-#` subtext (12/16 muted), ordered
+      and unordered lists with nesting, `>` and `>>>` quotes (4px bar
+      #4e5058), masked links `[text](url)` with the CH-20 warning, spoilers,
+      `<t:unix:style>` in all seven styles (t T d D f F R) with R refreshing
+      every minute, slash command mentions `</name:id>` as clickable chips,
+      guild navigation `<id:customize>`, `<id:browse>`, `<id:guide>`,
+      `<id:linked-roles>`, emoji only messages jumbo at 48px (up to 30),
+      inline code, code blocks with a copy button on hover. Parser tests
+      for each.
+- [ ] CH-05 Embeds: rich embed author row with icon, title link, description
+      markdown, fields in the live inline grid (up to 3 per row), thumbnail
+      80px right, image up to 400 wide, footer with icon and timestamp,
+      colour bar 4px; multi image gallery when several embeds share a url;
+      video embeds (YouTube, Twitch) as a thumbnail with a play glyph that
+      opens the browser until VC-04 lands; gifv embeds autoplay as
+      animation; article and link previews; provider line. Own messages get
+      the remove embeds X (PATCH `flags` with SUPPRESS_EMBEDS, built and
+      tested).
+- [ ] CH-06 Attachments: image mosaic layouts for 1 to 10 images (the live
+      mosaic rules, 550 by 350 max box, 4px gaps, 8px radius), video
+      attachments as a poster with duration and play (inline player comes
+      with VC-04), audio attachments with the live player (play, seek bar,
+      time, volume), voice messages (flag 1 << 13, `waveform` base64 and
+      `duration_secs`) with the waveform bars and playback through
+      `oxicord-voice` output, generic file card (icon by mime, name, size,
+      download), text file preview with expand, spoiler overlay, ALT chip
+      with the alt text popover, explicit content blur per the content
+      filter setting.
+- [ ] CH-07 Media viewer parity: zoom to fit and 1:1, drag to pan, arrows
+      between all media of the message (and the channel media tab later),
+      Open in Browser, Copy Image, Save Image, alt text under the picture,
+      Escape and click outside close, video playback once VC-04 exists.
+- [ ] CH-08 Composer: upload preview cards above the box (thumbnail, name,
+      spoiler, edit, remove) and the edit modal (filename, alt text,
+      spoiler), drag and drop overlay ("Upload to #channel", "You can add
+      comments before uploading. Hold shift to upload directly."), paste
+      images, file too large modal by tier (10 MB free, 50 Basic, 500
+      Nitro, confirm in reference), slowmode countdown in the box, the no
+      permission and timed out states ("You do not have permission to send
+      messages in this channel.", "You are timed out..."), character counter
+      past 2000 (4000 Nitro) turning red, Up arrow edits the last own
+      message, @everyone / @here confirm modal for big channels, the typing
+      line variants ("A is typing...", "A and B are typing...", "A, B and C
+      are typing...", "Several people are typing...").
+- [ ] CH-09 Super reactions: burst colours on the pill, the burst animation
+      when added (static fallback is fine), Super Reaction tab in the
+      picker, unread burst count. Sending is built and tested only.
+- [ ] CH-10 Stickers: Lottie stickers (format 3) rendered as their first frame
+      or animated with a Rust Lottie renderer if one fits gpui; sticker pack
+      browser in the picker with server sticker sections; sticker
+      suggestions above the composer when a typed word matches a sticker tag.
+- [ ] CH-11 Emoji picker parity: left column with Frequently Used, Favorites
+      and one icon per server, all servers' emoji (not only the current
+      one) with the Nitro lock on others, search across names and tags, skin
+      tone selector (writes the settings proto, built only), favourites
+      (settings proto), hover footer with the big emoji, name and source
+      server, premium upsell row. Unicode names from the `emojis` crate.
+- [ ] CH-12 GIF picker parity: trending categories grid, search, Favorites
+      (settings proto `favorite_gifs`, read live, write built only), the
+      star toggle on hover.
+- [ ] CH-13 Search parity: suggestions while typing (users for from:,
+      channels for in:, the has: values, dates for before:/after:/during:),
+      recent searches, the "N Results" panel with Newest, Oldest, Most
+      Relevant sort, result cards with context and Jump, the Messages /
+      Media / Links / Files tabs if live still has them (capture first),
+      "More filters" date and author type picker. Leftovers listed in the
+      Phase 8 search note.
+- [ ] CH-14 Pins panel and Saved / Bookmarks panel in the live layout (cards
+      with Jump and the unpin X, empty states with their pictures).
+- [ ] CH-15 Unread markers: the NEW line with the red pill, the top bar "N
+      new messages since 3:05 PM" with Mark As Read, the bottom "You're
+      viewing older messages" bar with Jump To Present, unread on channel
+      switch kept until scroll.
+- [ ] CH-16 System messages, every `MessageType` with its glyph and text:
+      member join (the random welcome lines, from the bundle), boost and
+      tier up, pin notice with "See all pinned messages", channel follow
+      added, thread created with "See all threads", call (missed, ended,
+      durations), recipient add and remove, channel name and icon change,
+      owner change, guild discovery (dis)qualified and grace periods, stage
+      start, end, speaker, topic, AutoMod action card, role subscription
+      purchase, interaction premium upsell, poll result card, guild incident
+      alert, purchase notification, context menu command line, chat input
+      command "used /name". Fixture per type built from the bundle's field
+      names.
+- [ ] CH-17 Interaction responses: ephemeral messages ("Only you can see this
+      * Dismiss message"), the deferred "<Bot> is thinking..." row, the
+      "used /command" line with the app icon above bot replies, the APP and
+      verified checks, Dismiss removes it locally.
+- [ ] CH-18 Mentions: role mentions in the role colour with a 12% fill,
+      channel mentions with their type glyph and click to open, @everyone and
+      @here rows highlighted (gold bar and fill, the same for messages that
+      mention us or our roles), user mention click opens the popout.
+- [ ] CH-19 Link safety: the "Leaving Discord" modal for masked and unknown
+      links with "Trust this domain" (local list), file download warning for
+      executables.
+- [ ] CH-20 Compact message display mode (Appearance setting): time, name and
+      text on one line, avatars optional, group spacing options (0 to 24).
+- [ ] CH-21 Text to speech: `/tts` messages read through the OS speech API
+      when the setting allows, and Speak Message from CH-01 (Windows SAPI
+      first, others later).
+- [ ] CH-22 Forwarded message and reply polish: forwarded from line with the
+      source channel and jump, nested reply to a forward, "Message could not
+      be loaded" (original not fetched) as its own variant.
+- [ ] CH-23 Message edit mode parity: the inline editor with "escape to
+      cancel * enter to save", the "(edited)" tag with the edit time tooltip,
+      empty edit asks to delete.
+- [ ] CH-24 Report Message flow (the multi step report modal), built and
+      tested only, never sent.
+
+## Phase 11: channels, threads, forums (lane CHAN)
+
+- [ ] TH-01 Threads browser from the header threads glyph: Active and
+      Archived (Public, Private) lists, search box
+      (`GET /channels/:id/threads/search`), thread cards with starter, count
+      and last activity, Join and Open.
+- [ ] TH-02 Thread view parity: full width and side panel modes, starter
+      message at the top, the thread member list from
+      THREAD_MEMBER_LIST_UPDATE, notification settings per thread
+      (`PATCH /channels/:id/thread-members/@me/settings`, built only),
+      archive, lock, rename, auto archive duration, slowmode in thread
+      settings, "This thread is archived" composer bar.
+- [ ] TH-03 Forum parity: list and gallery layouts, sort by recent activity or
+      creation date, tag filter with multi select, the guidelines card, post
+      cards with first image, reactions, message count and tags, new post
+      form with required tags, attachments and the title counter, "Follow
+      post".
+- [ ] TH-04 Media channels (type 16): the gallery of posts with thumbnails,
+      the media first post form.
+- [ ] TH-05 Forum tag management in channel settings (`FORUM_TAGS`,
+      `FORUM_TAG`, emoji per tag, moderated tags), default reaction, default
+      layout and sort, built and tested only.
+- [ ] TH-06 Browse Channels and Channels & Roles (onboarding opt in channels,
+      `GUILD_HOME_SETTINGS` new member welcome, the Server Guide page with
+      its to do list and resource channels).
+- [ ] TH-07 Text in voice: the chat panel for voice and stage channels, opened
+      from the channel row and the call view.
+- [ ] TH-08 Channel extras: topic popover in the header, NSFW age gate
+      interstitial ("Age-Restricted Channel", continue and nope), slowmode
+      icon and tooltip, rules channel glyph, locked channel glyphs, voice
+      channel status editing (`PUT /channels/:id/voice-status`, built only).
+- [ ] TH-09 Channel list parity: "New unreads" and "N mentions" floating pills
+      at the top and bottom of the list, mention badges per channel, active
+      threads nested under their channel with the spine line, voice users
+      under voice channels with speaking ring, LIVE badge, video glyph,
+      limit count "2/10", collapse state persisted per category, Hide Muted
+      Channels respected.
+- [ ] TH-10 Channel and category context menus, the full live sets: Mark As
+      Read, Invite People, Copy Link, Mute (submenu with durations),
+      Notification Settings (submenu), Edit Channel, Duplicate Channel,
+      Create Text Channel, Create Voice Channel, Delete Channel (red), Copy
+      Channel ID; category: Mark As Read, Collapse Category, Collapse All
+      Categories, Mute Category, Notification Settings, Edit Category,
+      Delete Category, Copy Category ID.
+- [ ] TH-11 Directory channels (type 14, student hubs): the directory list
+      with categories and search (`DIRECTORY_CHANNEL_ENTRIES`), read only.
+
+## Phase 12: servers and the rail (lane SERV)
+
+- [ ] SV-01 Rail parity: unread pill (8px dot, 20px on hover, 40px selected),
+      mention badge with the black ring, DM unread avatars above the
+      separator, folder colours and the open folder background, hover
+      tooltip with the server name, drag and drop reorder and folder create
+      (writes `guild_folders` in the settings proto, built and tested
+      only), Discover glyph at the bottom, Add a Server.
+- [ ] SV-02 Add a Server modal flow: Create My Own, the templates list, "For
+      me and my friends" / "For a club or community", customize (name,
+      icon), and Join a Server with the invite field. Create exists, match
+      the live steps.
+- [ ] SV-03 Server discovery page in the app (`GET /discoverable-guilds`,
+      `/discoverable-guilds/search`, categories), cards with banner, icon,
+      description, online and member counts, the preview (lurk) of a public
+      server with the "You are currently in preview mode" join bar.
+- [ ] SV-04 Invite embeds in chat (discord.gg links): server card with
+      online and member counts and Join / Joined, and the invite modal when
+      opened from outside (deep links, PL-05). Expired and invalid states.
+- [ ] SV-05 Join gates: verification levels (verified email, phone, 5 minutes
+      registered, 10 minutes member) shown as the live composer notice,
+      apply to join servers (`GUILD_MEMBER_REQUEST_TO_JOIN`, the application
+      form exists from rules screening) and the pending state.
+- [ ] SV-06 Server context menu, the full live set: Mark As Read, Invite
+      People, Mute Server (durations), Notification Settings, Hide Muted
+      Channels, Show All Channels, Server Settings, Privacy Settings, Edit
+      Per-server Profile, Create Channel, Create Category, Create Event, App
+      Directory, Leave Server, Copy Server ID.
+- [ ] SV-07 Privacy Settings modal per server: allow DMs from members, message
+      requests, activity status, activity joining (settings proto
+      restricted guild lists), built and tested only.
+- [ ] SV-08 Server Boost modal and the boost perks page, read only: levels,
+      perks per level, the booster list, Boost This Server button opens the
+      browser.
+- [ ] SV-09 Member list parity: role sections with counts, lazy ranges over op
+      37 for big servers (load as the list scrolls), activity lines, booster
+      glyph, owner crown, APP badge, avatar decorations (PR-09), thread
+      member lists.
+- [ ] SV-10 Raid and incident banners: the "Activity paused" bar when invites
+      or DMs are paused (`incidents_data`), AutoMod mention raid alerts for
+      moderators.
+- [ ] SV-11 Folder settings: rename, colour, ungroup (settings proto, built
+      only).
+
+## Phase 13: DMs, friends, inbox, notifications (lane SOCIAL)
+
+- [ ] DM-01 Group DM management: rename, change icon, add people (the New
+      Message modal in add mode, max 10), remove, leave with "Leave without
+      notifying", transfer ownership, invite links for the group, the member
+      list side panel for groups.
+- [ ] DM-02 Friends extras: friend suggestions (`/friend-suggestions`,
+      FRIEND_SUGGESTION_*), Active Now cards with game and voice
+      activities, the hover tint on accept and decline, the restricted /
+      blocked users page that the banner links to (with ST items).
+- [ ] DM-03 Ignore users (`IGNORE_USER` endpoint, relationship flags): store
+      field, the Ignore entry in user menus, ignored messages fold like
+      blocked ones (Phase 8 leftover), the ignored list page.
+- [ ] DM-04 Blocked DM state: the composer replaced by "You cannot send
+      messages to a user you have blocked." and Unblock, the block confirm
+      modal ("Block @name?") with its consequences list.
+- [ ] DM-05 Inbox parity: Mentions tab with the filter menu (include
+      @everyone, role mentions, all servers or this one), Unreads tab with
+      per channel cards and Mark Read, For You tab from the notification
+      center (NOTIFICATION_CENTER_ITEM_* events, `/users/@me/notification-
+      center/items`), Bookmarks from saved messages (SAVED_MESSAGE_*), the
+      pulse on the title strip Inbox glyph.
+- [ ] DM-06 Desktop notifications parity: honour per server, channel and
+      thread settings, suppress @everyone and roles flags, mute until, the
+      notification body format ("Name (#channel, Server)"), sounds via F-09,
+      taskbar overlay badge with the unread count, flash the taskbar on
+      mention.
+- [ ] DM-07 DM list polish: typing dots on the avatar, unread bold names,
+      group icons (two avatars stacked when no icon), close on middle click.
+
+## Phase 14: profiles, collectibles, Nitro, Shop, Quests (lane PROF)
+
+- [ ] PR-01 Profile popout leftovers: mutual servers and mutual friends rows,
+      rich presence cards (large and small image assets, elapsed and
+      remaining time, party size, buttons, Spotify progress bar and Play on
+      Spotify), add role (+) for managers, the server tag popout on chip
+      click, badges with tooltips from user flags and `/users/:id/badges`.
+- [ ] PR-02 Full profile modal leftovers: Activity, Mutual Servers, Mutual
+      Friends tabs, widgets board render (favourite game, games I like).
+- [ ] PR-03 Display name styles (`display_name_styles`: font, effect,
+      colours) drawn wherever a name is drawn, with gradient text.
+- [ ] PR-04 Avatar decorations everywhere (message rows, member list, DM
+      list, user panel, popouts) from `avatar_decoration_data` as APNG.
+- [ ] PR-05 Nameplates drawn behind member list and DM rows.
+- [ ] PR-06 Shop page as a read only catalog (`/collectibles-shop`,
+      `/collectibles-categories/v2`): hero, categories, bundles, item cards
+      with prices and the preview on hover; purchase opens the browser.
+- [ ] PR-07 Nitro page as live draws it (What's New, plan cards, perks table),
+      read only; Subscribe opens the browser.
+- [ ] PR-08 Quests page (`/quests/@me`): quest cards, progress, rewards,
+      Orbs balance; Accept and Claim built and tested only.
+- [ ] PR-09 Gifts: discord.gift links render the gift embed (sender, item,
+      Accept), Gift Inventory page (Redeem Codes field, Gifts I Purchased),
+      built only.
+- [ ] PR-10 Edit Profile leftovers: game badge row and mutual pill in the
+      preview, the connections list section, Shop and Nitro tiles open PR-06
+      and PR-07.
+
+## Phase 15: bots and apps (lane APPS)
+
+- [ ] AP-01 Application command index: load commands from
+      `GET /channels/:id/application-command-index`,
+      `/guilds/:id/application-command-index` and
+      `/users/@me/application-command-index` (user installed apps), keep
+      them fresh on GUILD_APPLICATION_COMMAND_INDEX_UPDATE, and drive the
+      slash picker from it.
+- [ ] AP-02 App launcher popout from the composer Apps button: search,
+      Recents, Apps in this Server, user apps, Promoted, command list per
+      app.
+- [ ] AP-03 Apps submenu in the message and user context menus (message and
+      user commands, types 3 and 2), running them through the existing
+      interaction path.
+- [ ] AP-04 App Directory page in the app (`/application-directory-static/*`):
+      home with collections and categories, search, app page with
+      description, commands, screenshots; Add App opens AP-05.
+- [ ] AP-05 OAuth2 authorize modal (scopes, permissions with checkboxes,
+      server picker, Authorize), built and tested only.
+- [ ] AP-06 Components v2 completion: check each component type against the
+      bundle (container, section, thumbnail, media gallery, file, separator,
+      text display, label), user / role / mentionable / channel selects with
+      search, premium (SKU) buttons, link button confirm.
+- [ ] AP-07 Bot profiles: Add App button, the command list section, verified
+      app badge, "Supports Slash Commands" line.
+- [ ] AP-08 Linked roles: the role connections view in profiles and the
+      Linked Roles entry in the server menu (read only).
+
+## Phase 16: user settings (lane SET)
+
+The Phase 8 settings items (P8-02 to P8-15) belong to this lane. Extra pages
+and parts the live client has that Phase 8 does not list:
+
+- [ ] ST-01 Settings search over every page and section title, with results
+      replacing the sidebar list as live does.
+- [ ] ST-02 Logged-in Devices page (from Password & Security), session cards
+      with platform glyph, location and last seen, "Log out all known
+      devices" (exists in Devices, move it).
+- [ ] ST-03 Family Center page (read only shell, `/family-center/@me`).
+- [ ] ST-04 Account Standing / Safety Hub (`/safety-hub/@me`): "All good" and
+      the violations list, read only.
+- [ ] ST-05 Log Out confirm modal from the sidebar row.
+- [ ] ST-06 Streamer Mode settings and the streamer mode behaviour (hide
+      personal info, invite links, notifications, sounds) with the purple
+      top banner.
+- [ ] ST-07 Windows settings in System: open on startup, start minimized,
+      minimize to tray, close to tray (with PL-06).
+- [ ] ST-08 Text & Images / Chat options that live moved into Messaging and
+      Appearance (embeds, link previews, emoji, stickers autoplay, GIF
+      autoplay, spoilers, show reactions, convert emoticons, preview markdown
+      in the box), all read from and written to the settings proto (writes
+      built and tested, reads live).
+
+## Phase 17: server settings and admin (lane ADMIN)
+
+Server settings is a lazy chunk missing from reference/web. Before each item
+the merger or owner captures the live page into docs/discord-reference.md
+(see the capture queue in docs/plan.md). Until then build from the bundle's
+strings and the F-07 kit, and mark the layout unverified.
+
+- [ ] AD-01 Server settings sidebar in the live structure and order (capture
+      first): Server Profile, Server Tag, Engagement, Boost Perks, Emoji,
+      Stickers, Soundboard, Members, Roles, Invites, Access, Integrations, App
+      Directory, Safety Setup, AutoMod, Audit Log, Bans, Enable Community,
+      Server Template, Delete Server; with the permission rules per page.
+- [ ] AD-02 Overview / Server Profile: name, icon, banner, splash, invite
+      background, description, traits, system messages channel and its four
+      flags, inactive channel and timeout, default notification level,
+      widget.
+- [ ] AD-03 Roles: list with drag reorder (`PATCH /guilds/:id/roles`
+      positions), create, edit display (name, colour, gradient and
+      holographic colours for boosted servers, role icon or emoji, hoist,
+      mentionable), Permissions tab with search and the categories, Manage
+      Members tab (`/roles/:id/member-ids`, add and remove), member counts
+      (`/roles/member-counts`), Clear role permissions. All writes built and
+      tested only.
+- [ ] AD-04 Emoji: list by uploader, upload (base64 image, name rules,
+      slots by boost level), rename, delete.
+- [ ] AD-05 Stickers: list, upload (png, apng, lottie, gif), name, related
+      emoji, description, delete.
+- [ ] AD-06 Soundboard: list, upload (mp3 or ogg, 5.2 s, 512 KB), name,
+      emoji, volume, delete.
+- [ ] AD-07 Members page (Member Safety): searchable table with join date,
+      account age, join method, roles, flags, `/members/supplemental`, bulk
+      select with kick, ban, timeout.
+- [ ] AD-08 Invites page (list, inviter, uses, expiry, revoke), vanity URL.
+- [ ] AD-09 Bans page with search (`/bans/search`) and bulk ban.
+- [ ] AD-10 Audit log: filters by user and action, one row renderer per
+      action type with its glyph and change list.
+- [ ] AD-11 AutoMod leftovers: the preset cards (spam, mention spam, keyword,
+      profile), the rule toggles, the mention raid protection card.
+- [ ] AD-12 Safety Setup: verification level, explicit media filter, 2FA for
+      moderation, DM and invite pause (incident actions), raid alerts
+      channel.
+- [ ] AD-13 Community: the enable flow, rules and updates channels, Server
+      Guide editing, Discovery checklist and requirements, Server Insights
+      shell.
+- [ ] AD-14 Join requests review for apply to join servers
+      (`/guilds/:id/requests`, GUILD_JOIN_REQUEST_*): pending list, the
+      answers, approve and reject.
+- [ ] AD-15 Channel settings completion: Overview (name, topic, slowmode,
+      age restricted, hide after inactivity, default thread slowmode,
+      bitrate, user limit, video quality, region override), Permissions
+      advanced and the simple private toggle, the role and member add
+      button (Phase 7 leftover), Invites, Integrations, Delete.
+- [ ] AD-16 Integrations leftovers: webhook avatar upload and remove,
+      Channels Followed Learn More, per integration page, Twitch and YouTube
+      settings.
+- [ ] AD-17 Ownership and deletion: Transfer Ownership modal, Delete Server
+      modal with the name confirm, both built only.
+- [ ] AD-18 Read only shells: Server Boost status, Partner Program,
+      Monetization and server subscriptions, App Directory for servers,
+      Engagement, Server Tag settings.
+
+## Phase 18: voice, video, streaming, stage, soundboard (lane VOICE)
+
+These used to be out of scope. They are now in. `oxicord-voice` already has
+the voice gateway v8, UDP, Opus, transport encryption and DAVE. Video adds
+codecs and a second media path; keep it in new modules (`video/`, `stream/`)
+inside `oxicord-voice` so the voice files stay stable.
+
+- [ ] VC-01 Voice & Video settings parity: input and output device pickers
+      (cpal device lists, hot switch), output volume, Let's Check mic test
+      with the level meter, input sensitivity slider with the live meter
+      and automatic toggle, echo cancellation and auto gain (via the
+      `webrtc-audio-processing` crate if it builds on Windows), noise
+      suppression choice (None, Standard as RNNoise, Krisp shown disabled),
+      attenuation, QoS. Device writes are local.
+- [ ] VC-02 Voice connected panel parity: connection status with the ping
+      tooltip and the RTC debug popout, Disconnect, Noise Suppression button,
+      soundboard and activities buttons, camera and screen buttons wired to
+      VC-05 and VC-06.
+- [ ] VC-03 Voice channel view parity: tile grid with speaking rings, focused
+      tile, the bottom control bar, hover names, the user context menu in
+      calls (local mute, volume, server mute, server deafen, move to,
+      disconnect; admin ones built only).
+- [ ] VC-04 Video receive: RTP depacketizers for VP8, VP9, H264 and AV1 (unit
+      test each on captured packets synthesized from the RFCs), decoders
+      (`openh264`, `vpx` bindings or `dav1d`), frames uploaded as gpui images
+      in the tiles, simulcast stream choice, DAVE for video frames. Split
+      into one item per codec if needed.
+- [ ] VC-05 Camera send: capture (`nokhwa`), encode (H264 via openh264 first),
+      packetize, the op 12 video state and SSRCs, camera preview tile,
+      camera picker in VC-01.
+- [ ] VC-06 Go Live / screen share: op 18 stream create, STREAM_CREATE,
+      STREAM_SERVER_UPDATE, the second voice connection for the stream key,
+      capture on Windows (Windows Graphics Capture), encode and send;
+      viewing a stream; the Go Live picker modal (screens and windows,
+      quality); stream previews (`/streams/:id/preview`); LIVE badges.
+- [ ] VC-07 DM calls: CALL_CREATE, CALL_UPDATE, CALL_DELETE in the store,
+      Ring (`POST /channels/:id/call/ring`) and stop ringing, the incoming
+      call overlay with Join and Ignore, ringtone via F-09, the call header
+      in the DM above the messages, missed call system rows.
+- [ ] VC-08 Stage channels: STAGE_INSTANCE_* events, the stage view (speakers,
+      audience, topic), Request to Speak (voice state
+      `request_to_speak_timestamp`), invite to speak and move to audience for
+      moderators, Start Stage modal (topic, privacy), the stage card in the
+      channel list. Writes built only.
+- [ ] VC-09 Soundboard: request sounds with gateway op 31, default sounds
+      (`/soundboard-default-sounds`), the picker popout (favourites, per
+      server sections, search), playing a sound sends
+      `POST /channels/:id/send-soundboard-sound` (built and tested, never
+      sent), receiving VOICE_CHANNEL_EFFECT_SEND with a sound id fetches the
+      ogg from the CDN and mixes it into playback; entrance sounds.
+- [ ] VC-10 Voice channel effects: emoji reactions in calls
+      (VOICE_CHANNEL_EFFECT_SEND with an emoji), the floating animation over
+      the tile, the send picker (built only).
+- [ ] VC-11 Activities: the activity shelf (`/activities/shelf`), launching
+      opens the activity in the browser, EMBEDDED_ACTIVITY_UPDATE_V2 shows
+      who is in an activity on the channel row and in the call.
+- [ ] VC-12 Voice leftovers from the Voice phase: reconnecting state in the
+      panel, fresh identify when the session expired, push to talk with
+      modifiers, mouse buttons and the release delay, the PTT sounds, Mute
+      checkbox per person, per user volume from the sidebar voice list, the
+      pop out window's device menus and tile menus.
+- [ ] VC-13 Voice messages recording, if live desktop offers it (check the
+      bundle first; mobile only today as far as known): record, waveform,
+      upload with flag 1 << 13. Playback is CH-06.
+- [ ] VC-14 Spotify listen along: the Listen Along button on Spotify
+      activities and the party join request, built only.
+
+## Phase 19: platform, sign in, shell (lane PLAT)
+
+- [ ] PL-01 Email and password sign in: `POST /auth/login`, MFA by TOTP, SMS
+      and backup code (`/auth/mfa/:type`), the captcha case handed to the
+      hosted browser login, "Forgot your password?" (`/auth/forgot`). Login
+      screen as live draws it. Built and unit tested; the owner does the first
+      real sign in. Keep the hosted login as the fallback.
+- [ ] PL-02 QR code sign in: the remote auth gateway
+      (`wss://remote-auth-gateway.discord.gg/?v=2`, RSA key pair, nonce proof,
+      pending ticket, `/users/@me/remote-auth/login` ticket exchange), the
+      QR on the login screen using the existing `totp.rs` QR code. Unit test
+      the crypto steps on fixed keys.
+- [ ] PL-03 Multiple accounts: keep several credentials in the keyring, the
+      Switch Accounts menu in the user panel, the manage accounts modal.
+- [ ] PL-04 Log out: `POST /auth/logout` built, clear the keyring entry and
+      local caches, back to the login screen.
+- [ ] PL-05 Deep links on Windows: register the `discord://` scheme handler
+      for the installed app (opt in, does not take it over from Discord
+      unless asked), open `https://discord.com/channels/...` and
+      `discord.gg/...` links clicked inside the app in the app.
+- [ ] PL-06 System tray: icon with the unread overlay, menu (open, mute,
+      deafen, quit), close to tray, start on boot (Windows Run key),
+      minimize to tray, taskbar overlay badge and flash.
+- [ ] PL-07 Global keybinds: every default keybind from the live System page,
+      custom keybinds with any modifier set, global ones (toggle mute,
+      deafen, PTT) through RegisterHotKey on Windows.
+- [ ] PL-08 Localization: language setting, our own English string table
+      first (all UI strings moved to `strings.rs` keyed by the live English
+      text), date and time formatting by locale (Phase 8 leftover: the US
+      short date is hard coded), 12 or 24 hour clock.
+- [ ] PL-09 Accessibility: chat font scaling (12 to 24), zoom level (Ctrl +
+      and Ctrl -), reduced motion, saturation, link underlines, role colours
+      in names, contrast; keyboard focus rings on every control.
+- [ ] PL-10 Rich presence for games: detectable applications
+      (`/applications/detectable`) matched against running processes, the
+      "Playing X" activity sent in our presence, Registered Games list in
+      Activity Privacy. Then the local RPC server on the
+      `\\.\pipe\discord-ipc-0` named pipe so games can set activity (only if
+      Discord itself is not running).
+- [ ] PL-11 In game overlay: shell only, notes on how the desktop overlay
+      works, to decide later whether to build it.
+- [ ] PL-12 Clips: record the last N seconds of a game (capture from VC-06),
+      the clips gallery, sharing as an attachment. Late, after VC-06.
+- [ ] PL-13 Gateway robustness: GUILD_UNAVAILABLE and outage banners,
+      PRESENCES_REPLACE, SESSIONS_REPLACE (our status on other devices),
+      USER_GUILD_SETTINGS_FULL_UPDATE, USER_NON_CHANNEL_ACK, reconnect
+      backoff with jitter, identify rate limit, invalid session handling,
+      the "Connecting" and "Reconnecting" states in the UI.
+- [ ] PL-14 Performance budget: message list virtualization checked with 10k
+      rows in the F-05 world, image cache limits, memory after an hour,
+      startup time; record numbers in this file.
+
+## Leftovers from ticked items (any lane)
+
+Remaining differences noted under ticked items above, turned into work. The
+owning lane is in brackets.
+
+- [ ] LO-01 [SERV] Live sidebar is 303px wide in the measured session against
+      our 293; confirm which is right on a fresh 1920x1080 page and fix the
+      channel list width.
+- [ ] LO-02 [CHAT] Gradient and holographic role colours on names (role
+      `colors` with primary, secondary, tertiary) in messages, reply lines,
+      member list.
+- [ ] LO-03 [CHAT] Reply connector brightens when the reply text is hovered.
+- [ ] LO-04 [CHAT] Server tag chip opens the tag popout on click.
+- [ ] LO-05 [CHAT] Blocked bar: hover style, panel covering the gap, the day
+      divider 24px low in our list (fix the divider, then remove the 16px
+      compensation), the invite embed under a revealed message.
+- [ ] LO-06 [CHAT] Search list stays open while typing with matching users,
+      channels and history.
+- [ ] LO-07 [CHAT] Pinned dot notch drawn as a mask, not a filled ring.
+- [ ] LO-08 [SERV] Server banner: animated banner playback, name drop shadow,
+      the level tooltip, the boost pill opening SV-08, the lower boost tiers.
+- [ ] LO-09 [SERV] Events row: unread dot, mention count, mute events state,
+      right click menu; the sidebar "Happening Now" card with Event Details.
+- [ ] LO-10 [SERV] Header menu rows: Server Boost modal, Create Event full
+      form (calendar and time dropdowns, repeat picker, cover upload, stage
+      hint), Create Channel and Create Category rows, Server Insights,
+      Active Threads, Friends, Use Server Theme, Report Raid.
+- [ ] LO-11 [SERV] Notification settings modal: scrollbar thumb, floating
+      picker with type to filter, the "@mentions + Unreads" option.
+- [ ] LO-12 [SERV] Leave server error box and the tag icon mask.
+- [ ] LO-13 [SOCIAL] Nitro and Shop rows: the heart and Gift Nitro glyphs,
+      the Orbs counter, the BETA tag, the display face Nitro headline image.
+- [ ] LO-14 [SOCIAL] DM status lines need presences for non friends: decide
+      with the owner whether to send gateway `capabilities` (a token was
+      revoked once with them, see docs/protocol-notes.md). Do not change
+      identify without the owner.
+- [ ] LO-15 [SOCIAL] Add Friend: note text 10px lower than live, the send
+      result styled like live, in app discovery for Explore (SV-03).
+- [ ] LO-16 [PROF] Edit Profile pickers: Shop and locked tiles open PR-06 and
+      PR-07; preview banner uses the stored banner colour; nameplate Shop
+      glyph and tinted rows.
+- [ ] LO-17 [PROF] Widgets: placeholder profile card and hero cover art,
+      Create Your Own, suggested covers, pending card survives reopening,
+      the live profile widget card, Games I Like popover drops chosen games.
+- [ ] LO-18 [APPS] Autocomplete list floats above the composer with the
+      option as an inline chip.
+- [ ] LO-19 [ACCOUNT -> SET] 2FA: Security Keys (WebAuthn credentials list)
+      and the Multi-Factor page with breadcrumbs; field errors under each
+      field in the password dialog.
+- [ ] LO-20 [ADMIN] Channel permissions: members without avatars, Manage
+      Permissions greyed by the live rule, outlined add glyph, rollback on
+      a failed write.
+- [ ] LO-21 [ADMIN] Webhooks: show the new webhook expanded, Copy URL for
+      application webhooks hidden, Integrations page visible by the live rule.
+- [ ] LO-22 [ADMIN] Welcome screen setup: emoji picker per channel, Community
+      only, preview. Onboarding setup: channel and role pickers per answer,
+      answer emoji, dropdown question type, Advanced mode, the 7 default
+      channels check.
+- [ ] LO-23 [ADMIN] Prune: include roles, the async v2 route with
+      GUILD_PRUNE_UPDATE progress. Templates: synced toasts and the dirty dot.
+- [ ] LO-24 [SOCIAL] Events: RSVP pressed style, recurring occurrence picker,
+      Interested tab listing people, "Created by" row.
+
 ## Out of scope
 
-Video, camera, screen share, Go Live, stage, activities, soundboard and voice
-messages. Their buttons stay drawn and do nothing. Spotify listen along.
+Nothing. The old list (video, camera, screen share, Go Live, stage,
+activities, soundboard, voice messages, Spotify listen along) moved into
+Phase 18 on 2026-11-12.
