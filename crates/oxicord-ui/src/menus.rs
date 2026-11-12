@@ -67,7 +67,6 @@ pub enum Action {
     CopyLink,
     CopyId,
     CopyGuildId,
-    Leave,
 }
 
 /// Which settings entry a request changes.
@@ -102,7 +101,7 @@ pub fn settings_body(place: Place, action: Action, now: DateTime<Utc>) -> Option
         Action::MobilePush(on) => json!({ "mobile_push": on }),
         Action::HideMutedChannels(on) => json!({ "hide_muted_channels": on }),
         Action::ClearOverride => json!({ "message_notifications": level_number(None), "muted": false }),
-        Action::MarkRead | Action::CopyLink | Action::CopyId | Action::CopyGuildId | Action::Leave => return None,
+        Action::MarkRead | Action::CopyLink | Action::CopyId | Action::CopyGuildId => return None,
     };
     Some(match place {
         Place::Guild(_) => fields,
@@ -196,7 +195,7 @@ mod tests {
 
     #[test]
     fn non_settings_actions_have_no_body() {
-        for action in [Action::MarkRead, Action::CopyLink, Action::Leave] {
+        for action in [Action::MarkRead, Action::CopyLink, Action::CopyGuildId] {
             assert!(settings_body(Place::Guild(Snowflake(1)), action, now()).is_none());
         }
     }

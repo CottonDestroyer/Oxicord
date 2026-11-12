@@ -16,6 +16,7 @@ use crate::{
     media::Media,
     member_list::server_tag_chip,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
+    server_prompts::{OpenLeaveServer, OpenServerTag},
     server_settings,
     session::{
         OpenCreateEvent, OpenInviteDialog, OpenNotificationSettings, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings,
@@ -50,7 +51,6 @@ pub struct ContextMenu {
     target: Option<Target>,
     at: Point<Pixels>,
     open: Option<Section>,
-    confirm_leave: bool,
 }
 
 impl ContextMenu {
@@ -62,7 +62,6 @@ impl ContextMenu {
             target: None,
             at: Point::default(),
             open: None,
-            confirm_leave: false,
         }
     }
 
@@ -70,7 +69,6 @@ impl ContextMenu {
         self.target = Some(target);
         self.at = at;
         self.open = None;
-        self.confirm_leave = false;
         cx.notify();
     }
 
@@ -122,9 +120,6 @@ impl ContextMenu {
                 (Action::CopyGuildId, Some(Target::Guild(guild) | Target::GuildHeader(guild))) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(guild.to_string()));
                 }
-                (Action::Leave, Some(Target::Guild(guild) | Target::GuildHeader(guild))) => {
-                    self.backend.send(Command::LeaveGuild(guild));
-                }
                 _ => {}
             }
         }
@@ -161,7 +156,7 @@ impl ContextMenu {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let danger = row == Row::Leave;
-        let label = if danger && self.confirm_leave { "Click again to leave" } else { row.label() };
+        let label = row.label();
         let group = SharedString::from(format!("header-row-{row:?}"));
         let color = if danger { theme::DANGER } else { theme::HEADER_MENU_TEXT };
         let lead = lead.unwrap_or_else(|| {
@@ -246,7 +241,10 @@ impl ContextMenu {
                     Row::Tag => {
                         let Some(tag) = tag.clone() else { continue };
                         let chip = server_tag_chip(&tag, 14., &self.media, cx).into_any_element();
-                        self.header_row(row, Some(chip), None, |this, _, cx| this.close(cx), cx)
+                        self.header_row(row, Some(chip), None, move |this, _, cx| {
+                            this.session.update(cx, |_, cx| cx.emit(OpenServerTag(guild)));
+                            this.close(cx);
+                        }, cx)
                     }
                     Row::Boost => self.header_row(row, None, None, |this, _, cx| {
                         this.session.update(cx, |session, cx| {
@@ -290,13 +288,9 @@ impl ContextMenu {
                     Row::HideMuted => self.header_row(row, None, Some(hide_muted), move |this, _, cx| {
                         this.run(Action::HideMutedChannels(!hide_muted), cx);
                     }, cx),
-                    Row::Leave => self.header_row(row, None, None, |this, _, cx| {
-                        if this.confirm_leave {
-                            this.run(Action::Leave, cx);
-                        } else {
-                            this.confirm_leave = true;
-                            cx.notify();
-                        }
+                    Row::Leave => self.header_row(row, None, None, move |this, _, cx| {
+                        this.session.update(cx, |_, cx| cx.emit(OpenLeaveServer(guild)));
+                        this.close(cx);
                     }, cx),
                     Row::CopyId => self.header_row(row, None, None, |this, _, cx| this.run(Action::CopyGuildId, cx), cx),
                 };
@@ -568,22 +562,12 @@ impl Render for ContextMenu {
                 this.close(cx);
             }, cx));
             menu = menu.child(div().my(px(2.)).h(px(1.)).bg(rgb(theme::BORDER)));
-            let armed = self.confirm_leave;
-            menu = menu.child(self.item(
-                "leave",
-                if armed { "Click again to leave" } else { "Leave server" },
-                theme::DANGER,
-                false,
-                |this, _, _, cx| {
-                    if this.confirm_leave {
-                        this.run(Action::Leave, cx);
-                    } else {
-                        this.confirm_leave = true;
-                        cx.notify();
-                    }
-                },
-                cx,
-            ));
+            menu = menu.child(self.item("leave", "Leave server", theme::DANGER, false, |this, _, _, cx| {
+                if let Some(Target::Guild(guild)) = this.target {
+                    this.session.update(cx, |_, cx| cx.emit(OpenLeaveServer(guild)));
+                }
+                this.close(cx);
+            }, cx));
         }
 
         // A transparent sheet behind the menu closes it on any outside click.

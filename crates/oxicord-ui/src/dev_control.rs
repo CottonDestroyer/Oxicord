@@ -42,6 +42,10 @@ pub enum DevCommand {
     /// to someone who may manage events.
     CreateEvent(Snowflake),
     Notifications(Snowflake),
+    /// The Leave Server confirm. Opening it sends nothing, only its button does.
+    LeavePrompt(Snowflake),
+    /// The Server Tag modal for a server.
+    TagPrompt(Snowflake),
     /// 0 board, 1 activity, 2 friends, 3 servers.
     Tab(u8),
     /// A synthetic message request channel, so its row and page can be
@@ -98,6 +102,8 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         "rules" => id().map(DevCommand::Rules),
         "create-event" => id().map(DevCommand::CreateEvent),
         "notifications" => id().map(DevCommand::Notifications),
+        "leave-prompt" => id().map(DevCommand::LeavePrompt),
+        "tag-prompt" => id().map(DevCommand::TagPrompt),
         "tab" => match words.clone().next()? {
             "board" => Some(DevCommand::Tab(0)),
             "activity" => Some(DevCommand::Tab(1)),
@@ -183,6 +189,8 @@ mod tests {
         assert_eq!(parse("rules 9"), Some(DevCommand::Rules(Snowflake(9))));
         assert_eq!(parse("create-event 9"), Some(DevCommand::CreateEvent(Snowflake(9))));
         assert_eq!(parse("notifications 9"), Some(DevCommand::Notifications(Snowflake(9))));
+        assert_eq!(parse("leave-prompt 9"), Some(DevCommand::LeavePrompt(Snowflake(9))));
+        assert_eq!(parse("tag-prompt 9"), Some(DevCommand::TagPrompt(Snowflake(9))));
         assert_eq!(parse("settings 9 Server Template"), Some(DevCommand::Settings(Snowflake(9), "Server Template".into())));
         assert_eq!(parse("settings 9"), None);
         assert_eq!(parse("manageable"), Some(DevCommand::Manageable));

@@ -196,6 +196,9 @@ pub enum Command {
     /// We opened the pins of a channel.
     AckPins(Snowflake),
     LeaveGuild(Snowflake),
+    /// Wear the tag of a server after our name. The gateway's user update
+    /// carries the change back, so there is no answer event.
+    AdoptServerTag { guild: Snowflake, enabled: bool },
     /// Create a new server with the given name. `GUILD_CREATE` from the
     /// gateway adds it to the rail; this carries no answer event.
     CreateGuild { name: String },

@@ -1216,11 +1216,8 @@ the build moves.
       larpers shows the live list exactly (no tag, settings or event rows).
       Remaining differences, all unverified against a live click since the
       menu rows write or open modals: Server Boost shows a notice (live opens
-      the boost modal); the Server Tag row only closes the menu (live opens
-      the tag popout); Create Event opens the events list (no creation form
-      yet); Notification Settings swaps to the older list (live opens a modal);
-      Leave Server still arms with a second click (live opens a confirm
-      modal); App Directory opens the web page in the browser; the checked
+      the boost modal); Create Event opens the events list (no creation form
+      yet); App Directory opens the web page in the browser; the checked
       state of Hide Muted Channels is drawn from the live indicator's CSS,
       not from a live capture; live also adds Create Channel and Create
       Category (with manage channels), Server Insights, Active Threads,
@@ -1287,8 +1284,36 @@ the build moves.
       and the duration select are not seen live or here because muting is an
       account write; the new-notifications experiment's "@mentions + Unreads"
       option is not drawn.
-- [ ] Leave Server confirm modal and the Server Tag popout, from the header
+- [x] Leave Server confirm modal and the Server Tag modal, from the header
       menu rows.
+      Done: new `server_prompts.rs`, one entity for both, drawn from live
+      captures at 1920x1080 on Low iq gaymers. Leave Server is a 400x206
+      card (12px radius, 8px top padding, 20px title "Leave 'name'" with a
+      40px close, the muted sentence with the server name in semibold, a 64px
+      footer with Cancel and a red Leave Server button 171x40 each, 8px
+      apart). The server menu row and the rail right click both open it, so
+      the old "click again to leave" arming and `Action::Leave` are gone. The
+      Server Tag row opens the "Adopt this server's tag" card, 706x322: the
+      title and blurb, the server row with its icon, name and a 26px tag chip,
+      a full width Adopt Tag and Edit Profile, and a black right half with the
+      five sample chat lines (names, colors and lines read from the live
+      bundle; the four avatars are the client's own, saved under
+      discord-assets/tag-preview). Adopt Tag is drawn disabled when the tag is
+      already the one we wear; Edit Profile opens the per-server profile
+      page. New `Command::AdoptServerTag` sends `PUT /users/@me/clan` with
+      `identity_guild_id` and `identity_enabled` (endpoint and body read
+      from the web bundle) through `ApiClient::set_guild_identity`; the leave
+      body and the identity body have unit tests. Neither request was sent
+      from the real account; only the modals were opened. Dev commands
+      `leave-prompt <guild>` and `tag-prompt <guild>`. Compared at 1920x1080:
+      the cards, rows, buttons and chip land on the live boxes (the window has
+      its usual 8px frame offset); text sits about 1px lower, the usual font
+      metric. Remaining differences: the live guild icon is clipped by the
+      client's tag icon mask where ours is a circle; the red inline error box
+      the live Leave card reveals on a failed request is not drawn; the
+      adopted state and its tooltip "You've already adopted this server's
+      tag" are from the bundle only, because this account has not adopted
+      the tag.
 - [x] Invite glyph in the header and on the hovered channel row, as drawn live.
       Done: the header button now draws the live two person people-add glyph
       at 20px in the 32px button (white over a banner, as live); the channel

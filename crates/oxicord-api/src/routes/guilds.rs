@@ -338,7 +338,18 @@ impl ApiClient {
             Method::DELETE,
             &format!("/users/@me/guilds/{guild}"),
             "DELETE /users/@me/guilds/:id",
-            Some(&json!({ "lurking": false })),
+            Some(&leave_body()),
+        )
+        .await
+    }
+
+    /// Wears the tag of a server after our name, or takes it off again.
+    pub async fn set_guild_identity(&self, guild: Snowflake, enabled: bool) -> Result<(), ApiError> {
+        self.empty(
+            Method::PUT,
+            "/users/@me/clan",
+            "PUT /users/@me/clan",
+            Some(&identity_body(guild, enabled)),
         )
         .await
     }
@@ -356,5 +367,33 @@ impl ApiClient {
             )
             .await?;
         Ok(guild)
+    }
+}
+
+/// What the web client sends when leaving: a full leave, not a lurker's.
+fn leave_body() -> Value {
+    json!({ "lurking": false })
+}
+
+/// The server whose tag we wear, and whether it shows.
+fn identity_body(guild: Snowflake, enabled: bool) -> Value {
+    json!({ "identity_guild_id": guild.to_string(), "identity_enabled": enabled })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leaving_is_a_full_leave() {
+        assert_eq!(leave_body(), json!({ "lurking": false }));
+    }
+
+    #[test]
+    fn adopting_a_tag_names_the_server_as_text() {
+        assert_eq!(
+            identity_body(Snowflake(1403715216503472128), true),
+            json!({ "identity_guild_id": "1403715216503472128", "identity_enabled": true })
+        );
     }
 }

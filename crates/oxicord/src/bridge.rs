@@ -551,6 +551,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::AdoptServerTag { guild, enabled } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.set_guild_identity(guild, enabled).await {
+                    notify(&events, "change your server tag", &err).await;
+                }
+            });
+        }
         Command::LeaveGuild(guild) => {
             tokio::spawn(async move {
                 if let Err(err) = api.leave_guild(guild).await {

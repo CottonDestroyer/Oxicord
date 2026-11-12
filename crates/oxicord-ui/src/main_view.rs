@@ -26,6 +26,7 @@ use crate::{
     ban_dialog::{CloseBan, BanDialog},
     create_event_dialog::{CloseCreateEvent, CreateEventDialog},
     notification_dialog::{CloseNotificationSettings, NotificationDialog},
+    server_prompts::{CloseServerPrompt, OpenLeaveServer, OpenServerTag, ServerPrompt},
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
     danger_dialog::{CloseDanger, DangerDialog, OpenDanger},
@@ -248,6 +249,8 @@ pub struct MainView {
     create_event_open: bool,
     notification_dialog: Entity<NotificationDialog>,
     notification_open: bool,
+    server_prompt: Entity<ServerPrompt>,
+    server_prompt_open: bool,
     kick_dialog: Entity<KickDialog>,
     kick_dialog_open: bool,
     timeout_dialog: Entity<TimeoutDialog>,
@@ -395,6 +398,10 @@ impl MainView {
         let create_event_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| CreateEventDialog::new(session, backend, window, cx))
+        };
+        let server_prompt = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|_| ServerPrompt::new(session, media, backend))
         };
         let notification_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -703,6 +710,20 @@ impl MainView {
                 this.notification_dialog.update(cx, |dialog, cx| dialog.opened(open.0, cx));
                 cx.notify();
             }),
+            cx.subscribe(&server_prompt, |this, _, _: &CloseServerPrompt, cx| {
+                this.server_prompt_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenLeaveServer, cx| {
+                this.server_prompt_open = true;
+                this.server_prompt.update(cx, |prompt, cx| prompt.leave(open.0, cx));
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenServerTag, cx| {
+                this.server_prompt_open = true;
+                this.server_prompt.update(cx, |prompt, cx| prompt.tag(open.0, cx));
+                cx.notify();
+            }),
             cx.subscribe(&kick_dialog, |this, _, _: &CloseKick, cx| {
                 this.kick_dialog_open = false;
                 cx.notify();
@@ -985,6 +1006,8 @@ impl MainView {
             create_event_open: false,
             notification_dialog,
             notification_open: false,
+            server_prompt,
+            server_prompt_open: false,
             kick_dialog,
             kick_dialog_open: false,
             timeout_dialog,
@@ -1467,6 +1490,8 @@ impl MainView {
             }
             DevCommand::Rules(guild) => self.open_screening(guild, window, cx),
             DevCommand::CreateEvent(guild) => self.session.update(cx, |_, cx| cx.emit(OpenCreateEvent(guild))),
+            DevCommand::LeavePrompt(guild) => self.session.update(cx, |_, cx| cx.emit(OpenLeaveServer(guild))),
+            DevCommand::TagPrompt(guild) => self.session.update(cx, |_, cx| cx.emit(OpenServerTag(guild))),
             DevCommand::Notifications(guild) => self.session.update(cx, |_, cx| cx.emit(OpenNotificationSettings(guild))),
             DevCommand::Danger(kind) => {
                 use crate::danger_dialog::Danger;
@@ -4765,6 +4790,7 @@ impl Render for MainView {
         let create_poll_dialog = self.create_poll_open.then(|| self.create_poll_dialog.clone());
         let create_event_dialog = self.create_event_open.then(|| self.create_event_dialog.clone());
         let notification_dialog = self.notification_open.then(|| self.notification_dialog.clone());
+        let server_prompt = self.server_prompt_open.then(|| self.server_prompt.clone());
         let kick_dialog = self.kick_dialog_open.then(|| self.kick_dialog.clone());
         let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
         let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
@@ -4870,6 +4896,7 @@ impl Render for MainView {
             .children(create_poll_dialog)
             .children(create_event_dialog)
             .children(notification_dialog)
+            .children(server_prompt)
             .children(timeout_dialog)
             .children(roles_dialog)
             .children(join)
