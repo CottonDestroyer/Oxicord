@@ -23,6 +23,9 @@ pub struct Guild {
     pub premium_subscription_count: u64,
     /// Whether the server shows its Boost Goal bar in the channel list.
     pub premium_progress_bar_enabled: bool,
+    /// The short code that makes an invite link for the server, which lets
+    /// members without the invite permission still hand out a link.
+    pub vanity_url_code: Option<String>,
     pub unavailable: bool,
     pub roles: Vec<Role>,
     pub channels: Vec<Channel>,
@@ -63,6 +66,8 @@ struct RawGuild {
     #[serde(default)]
     premium_progress_bar_enabled: Option<bool>,
     #[serde(default)]
+    vanity_url_code: Option<String>,
+    #[serde(default)]
     unavailable: bool,
     #[serde(default)]
     roles: Vec<Role>,
@@ -95,6 +100,7 @@ struct GuildProperties {
     premium_tier: Option<u8>,
     premium_subscription_count: Option<u64>,
     premium_progress_bar_enabled: Option<bool>,
+    vanity_url_code: Option<String>,
     default_message_notifications: Option<u8>,
 }
 
@@ -125,6 +131,7 @@ impl From<RawGuild> for Guild {
                 .premium_progress_bar_enabled
                 .or(props.premium_progress_bar_enabled)
                 .unwrap_or(false),
+            vanity_url_code: raw.vanity_url_code.or(props.vanity_url_code),
             unavailable: raw.unavailable,
             roles: raw.roles,
             channels,

@@ -146,7 +146,7 @@ impl ContextMenu {
             .channel_groups(guild)
             .iter()
             .flat_map(|group| group.channels.iter())
-            .find(|c| !c.kind.is_thread() && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE))
+            .find(|c| store.can_invite(c))
             .map(|c| c.id)
     }
 

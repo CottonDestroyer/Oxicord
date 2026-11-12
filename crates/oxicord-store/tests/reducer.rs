@@ -1334,3 +1334,22 @@ fn a_new_pin_lights_the_dot_until_the_pins_are_opened() {
     store.ack_pins(id(12), None);
     assert_eq!(store.unread(id(12)).unread, unread_before);
 }
+
+#[test]
+fn a_vanity_link_lets_a_member_without_the_invite_permission_share_it() {
+    let store = ready_store();
+    let general = store.channel(id(11)).unwrap().clone();
+    assert!(!store.can_invite(&general), "the role grants view and send only");
+
+    let mut data = ready_json();
+    data["guilds"][0]["properties"]["vanity_url_code"] = json!("home");
+    let mut store = Store::new();
+    store.apply(event("READY", data));
+    assert!(store.can_invite(&store.channel(id(11)).unwrap().clone()));
+
+    let mut data = ready_json();
+    data["guilds"][0]["roles"][0]["permissions"] = json!(perm(1 << 0 | 1 << 10));
+    let mut store = Store::new();
+    store.apply(event("READY", data));
+    assert!(store.can_invite(&store.channel(id(11)).unwrap().clone()), "the permission works alone");
+}

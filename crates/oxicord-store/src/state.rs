@@ -190,6 +190,19 @@ impl Store {
         perms::channel_permissions(base, guild_id, me.id, roles, &source.permission_overwrites)
     }
 
+    /// Whether the invite button shows for `channel`. A server with a vanity
+    /// link lets everyone share it, so the permission is only needed without.
+    pub fn can_invite(&self, channel: &Channel) -> bool {
+        if channel.kind.is_thread() {
+            return false;
+        }
+        let vanity = channel
+            .guild_id
+            .and_then(|id| self.guilds.get(&id))
+            .is_some_and(|guild| guild.vanity_url_code.is_some());
+        vanity || self.permissions_in(channel).contains(Permissions::CREATE_INSTANT_INVITE)
+    }
+
     pub fn can_view(&self, channel: &Channel) -> bool {
         self.permissions_in(channel)
             .contains(Permissions::VIEW_CHANNEL)

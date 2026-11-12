@@ -1235,7 +1235,25 @@ the build moves.
       Low iq gaymers at 1920x1080, modal 480px wide with a Done button.
 - [ ] Leave Server confirm modal and the Server Tag popout, from the header
       menu rows.
-- [ ] Invite glyph in the header and on the hovered channel row, as drawn live.
+- [x] Invite glyph in the header and on the hovered channel row, as drawn live.
+      Done: the header button now draws the live two person people-add glyph
+      at 20px in the 32px button (white over a banner, as live); the channel
+      row shows the single person user-plus at 16px in a 20x16 box flush with
+      the row's right padding, bright on row hover, 8px from the row edge as
+      live. Live shows the row invite for anyone who may create an invite or
+      when the server has a vanity link (read from the live bundle and
+      confirmed on Low iq gaymers, whose account lacks the permission but the
+      server has vanity `lowiq`), so the guild now keeps `vanity_url_code` and
+      `Store::can_invite` decides it, also used to pick the header menu's
+      invite channel (unit test in the store reducer tests). The row's edit
+      shortcut now needs Manage Channels like live, where ours showed a pencil
+      on every channel. Compared at 1920x1080 on Low iq gaymers #yap-yap:
+      glyph rows and columns line up with live. Remaining differences: the
+      live sidebar in the playwright session is 303px wide against our 293,
+      which shifts everything on its right edge by 10px (not touched here, it
+      may be the session's resized sidebar); the edit shortcut glyph and the
+      invite sheet shown to someone without the permission are not captured
+      (the account manages no channel and the sheet writes).
 
 ### Home and direct messages
 

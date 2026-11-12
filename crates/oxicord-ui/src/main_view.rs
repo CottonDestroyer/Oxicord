@@ -106,6 +106,8 @@ struct ChannelItem {
     unread: Unread,
     /// Whether we may make an invite through it, which adds a shortcut on hover.
     can_invite: bool,
+    /// Whether we may edit it, which adds the edit shortcut on hover.
+    can_manage: bool,
     /// Who is in it, for voice channels.
     voice: Vec<VoiceItem>,
     /// What the people in a voice channel say they are doing.
@@ -2951,7 +2953,7 @@ impl MainView {
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
                             }))
-                            .child(icon("user-plus", 16., if has_banner { 0xffffff } else { theme::TEXT_MUTED }))
+                            .child(icon("people-add", 20., if has_banner { 0xffffff } else { theme::TEXT_MUTED }))
                     }));
 
         let mut header = Some(header);
@@ -3294,11 +3296,12 @@ impl MainView {
             .children(channel.can_invite.then(|| {
                 div()
                     .id(("invite-channel", id.0))
-                    .size(px(18.))
+                    .w(px(20.))
+                    .h(px(16.))
                     .flex_none()
                     .flex()
                     .items_center()
-                    .justify_center()
+                    .justify_end()
                     .invisible()
                     .group_hover("channel-row", |s| s.visible())
                     .cursor_pointer()
@@ -3306,9 +3309,9 @@ impl MainView {
                         cx.stop_propagation();
                         this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(id)));
                     }))
-                    .child(icon("user-plus", 15., theme::TEXT_MUTED))
+                    .child(icon("user-plus", 16., theme::TEXT_BRIGHT))
             }))
-            .children((!channel.kind.is_dm()).then(|| {
+            .children(channel.can_manage.then(|| {
                 div()
                     .id(("edit-channel", id.0))
                     .size(px(18.))
@@ -5197,8 +5200,9 @@ fn channel_item(store: &oxicord_store::Store, c: &oxicord_model::Channel) -> Cha
         muted: store.is_muted(c),
         status: c.status.clone(),
         user_limit: c.user_limit.filter(|&limit| limit > 0),
-        can_invite: !c.kind.is_thread()
-            && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE),
+        can_invite: store.can_invite(c),
+        can_manage: !c.kind.is_dm()
+            && store.permissions_in(c).contains(oxicord_model::Permissions::MANAGE_CHANNELS),
         voice: store
             .voice_in(c.id)
             .iter()
