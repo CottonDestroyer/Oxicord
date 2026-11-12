@@ -59,6 +59,11 @@ pub fn guild_icon(guild: Snowflake, hash: &str, size: u32) -> String {
     format!("{CDN}/icons/{guild}/{hash}.png?size={size}")
 }
 
+/// The picture behind the server name at the top of the channel list.
+pub fn guild_banner(guild: Snowflake, hash: &str, width: u32) -> String {
+    format!("{CDN}/banners/{guild}/{hash}.png?size={width}")
+}
+
 /// The wide picture at the top of a server's card, as Discord uses for its
 /// discovery splash and the screening dialog.
 pub fn discovery_splash(guild: Snowflake, hash: &str, size: u32) -> String {

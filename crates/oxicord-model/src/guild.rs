@@ -13,8 +13,16 @@ pub struct Guild {
     pub id: Snowflake,
     pub name: String,
     pub icon: Option<String>,
+    /// The picture behind the name at the top of the channel list.
+    pub banner: Option<String>,
     pub owner_id: Option<Snowflake>,
     pub member_count: Option<u64>,
+    /// Boost level, 0 to 3.
+    pub premium_tier: u8,
+    /// How many boosts the server has.
+    pub premium_subscription_count: u64,
+    /// Whether the server shows its Boost Goal bar in the channel list.
+    pub premium_progress_bar_enabled: bool,
     pub unavailable: bool,
     pub roles: Vec<Role>,
     pub channels: Vec<Channel>,
@@ -43,9 +51,17 @@ struct RawGuild {
     #[serde(default)]
     icon: Option<String>,
     #[serde(default)]
+    banner: Option<String>,
+    #[serde(default)]
     owner_id: Option<Snowflake>,
     #[serde(default)]
     member_count: Option<u64>,
+    #[serde(default)]
+    premium_tier: Option<u8>,
+    #[serde(default)]
+    premium_subscription_count: Option<u64>,
+    #[serde(default)]
+    premium_progress_bar_enabled: Option<bool>,
     #[serde(default)]
     unavailable: bool,
     #[serde(default)]
@@ -73,8 +89,12 @@ struct RawGuild {
 struct GuildProperties {
     name: Option<String>,
     icon: Option<String>,
+    banner: Option<String>,
     owner_id: Option<Snowflake>,
     member_count: Option<u64>,
+    premium_tier: Option<u8>,
+    premium_subscription_count: Option<u64>,
+    premium_progress_bar_enabled: Option<bool>,
     default_message_notifications: Option<u8>,
 }
 
@@ -93,8 +113,18 @@ impl From<RawGuild> for Guild {
             id: raw.id,
             name: raw.name.or(props.name).unwrap_or_default(),
             icon: raw.icon.or(props.icon),
+            banner: raw.banner.or(props.banner),
             owner_id: raw.owner_id.or(props.owner_id),
             member_count: raw.member_count.or(props.member_count),
+            premium_tier: raw.premium_tier.or(props.premium_tier).unwrap_or(0),
+            premium_subscription_count: raw
+                .premium_subscription_count
+                .or(props.premium_subscription_count)
+                .unwrap_or(0),
+            premium_progress_bar_enabled: raw
+                .premium_progress_bar_enabled
+                .or(props.premium_progress_bar_enabled)
+                .unwrap_or(false),
             unavailable: raw.unavailable,
             roles: raw.roles,
             channels,
@@ -168,6 +198,24 @@ mod tests {
         .unwrap();
         assert_eq!(g.scheduled_events.len(), 1);
         assert_eq!(g.scheduled_events[0].name, "a");
+    }
+
+    #[test]
+    fn banner_and_boosts_are_read_from_either_layout() {
+        let flat: Guild = serde_json::from_str(
+            r#"{"id":"1","name":"a","banner":"b1","premium_tier":2,"premium_subscription_count":9}"#,
+        )
+        .unwrap();
+        assert_eq!(flat.banner.as_deref(), Some("b1"));
+        assert_eq!((flat.premium_tier, flat.premium_subscription_count), (2, 9));
+
+        let nested: Guild = serde_json::from_str(
+            r#"{"id":"1","properties":{"name":"a","banner":"b2","premium_tier":3,"premium_progress_bar_enabled":true},"premium_subscription_count":62}"#,
+        )
+        .unwrap();
+        assert!(nested.premium_progress_bar_enabled && !flat.premium_progress_bar_enabled);
+        assert_eq!(nested.banner.as_deref(), Some("b2"));
+        assert_eq!((nested.premium_tier, nested.premium_subscription_count), (3, 62));
     }
 
     #[test]

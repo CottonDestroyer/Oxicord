@@ -4,7 +4,7 @@ use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ImageSource, InteractiveElement as _,
     IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    FocusHandle, MouseButton, component::{input::{Escape, InputEvent, InputState}, slider::{SliderEvent, SliderState}}, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
+    FocusHandle, MouseButton, ScrollHandle, StyledImage as _, component::{input::{Escape, InputEvent, InputState}, slider::{SliderEvent, SliderState}}, MouseDownEvent, Pixels, Point, Subscription, Window, div, img, point, px, rgb, rgba,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use oxicord_gateway::{ClientStatus, ConnectionState};
@@ -66,6 +66,20 @@ use crate::{
     switcher::{Chosen, CloseSwitcher, Goal, QuickSwitcher},
     theme, title_bar, user_menu,
 };
+
+/// What the top of a server's channel list shows.
+struct GuildHead {
+    name: SharedString,
+    /// Where the banner picture lives, when the server has one.
+    banner: Option<String>,
+    tier: u8,
+    boosts: u64,
+    /// Whether the server shows its Boost Goal bar.
+    goal: bool,
+}
+
+/// Height of the banner, which runs behind the header and below it.
+const BANNER_HEIGHT: f32 = 130.;
 
 struct GuildItem {
     id: Snowflake,
@@ -144,6 +158,9 @@ pub struct MainView {
     /// The channel to return to when switching back to a guild.
     last_channel: HashMap<Snowflake, Snowflake>,
     collapsed: HashSet<Snowflake>,
+    /// Where the channel list is scrolled to, which decides whether the
+    /// server banner still sits behind the header.
+    sidebar_scroll: ScrollHandle,
     status_menu_open: bool,
     /// The list of statuses beside the account popout.
     status_submenu_open: bool,
@@ -871,6 +888,7 @@ impl MainView {
             requests_open: false,
             last_channel: HashMap::new(),
             collapsed: HashSet::new(),
+            sidebar_scroll: ScrollHandle::new(),
             status_menu_open: false,
             status_submenu_open: false,
             status_dialog,
@@ -2802,21 +2820,36 @@ impl MainView {
     }
 
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let title: SharedString = match self.guild {
-            Some(guild) => self
-                .session
-                .read(cx)
-                .store
-                .guild(guild)
-                .map(|g| g.name.clone())
-                .unwrap_or_default()
-                .into(),
-            None => "Direct Messages".into(),
-        };
+        let head: Option<GuildHead> = self.guild.and_then(|guild| {
+            let session = self.session.read(cx);
+            let g = session.store.guild(guild)?;
+            Some(GuildHead {
+                name: g.name.clone().into(),
+                banner: g.banner.as_deref().map(|hash| cdn::guild_banner(guild, hash, 640)),
+                tier: g.premium_tier,
+                boosts: g.premium_subscription_count,
+                goal: g.premium_progress_bar_enabled,
+            })
+        });
+        let title: SharedString = head.as_ref().map_or_else(|| "Direct Messages".into(), |h| h.name.clone());
+        let banner_url = head.as_ref().and_then(|h| h.banner.clone());
+        let has_banner = banner_url.is_some();
+        // How far the list has scrolled up. The header goes solid once the
+        // banner has slid out from under it.
+        let scrolled = -f32::from(self.sidebar_scroll.offset().y);
+        let scrolled = scrolled.clamp(0., f32::from(self.sidebar_scroll.max_offset().y).max(0.));
+        let header_solid = !has_banner || scrolled >= BANNER_HEIGHT - theme::CHANNEL_HEADER_HEIGHT;
 
         let mut list = div().flex().flex_col().gap(px(2.)).p_2();
+        if has_banner {
+            // Live starts the channels 3px under the banner.
+            list = list.pt(px(3.));
+        }
         match self.guild {
             Some(guild) => {
+                if let Some(head) = head.as_ref().filter(|h| h.goal) {
+                    list = list.child(boost_goal(head.tier, head.boosts, has_banner));
+                }
                 if let Some(row) = self.render_events_entry(guild, cx) {
                     list = list.child(row);
                 }
@@ -2838,31 +2871,28 @@ impl MainView {
             }
         }
 
-        div()
-            .w(px(theme::SIDEBAR_WIDTH))
-            .h_full()
-            .flex_none()
-            .flex()
-            .flex_col()
-            .bg(rgb(theme::BG_SIDEBAR))
-            .child(
-                div()
+        // A banner runs behind the header, so the header floats over the top
+        // of the list instead of taking a row of its own.
+        let header = div()
                     .id("sidebar-header")
                     .h(px(theme::CHANNEL_HEADER_HEIGHT))
                     .flex_none()
                     .flex()
                     .items_center()
                     .justify_between()
-                    .border_b_1()
-                    .border_color(rgb(theme::BORDER))
-                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .text_color(rgb(if has_banner { 0xffffff } else { theme::TEXT_BRIGHT }))
                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .when(has_banner, |header| {
+                        header.absolute().top_0().left_0().w_full().when(header_solid, |h| h.bg(rgb(theme::BG_SIDEBAR)))
+                    })
+                    .when(!has_banner, |header| header.border_b_1().border_color(rgb(theme::BORDER)))
                     .when_some(self.guild, |header, guild| {
-                        header.cursor_pointer().hover(|s| s.bg(rgb(theme::BG_HOVER))).on_click(
-                            cx.listener(move |this, _, _, cx| {
+                        header
+                            .cursor_pointer()
+                            .when(!has_banner, |h| h.hover(|s| s.bg(rgb(theme::BG_HOVER))))
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 this.open_menu(Target::Guild(guild), point(px(theme::RAIL_WIDTH + 8.), px(54.)), cx);
-                            }),
-                        )
+                            }))
                     })
                     .when(self.guild.is_none(), |header| {
                         header.px_2().child(
@@ -2883,9 +2913,20 @@ impl MainView {
                                 .child("Find or start a conversation"),
                         )
                     })
-                    .when(self.guild.is_some(), |header| header.px_4().child(
-                        div().flex_1().min_w_0().truncate().child(title),
-                    ))
+                    .when(self.guild.is_some(), |header| {
+                        let tier = head.as_ref().map_or(0, |h| h.tier);
+                        header.pl_4().pr_2().child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .when(tier > 0, |row| row.child(boost_badge()))
+                                .child(div().min_w_0().truncate().text_size(px(16.)).child(title))
+                                .child(icon("chevron-down", 16., if has_banner { 0xffffff } else { theme::TEXT_MUTED }).ml(px(-6.)).flex_none()),
+                        )
+                    })
                     .children(self.channel.filter(|_| self.guild.is_some()).map(|channel| {
                         div()
                             .id("invite-server")
@@ -2900,17 +2941,53 @@ impl MainView {
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.session.update(cx, |_, cx| cx.emit(OpenInviteDialog(channel)));
                             }))
-                            .child(icon("user-plus", 16., theme::TEXT_MUTED))
-                    }))
-                    .children(self.guild.map(|_| icon("chevron-down", 16., theme::TEXT_MUTED).mr_4()))
-            )
+                            .child(icon("user-plus", 16., if has_banner { 0xffffff } else { theme::TEXT_MUTED }))
+                    }));
+
+        let mut header = Some(header);
+        let banner = banner_url.map(|url| {
+            let picture = self.media.update(cx, |media, _| media.get(&url));
+            div()
+                .relative()
+                .w_full()
+                .h(px(BANNER_HEIGHT))
+                .flex_none()
+                .overflow_hidden()
+                .children(picture.map(|image| {
+                    img(ImageSource::Image(image)).size_full().object_fit(gpui_kit::ObjectFit::Cover)
+                }))
+                // Darkens the top so the name reads on any picture.
+                .child(
+                    div().absolute().top_0().left_0().w_full().h(px(theme::CHANNEL_HEADER_HEIGHT + 16.)).bg(
+                        gpui_kit::linear_gradient(
+                            180.,
+                            gpui_kit::linear_color_stop(rgba(0x00000085), 0.),
+                            gpui_kit::linear_color_stop(rgba(0x00000000), 1.),
+                        ),
+                    ),
+                )
+        });
+
+        div()
+            .relative()
+            .w(px(theme::SIDEBAR_WIDTH))
+            .h_full()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .bg(rgb(theme::BG_SIDEBAR))
+            .when(!has_banner, |column| column.children(header.take()))
             .child(
                 div()
                     .id("channel-list")
                     .flex_1()
                     .overflow_y_scroll()
+                    .track_scroll(&self.sidebar_scroll)
+                    .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))
+                    .children(banner)
                     .child(list),
             )
+            .when(has_banner, |column| column.children(header.take()))
             // Room for the user card, which floats over the bottom of the rail and the list.
             .child(div().h(px(self.user_card_space(cx))).flex_none())
     }
@@ -4829,6 +4906,81 @@ fn guild_icon(
     }
 }
 
+/// The scalloped badge before the name of a boosted server, with the gem in it.
+fn boost_badge() -> impl IntoElement {
+    div()
+        .relative()
+        .size(px(20.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(icon("flower-star", 18., 0x808189))
+        .child(div().absolute().left(px(5.)).top(px(4.)).child(icon("boost-gem", 12., 0xff73fa)))
+}
+
+/// How full the Boost Goal bar is and what it says. The goals are 2, 7 and 14
+/// boosts for levels 1 to 3, and a server at level 3 just shows its count.
+fn boost_progress(tier: u8, boosts: u64) -> (f32, String) {
+    let goal = match tier {
+        0 => 2,
+        1 => 7,
+        2 => 14,
+        _ => return (1.0, format!("{boosts} Boosts")),
+    };
+    ((boosts as f32 / goal as f32).clamp(0., 1.), format!("{boosts}/{goal} Boosts"))
+}
+
+/// The "Boost Goal" pill under the server banner: how far the server is
+/// toward its next boost level, and how many boosts it has.
+fn boost_goal(tier: u8, boosts: u64, below_banner: bool) -> impl IntoElement {
+    let (fraction, label) = boost_progress(tier, boosts);
+    let text = |content: String| div().text_size(px(12.)).font_weight(gpui_kit::FontWeight::SEMIBOLD).text_color(rgb(theme::TEXT)).child(content);
+    div()
+        .w_full()
+        .flex_none()
+        .mt(px(if below_banner { 12. } else { 0. }))
+        .mb(px(12.))
+        .px(px(4.))
+        .pt(px(4.))
+        .pb(px(12.))
+        .child(
+            div()
+                .relative()
+                .h(px(26.))
+                .w_full()
+                .rounded_full()
+                .bg(rgb(0x000000))
+                .child(
+                    div().absolute().inset(px(2.)).child(
+                        div().h_full().w(gpui_kit::relative(fraction)).rounded_full().bg(gpui_kit::linear_gradient(
+                            270.,
+                            gpui_kit::linear_color_stop(rgba(0xff4cd266), 0.),
+                            gpui_kit::linear_color_stop(rgba(0xff4cd21a), 1.),
+                        )),
+                    ),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .px(px(8.))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(div().flex().items_center().gap(px(2.)).child(text("Boost Goal".into())).child(text("\u{1f389}".into())))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(2.))
+                                .child(text(label))
+                                .child(icon("chevron-right", 12., theme::TEXT)),
+                        ),
+                ),
+        )
+}
+
 fn mention_badge(count: u32) -> Option<AnyElement> {
     (count > 0).then(|| {
         div()
@@ -5049,6 +5201,14 @@ fn thread_items(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_boost_bar_fills_toward_the_next_level_and_tops_out_at_three() {
+        assert_eq!(boost_progress(0, 1), (0.5, "1/2 Boosts".to_string()));
+        assert_eq!(boost_progress(1, 7), (1.0, "7/7 Boosts".to_string()));
+        assert_eq!(boost_progress(2, 7), (0.5, "7/14 Boosts".to_string()));
+        assert_eq!(boost_progress(3, 62), (1.0, "62 Boosts".to_string()));
+    }
 
     #[test]
     fn the_page_before_joining_names_who_is_there() {

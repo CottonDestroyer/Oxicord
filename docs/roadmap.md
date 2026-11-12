@@ -1139,10 +1139,34 @@ the build moves.
 
 ### Server list and channel list
 
-- [ ] Server banner and boost goal in the channel list header: the banner image
+- [x] Server banner and boost goal in the channel list header: the banner image
       fills the header, the name sits over it with a chevron, and the "Boost
       Goal" bar (progress and "36 Boosts") sits below it. Ours is a plain text
       header with no banner.
+      Done: Guild now carries banner, premium_tier,
+      premium_subscription_count and premium_progress_bar_enabled (flat or
+      nested layout, kept current by GUILD_UPDATE). The channel list starts
+      with the 130px banner behind the 49px header, as live measures it at
+      1920x1080 (build 670026): white 16px semibold name, the level badge
+      (scalloped flower with the pink gem) before it when the server is
+      boosted, the chevron right after the name, the invite button at the
+      right edge, a dark fade at the top for legibility. The banner scrolls
+      away with the list and the header turns solid once it has slid out from
+      under it. The Boost Goal pill sits 15px under the banner (22px gradient
+      pill, "Boost Goal" with the party popper left, "62 Boosts" and a
+      chevron right) and only draws when the server turned the bar on. With
+      a banner the channels start 3px under it, which matched live in true
+      larpers (no goal) and Low iq gaymers (goal). Unit tests cover the
+      model reading and the bar's fill and label.
+      Remaining differences: the banner is the still frame of the animated
+      picture, so it shows a different frame than the playing live one. The
+      header has no drop shadow behind the name and no blurred glass layers.
+      The level tooltip ("Level 3", "62 Boosts") is not drawn. The pill has no
+      click action yet, because the Server Boost page belongs to the header
+      menu item. The lower tiers (label "n/goal Boosts" with goals 2, 7, 14,
+      bar filled by that share) and a boosted server without a banner were
+      not checked live, since neither test server is in that state. The
+      "Events" row under the pill is the next item.
 - [ ] Events row under the header ("Events", calendar glyph), opening the
       existing Events dialog. Ours has no row on a server that has events.
 - [ ] Server header dropdown menu, as the live client draws it (grouped, with

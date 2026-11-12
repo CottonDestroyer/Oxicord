@@ -615,6 +615,10 @@ impl Store {
         if !update.name.is_empty() {
             guild.name = update.name;
             guild.icon = update.icon;
+            guild.banner = update.banner;
+            guild.premium_tier = update.premium_tier;
+            guild.premium_subscription_count = update.premium_subscription_count;
+            guild.premium_progress_bar_enabled = update.premium_progress_bar_enabled;
         }
         guild.owner_id = update.owner_id.or(guild.owner_id);
         if !update.roles.is_empty() {
