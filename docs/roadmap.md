@@ -1167,8 +1167,26 @@ the build moves.
       bar filled by that share) and a boosted server without a banner were
       not checked live, since neither test server is in that state. The
       "Events" row under the pill is the next item.
-- [ ] Events row under the header ("Events", calendar glyph), opening the
-      existing Events dialog. Ours has no row on a server that has events.
+- [x] Events row under the header ("Events", calendar glyph), opening the
+      existing Events dialog. Done, checked at 1920x1080 (build 670026) in
+      Low iq gaymers: the row (calendar 20px, medium 16px label in the muted
+      channel color, 32px tall) and the 1px line under it (96979e at 20%, 12px
+      under the row, 16px in from the left, 7px from the right) now land on
+      the same pixel rows as live, and so do Static and rules below it. The
+      live component reads "N Events" while some are running or coming and
+      plain "Events" when none are; ours does the same. Live shows the row on
+      Low iq gaymers with no upcoming events, and not on true larpers. Neither
+      server has events, so the show rule is inferred from the account: the
+      row draws for anyone who may create or manage events, or when something
+      is upcoming (a unit test covers the rule and the label). I could not
+      confirm the rule in the live bundle, so a server where the account can
+      create events but live hides the row would still differ. Also fixed the
+      category header sitting 2px above its first channel in a group. Live
+      stacks them with no gap.
+      Remaining differences: no unread dot or mention count on the row, and no
+      mute-events state (the live row has both). No right click menu on the
+      row. The line is drawn only under the Events row; whether live also
+      draws it under the Boost Goal pill alone is not checked.
 - [ ] Server header dropdown menu, as the live client draws it (grouped, with
       icons): Server Boost, Server Tag, Invite to Server, Server Settings,
       Create Event, App Directory, Notification Settings, Privacy Settings,

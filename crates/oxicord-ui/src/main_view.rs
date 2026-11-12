@@ -2992,39 +2992,54 @@ impl MainView {
             .child(div().h(px(self.user_card_space(cx))).flex_none())
     }
 
-    /// The "N Events" row above a server's channels, drawn while the server
-    /// has events that are running or still to come.
+    /// The Events row above a server's channels, with the line under it that
+    /// sets it apart from the first category. It reads "N Events" while some
+    /// are running or still to come, and plain "Events" otherwise.
     fn render_events_entry(&mut self, guild: Snowflake, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let count = self
-            .session
-            .read(cx)
-            .store
+        let store = &self.session.read(cx).store;
+        let count = store
             .guild(guild)?
             .scheduled_events
             .iter()
             .filter(|event| matches!(event.status(), EventStatus::Active | EventStatus::Scheduled))
             .count();
-        if count == 0 {
+        if !shows_events_row(count, store.guild_permissions(guild)) {
             return None;
         }
+        let row = div()
+            .id("events-entry")
+            .h(px(32.))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px(px(8.))
+            .rounded(px(theme::RADIUS))
+            .cursor_pointer()
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
+            .text_color(rgb(theme::CHANNELS_DEFAULT))
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.session.update(cx, |_, cx| cx.emit(OpenEvents(guild)));
+            }))
+            .child(icon("calendar", 20., theme::CHANNELS_DEFAULT))
+            .child(events_label(count));
+        // Live: the line sits 12px under the row, 16px in from the left edge
+        // and 7px from the right, and the first category follows it at once.
+        // The list puts a 2px gap between children, which live does not have
+        // here, hence the pull back on both sides.
         Some(
             div()
-                .id("events-entry")
-                .h(px(32.))
-                .flex()
-                .items_center()
-                .gap_2()
-                .px(px(8.))
-                .rounded(px(theme::RADIUS))
-                .cursor_pointer()
-                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                .text_color(rgb(theme::CHANNELS_DEFAULT))
-                .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.session.update(cx, |_, cx| cx.emit(OpenEvents(guild)));
-                }))
-                .child(icon("calendar", 20., theme::CHANNELS_DEFAULT))
-                .child(format!("{count} Event{}", if count == 1 { "" } else { "s" }))
+                .mt(px(-1.))
+                .mb(px(-1.))
+                .child(row)
+                .child(
+                    div()
+                        .mt(px(12.))
+                        .ml(px(8.))
+                        .mr(px(7.))
+                        .h(px(1.))
+                        .bg(rgba(0x96979e33)),
+                )
                 .into_any_element(),
         )
     }
@@ -3052,6 +3067,8 @@ impl MainView {
                 div()
                     .id(("category", id.0))
                     .h(px(40.))
+                    // Live stacks the first channel right under the header.
+                    .mb(px(-2.))
                     .pt(px(16.))
                     .px(px(8.))
                     .flex()
@@ -4906,6 +4923,22 @@ fn guild_icon(
     }
 }
 
+/// Whether the Events row heads the channel list: when something is running
+/// or coming, and for anyone who can put an event on, so the way in is there
+/// before the first one exists.
+fn shows_events_row(upcoming: usize, perms: oxicord_model::Permissions) -> bool {
+    use oxicord_model::Permissions;
+    upcoming > 0 || perms.intersects(Permissions::CREATE_EVENTS | Permissions::MANAGE_EVENTS)
+}
+
+fn events_label(upcoming: usize) -> String {
+    match upcoming {
+        0 => "Events".to_owned(),
+        1 => "1 Event".to_owned(),
+        n => format!("{n} Events"),
+    }
+}
+
 /// The scalloped badge before the name of a boosted server, with the gem in it.
 fn boost_badge() -> impl IntoElement {
     div()
@@ -5208,6 +5241,18 @@ mod tests {
         assert_eq!(boost_progress(1, 7), (1.0, "7/7 Boosts".to_string()));
         assert_eq!(boost_progress(2, 7), (0.5, "7/14 Boosts".to_string()));
         assert_eq!(boost_progress(3, 62), (1.0, "62 Boosts".to_string()));
+    }
+
+    #[test]
+    fn the_events_row_shows_for_upcoming_events_or_for_people_who_can_make_them() {
+        use oxicord_model::Permissions;
+        assert!(!shows_events_row(0, Permissions::SEND_MESSAGES));
+        assert!(shows_events_row(2, Permissions::empty()));
+        assert!(shows_events_row(0, Permissions::CREATE_EVENTS));
+        assert!(shows_events_row(0, Permissions::MANAGE_EVENTS));
+        assert_eq!(events_label(0), "Events");
+        assert_eq!(events_label(1), "1 Event");
+        assert_eq!(events_label(3), "3 Events");
     }
 
     #[test]
