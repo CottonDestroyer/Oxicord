@@ -25,6 +25,11 @@ impl Store {
         self.notifications.get(&guild)
     }
 
+    /// A server's whole entry, or what a server we never touched has.
+    pub fn guild_settings(&self, guild: Snowflake) -> GuildNotificationSettings {
+        self.settings_for(Some(guild)).cloned().unwrap_or_default()
+    }
+
     pub fn guild_muted(&self, guild: Snowflake) -> bool {
         self.guild_muted_at(guild, Utc::now())
     }

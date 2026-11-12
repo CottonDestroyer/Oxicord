@@ -25,6 +25,7 @@ use crate::{
     friend_nick_dialog::{CloseFriendNick, FriendNickDialog},
     ban_dialog::{CloseBan, BanDialog},
     create_event_dialog::{CloseCreateEvent, CreateEventDialog},
+    notification_dialog::{CloseNotificationSettings, NotificationDialog},
     create_poll_dialog::{CloseCreatePoll, CreatePollDialog},
     create_server_dialog::{CloseCreateServer, CreateServerDialog},
     danger_dialog::{CloseDanger, DangerDialog, OpenDanger},
@@ -59,7 +60,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{OpenChangePassword, OpenTotpSetup, DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreateEvent, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{OpenChangePassword, OpenTotpSetup, DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreateEvent, OpenNotificationSettings, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -245,6 +246,8 @@ pub struct MainView {
     create_poll_open: bool,
     create_event_dialog: Entity<CreateEventDialog>,
     create_event_open: bool,
+    notification_dialog: Entity<NotificationDialog>,
+    notification_open: bool,
     kick_dialog: Entity<KickDialog>,
     kick_dialog_open: bool,
     timeout_dialog: Entity<TimeoutDialog>,
@@ -392,6 +395,10 @@ impl MainView {
         let create_event_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
             cx.new(|cx| CreateEventDialog::new(session, backend, window, cx))
+        };
+        let notification_dialog = {
+            let (session, backend) = (session.clone(), backend.clone());
+            cx.new(|_| NotificationDialog::new(session, backend))
         };
         let kick_dialog = {
             let (session, backend) = (session.clone(), backend.clone());
@@ -687,6 +694,15 @@ impl MainView {
                 this.create_event_dialog.update(cx, |dialog, cx| dialog.opened(open.0, window, cx));
                 cx.notify();
             }),
+            cx.subscribe(&notification_dialog, |this, _, _: &CloseNotificationSettings, cx| {
+                this.notification_open = false;
+                cx.notify();
+            }),
+            cx.subscribe(&session, |this, _, open: &OpenNotificationSettings, cx| {
+                this.notification_open = true;
+                this.notification_dialog.update(cx, |dialog, cx| dialog.opened(open.0, cx));
+                cx.notify();
+            }),
             cx.subscribe(&kick_dialog, |this, _, _: &CloseKick, cx| {
                 this.kick_dialog_open = false;
                 cx.notify();
@@ -967,6 +983,8 @@ impl MainView {
             create_poll_open: false,
             create_event_dialog,
             create_event_open: false,
+            notification_dialog,
+            notification_open: false,
             kick_dialog,
             kick_dialog_open: false,
             timeout_dialog,
@@ -1449,6 +1467,7 @@ impl MainView {
             }
             DevCommand::Rules(guild) => self.open_screening(guild, window, cx),
             DevCommand::CreateEvent(guild) => self.session.update(cx, |_, cx| cx.emit(OpenCreateEvent(guild))),
+            DevCommand::Notifications(guild) => self.session.update(cx, |_, cx| cx.emit(OpenNotificationSettings(guild))),
             DevCommand::Danger(kind) => {
                 use crate::danger_dialog::Danger;
                 let kind = [Danger::DisableAccount, Danger::DeleteAccount, Danger::RemoveTotp][usize::from(kind).min(2)];
@@ -2669,15 +2688,20 @@ impl MainView {
         let selected = self.guild == Some(item.id);
         let id = item.id;
         let body = guild_icon(&self.media, item.icon.as_deref(), &item.name, selected, cx);
-        rail_button(
-            "guild",
-            id.0,
-            selected,
-            item.unread,
-            body,
-            cx.listener(move |this, _, window, cx| this.select_guild(Some(id), window, cx)),
-        )
-        .into_any_element()
+        div()
+            .w_full()
+            .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                this.open_menu(Target::Guild(id), event.position, cx);
+            }))
+            .child(rail_button(
+                "guild",
+                id.0,
+                selected,
+                item.unread,
+                body,
+                cx.listener(move |this, _, window, cx| this.select_guild(Some(id), window, cx)),
+            ))
+            .into_any_element()
     }
 
     /// What a folder looks like in the rail: a folder glyph when open, and
@@ -4740,6 +4764,7 @@ impl Render for MainView {
         });
         let create_poll_dialog = self.create_poll_open.then(|| self.create_poll_dialog.clone());
         let create_event_dialog = self.create_event_open.then(|| self.create_event_dialog.clone());
+        let notification_dialog = self.notification_open.then(|| self.notification_dialog.clone());
         let kick_dialog = self.kick_dialog_open.then(|| self.kick_dialog.clone());
         let timeout_dialog = self.timeout_dialog_open.then(|| self.timeout_dialog.clone());
         let roles_dialog = self.roles_dialog_open.then(|| self.roles_dialog.clone());
@@ -4844,6 +4869,7 @@ impl Render for MainView {
             .children(poll_voters_modal)
             .children(create_poll_dialog)
             .children(create_event_dialog)
+            .children(notification_dialog)
             .children(timeout_dialog)
             .children(roles_dialog)
             .children(join)

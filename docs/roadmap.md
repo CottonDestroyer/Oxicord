@@ -1248,10 +1248,45 @@ the build moves.
       measured; the date and time are typed text (YYYY-MM-DD and 7:00 PM)
       where live has a calendar and time dropdown; no repeat picker, no
       cover image upload, no Stage "Good for" hint.
-- [ ] Server Notification Settings modal behind the header menu row (mute
+- [x] Server Notification Settings modal behind the header menu row (mute
       toggle, All Messages, Only @mentions, Nothing, the suppress toggles,
       Mute New Events, Mobile Push, per channel overrides). Captured live in
       Low iq gaymers at 1920x1080, modal 480px wide with a Done button.
+      Done: the row opens `notification_dialog.rs`, a 480px card with the
+      live header (20px title, 40px close), a scrolling body between two
+      hairlines and a full width Done. Sections as live: "Mute <server>"
+      switch, "Server Notification Settings" with the three radios (disabled
+      while muted), Suppress @everyone and @here, Suppress All Role @mentions,
+      Suppress Highlights (with its blurb and "Learn more about Highlights"
+      link, forced on and disabled while muted), Mute New Events, Mobile Push
+      Notifications (off and disabled while muted), then the "Select a channel
+      or category" picker and the override table (All, Mentions, Nothing, Mute
+      columns, the dashed placeholder row). Behaviour read from the live
+      bundle (module 131527): the mute switch only flips `muted` and a
+      "Mute duration" select appears once on; Highlights writes
+      `notify_highlights` 1 (off) or 2 (on); a channel shows its server's
+      level until it has its own; removing an override sends level 3 and
+      unmuted. New model fields `mute_scheduled_events`, `mobile_push`
+      (default on), `notify_highlights` and `selected_time_window`,
+      `ChannelOverride::is_set`, `Store::guild_settings`, and six new
+      `menus::Action` bodies with unit tests. The duration labels now use the
+      live capitalization ("For 15 Minutes"). Right click on a server icon
+      now opens the older list (that handler never existed; only the old
+      Notification Settings swap reached it). Dev command `notifications
+      <guild>` opens the modal. Checked at 1920x1080 on Low iq gaymers against
+      a live capture (card 720,140 to 1200,940, dividers, switches, radios and
+      the Done button land within a pixel; text sits 1px lower, the usual font
+      metric difference). Every control sends a settings patch, so none was
+      clicked on the real account; only the picker (local state) was driven.
+      Remaining differences: no scrollbar thumb on the body (live shows one);
+      the picker list opens inline and pushes the table down where live
+      floats it over the modal, with no type to filter; the override row is
+      built from the bundle, not captured (live's add click was blocked as a
+      write, so the row's removal button position and the category glyph,
+      closed folder live against our open one, are unchecked); the muted state
+      and the duration select are not seen live or here because muting is an
+      account write; the new-notifications experiment's "@mentions + Unreads"
+      option is not drawn.
 - [ ] Leave Server confirm modal and the Server Tag popout, from the header
       menu rows.
 - [x] Invite glyph in the header and on the hovered channel row, as drawn live.

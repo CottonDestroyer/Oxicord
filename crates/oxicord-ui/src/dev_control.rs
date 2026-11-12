@@ -41,6 +41,7 @@ pub enum DevCommand {
     /// The Create Event form for a server, which the header menu only offers
     /// to someone who may manage events.
     CreateEvent(Snowflake),
+    Notifications(Snowflake),
     /// 0 board, 1 activity, 2 friends, 3 servers.
     Tab(u8),
     /// A synthetic message request channel, so its row and page can be
@@ -96,6 +97,7 @@ pub fn parse(line: &str) -> Option<DevCommand> {
         "usermenu" => id().map(DevCommand::UserMenu),
         "rules" => id().map(DevCommand::Rules),
         "create-event" => id().map(DevCommand::CreateEvent),
+        "notifications" => id().map(DevCommand::Notifications),
         "tab" => match words.clone().next()? {
             "board" => Some(DevCommand::Tab(0)),
             "activity" => Some(DevCommand::Tab(1)),
@@ -180,6 +182,7 @@ mod tests {
         assert_eq!(parse("usermenu 5"), Some(DevCommand::UserMenu(Snowflake(5))));
         assert_eq!(parse("rules 9"), Some(DevCommand::Rules(Snowflake(9))));
         assert_eq!(parse("create-event 9"), Some(DevCommand::CreateEvent(Snowflake(9))));
+        assert_eq!(parse("notifications 9"), Some(DevCommand::Notifications(Snowflake(9))));
         assert_eq!(parse("settings 9 Server Template"), Some(DevCommand::Settings(Snowflake(9), "Server Template".into())));
         assert_eq!(parse("settings 9"), None);
         assert_eq!(parse("manageable"), Some(DevCommand::Manageable));

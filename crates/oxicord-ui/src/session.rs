@@ -272,6 +272,11 @@ pub struct OpenServerGuide(pub Snowflake);
 
 impl EventEmitter<OpenServerGuide> for Session {}
 
+/// Opens a server's notification settings modal.
+pub struct OpenNotificationSettings(pub Snowflake);
+
+impl EventEmitter<OpenNotificationSettings> for Session {}
+
 /// Opens the form that schedules a new event in a server.
 pub struct OpenCreateEvent(pub Snowflake);
 

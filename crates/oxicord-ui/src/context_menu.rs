@@ -18,7 +18,7 @@ use crate::{
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
     server_settings,
     session::{
-        OpenCreateEvent, OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings,
+        OpenCreateEvent, OpenInviteDialog, OpenNotificationSettings, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings,
         Session,
     },
     theme,
@@ -275,12 +275,9 @@ impl ContextMenu {
                         cx.open_url("https://discord.com/application-directory");
                         this.close(cx);
                     }, cx),
-                    // The notification modal isn't built yet, so this swaps to the
-                    // older list, which has the mute and level choices.
                     Row::Notifications => self.header_row(row, None, None, move |this, _, cx| {
-                        this.target = Some(Target::Guild(guild));
-                        this.open = Some(Section::Notify);
-                        cx.notify();
+                        this.session.update(cx, |_, cx| cx.emit(OpenNotificationSettings(guild)));
+                        this.close(cx);
                     }, cx),
                     Row::Privacy => self.header_row(row, None, None, |this, _, cx| {
                         this.session.update(cx, |_, cx| cx.emit(OpenPrivacySettings));

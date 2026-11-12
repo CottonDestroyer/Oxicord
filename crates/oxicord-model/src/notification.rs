@@ -29,6 +29,9 @@ impl NotifyLevel {
 pub struct MuteConfig {
     #[serde(default)]
     pub end_time: Option<DateTime<Utc>>,
+    /// How long the mute was asked for, in seconds, or -1 for no end.
+    #[serde(default)]
+    pub selected_time_window: Option<i64>,
 }
 
 /// A channel's own settings, which win over its server's.
@@ -43,9 +46,17 @@ pub struct ChannelOverride {
     pub message_notifications: Option<u8>,
 }
 
+impl ChannelOverride {
+    /// Whether the channel departs from its server's settings at all. A
+    /// cleared override stays in the list with the "inherit" level and no mute.
+    pub fn is_set(&self) -> bool {
+        self.muted || NotifyLevel::from_wire(self.message_notifications).is_some()
+    }
+}
+
 /// One server's notification settings. `guild_id` is `None` for direct
 /// messages.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct GuildNotificationSettings {
     #[serde(default)]
     pub guild_id: Option<Snowflake>,
@@ -61,8 +72,45 @@ pub struct GuildNotificationSettings {
     pub suppress_roles: bool,
     #[serde(default)]
     pub hide_muted_channels: bool,
+    #[serde(default)]
+    pub mute_scheduled_events: bool,
+    /// Push to the phone. On unless the server's entry says otherwise.
+    #[serde(default = "on")]
+    pub mobile_push: bool,
+    /// 0 unset, 1 off, 2 on: the Highlights digest for this server.
+    #[serde(default)]
+    pub notify_highlights: u8,
     #[serde(default, deserialize_with = "overrides")]
     pub channel_overrides: Vec<ChannelOverride>,
+}
+
+fn on() -> bool {
+    true
+}
+
+impl Default for GuildNotificationSettings {
+    fn default() -> Self {
+        Self {
+            guild_id: None,
+            muted: false,
+            mute_config: None,
+            message_notifications: None,
+            suppress_everyone: false,
+            suppress_roles: false,
+            hide_muted_channels: false,
+            mute_scheduled_events: false,
+            mobile_push: true,
+            notify_highlights: 0,
+            channel_overrides: Vec::new(),
+        }
+    }
+}
+
+impl GuildNotificationSettings {
+    /// Whether Highlights are switched off for the server.
+    pub fn highlights_off(&self) -> bool {
+        self.notify_highlights == 1
+    }
 }
 
 /// The server sends overrides as a list in some payloads and as an object
@@ -115,7 +163,7 @@ mod tests {
 
     #[test]
     fn a_mute_expires_at_its_end_time() {
-        let config = MuteConfig { end_time: Some(at("2024-05-10T12:00:00Z")) };
+        let config = MuteConfig { end_time: Some(at("2024-05-10T12:00:00Z")), ..Default::default() };
         assert!(mute_active(true, Some(&config), at("2024-05-10T11:59:59Z")));
         assert!(!mute_active(true, Some(&config), at("2024-05-10T12:00:01Z")));
         assert!(mute_active(true, None, at("2030-01-01T00:00:00Z")));
@@ -137,6 +185,27 @@ mod tests {
         assert!(map.channel_overrides.iter().any(|o| o.channel_id == Snowflake(6)));
         let none: GuildNotificationSettings = serde_json::from_str(r#"{"channel_overrides":null}"#).unwrap();
         assert!(none.channel_overrides.is_empty());
+    }
+
+    #[test]
+    fn the_extra_switches_read_from_the_entry_and_push_defaults_on() {
+        let bare: GuildNotificationSettings = serde_json::from_str(r#"{"guild_id":"1"}"#).unwrap();
+        assert!(bare.mobile_push && !bare.mute_scheduled_events && !bare.highlights_off());
+        let set: GuildNotificationSettings = serde_json::from_str(
+            r#"{"guild_id":"1","mobile_push":false,"mute_scheduled_events":true,"notify_highlights":1}"#,
+        )
+        .unwrap();
+        assert!(!set.mobile_push && set.mute_scheduled_events && set.highlights_off());
+        assert!(GuildNotificationSettings::default().mobile_push);
+    }
+
+    #[test]
+    fn a_cleared_override_is_not_set() {
+        let ov = |muted: bool, level: Option<u8>| ChannelOverride { muted, message_notifications: level, ..Default::default() };
+        assert!(!ov(false, None).is_set());
+        assert!(!ov(false, Some(3)).is_set());
+        assert!(ov(true, Some(3)).is_set());
+        assert!(ov(false, Some(1)).is_set());
     }
 
     #[test]

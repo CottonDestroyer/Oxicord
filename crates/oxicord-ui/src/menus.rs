@@ -14,13 +14,26 @@ pub enum MuteFor {
 
 impl MuteFor {
     pub const CHOICES: [(MuteFor, &'static str); 6] = [
-        (MuteFor::Minutes(15), "For 15 minutes"),
-        (MuteFor::Minutes(60), "For 1 hour"),
-        (MuteFor::Minutes(180), "For 3 hours"),
-        (MuteFor::Minutes(480), "For 8 hours"),
-        (MuteFor::Minutes(1440), "For 24 hours"),
+        (MuteFor::Minutes(15), "For 15 Minutes"),
+        (MuteFor::Minutes(60), "For 1 Hour"),
+        (MuteFor::Minutes(180), "For 3 Hours"),
+        (MuteFor::Minutes(480), "For 8 Hours"),
+        (MuteFor::Minutes(1440), "For 24 Hours"),
         (MuteFor::Forever, "Until I turn it back on"),
     ];
+
+    /// The choice a server's saved mute window matches, as the web client
+    /// shows it in the duration select. No window means until turned back on.
+    pub fn from_window(seconds: Option<i64>) -> MuteFor {
+        match seconds {
+            Some(s) if s > 0 && Self::CHOICES.iter().any(|(how, _)| *how == MuteFor::Minutes(s / 60)) => MuteFor::Minutes(s / 60),
+            _ => MuteFor::Forever,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        Self::CHOICES.iter().find(|(how, _)| *how == self).map_or("", |(_, label)| label)
+    }
 
     /// The `mute_config` Discord expects: how long, and when it ends.
     fn config(self, now: DateTime<Utc>) -> Value {
@@ -43,7 +56,14 @@ pub enum Action {
     /// `None` means "use the default", which for a channel is to inherit.
     SetLevel(Option<NotifyLevel>),
     SuppressEveryone(bool),
+    SuppressRoles(bool),
+    /// Switches the Highlights digest off (true) or on.
+    SuppressHighlights(bool),
+    MuteEvents(bool),
+    MobilePush(bool),
     HideMutedChannels(bool),
+    /// Takes a channel's own settings away so it follows its server again.
+    ClearOverride,
     CopyLink,
     CopyId,
     CopyGuildId,
@@ -75,7 +95,13 @@ pub fn settings_body(place: Place, action: Action, now: DateTime<Utc>) -> Option
         Action::Unmute => json!({ "muted": false, "mute_config": null }),
         Action::SetLevel(level) => json!({ "message_notifications": level_number(level) }),
         Action::SuppressEveryone(on) => json!({ "suppress_everyone": on }),
+        Action::SuppressRoles(on) => json!({ "suppress_roles": on }),
+        // The client's enum: 1 disabled, 2 enabled.
+        Action::SuppressHighlights(off) => json!({ "notify_highlights": if off { 1 } else { 2 } }),
+        Action::MuteEvents(on) => json!({ "mute_scheduled_events": on }),
+        Action::MobilePush(on) => json!({ "mobile_push": on }),
         Action::HideMutedChannels(on) => json!({ "hide_muted_channels": on }),
+        Action::ClearOverride => json!({ "message_notifications": level_number(None), "muted": false }),
         Action::MarkRead | Action::CopyLink | Action::CopyId | Action::CopyGuildId | Action::Leave => return None,
     };
     Some(match place {
@@ -121,6 +147,15 @@ mod tests {
     }
 
     #[test]
+    fn a_saved_window_picks_its_choice() {
+        assert_eq!(MuteFor::from_window(Some(3600)), MuteFor::Minutes(60));
+        assert_eq!(MuteFor::from_window(Some(86400)).label(), "For 24 Hours");
+        assert_eq!(MuteFor::from_window(Some(-1)), MuteFor::Forever);
+        assert_eq!(MuteFor::from_window(None), MuteFor::Forever);
+        assert_eq!(MuteFor::from_window(Some(1234)), MuteFor::Forever);
+    }
+
+    #[test]
     fn muting_for_good_has_no_end() {
         let body = settings_body(Place::Guild(Snowflake(1)), Action::Mute(MuteFor::Forever), now()).unwrap();
         assert_eq!(body["mute_config"]["selected_time_window"], -1);
@@ -140,6 +175,23 @@ mod tests {
         assert_eq!(body, json!({ "channel_overrides": { "7": { "message_notifications": 1 } } }));
         let inherit = settings_body(place, Action::SetLevel(None), now()).unwrap();
         assert_eq!(inherit["channel_overrides"]["7"]["message_notifications"], 3);
+    }
+
+    #[test]
+    fn the_modal_switches_name_their_wire_fields() {
+        let place = Place::Guild(Snowflake(1));
+        assert_eq!(settings_body(place, Action::SuppressRoles(true), now()).unwrap(), json!({ "suppress_roles": true }));
+        assert_eq!(settings_body(place, Action::MuteEvents(true), now()).unwrap(), json!({ "mute_scheduled_events": true }));
+        assert_eq!(settings_body(place, Action::MobilePush(false), now()).unwrap(), json!({ "mobile_push": false }));
+        assert_eq!(settings_body(place, Action::SuppressHighlights(true), now()).unwrap(), json!({ "notify_highlights": 1 }));
+        assert_eq!(settings_body(place, Action::SuppressHighlights(false), now()).unwrap(), json!({ "notify_highlights": 2 }));
+    }
+
+    #[test]
+    fn clearing_an_override_inherits_and_unmutes() {
+        let place = Place::Channel { guild: Snowflake(1), channel: Snowflake(7) };
+        let body = settings_body(place, Action::ClearOverride, now()).unwrap();
+        assert_eq!(body, json!({ "channel_overrides": { "7": { "message_notifications": 3, "muted": false } } }));
     }
 
     #[test]
