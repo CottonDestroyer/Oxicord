@@ -1398,7 +1398,7 @@ the build moves.
       Privacy for now; accept and decline icons do not tint green and red on
       hover. The Add Friend page itself is still the old layout (see the next
       item).
-- [ ] Add Friend page rebuild: live shows a 20px heading, the line "You can
+- [x] Add Friend page rebuild: live shows a 20px heading, the line "You can
       add friends with their Discord username." with the Wumpus picture at
       the right, one 16px rounded box holding the username row, a "Personalize
       your request (Optional)" note field with a 120 counter and the line
@@ -1406,6 +1406,16 @@ the build moves.
       friends.", then "Other Places to Make Friends" with an "Explore
       Discoverable Servers" row. The request body with a note is built and
       unit tested only, never sent.
+      Done (checked at 1920x1080 against live): 20px headings, the Wumpus picture
+      at the right, one 16px rounded box holding the username row and the
+      note field (120 limit with a live counter), the helper line, then Other
+      Places to Make Friends with the Explore Discoverable Servers row. The
+      Send button is dimmed until a username is typed. The request body carries
+      the note as `note` (key read from the web client), built and unit tested
+      only, never sent. Remaining: the note text sits about 10px lower than
+      live; Explore opens discord.com/discovery/servers in the browser, there
+      is no in app discovery page; send results show as a plain line under
+      the helper text, not live styling.
 - [x] New group DM button at the right end of the friends header, and the
       inbox and help icons in the title strip.
       Live (1920x1080): the 32px title strip holds, centered, a 16px rounded

@@ -1,8 +1,8 @@
 use gpui_kit::{
     AnyElement, AppContext as _, ClickEvent, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, div, prelude::FluentBuilder as _, px, rgb, rgba,
-    component::input::{Input, InputEvent, InputState},
+    Subscription, Window, div, img, prelude::FluentBuilder as _, px, rgb, rgba,
+    component::{Sizable as _, input::{Input, InputEvent, InputState, Textarea, TextareaState}},
 };
 use oxicord_media::cdn;
 use oxicord_model::{Activity, ActivityType, RelationshipKind, ServerTag, Snowflake, Status};
@@ -18,6 +18,9 @@ use crate::{
     theme,
     tip::Tip,
 };
+
+/// How many characters a friend request note may hold.
+const NOTE_LIMIT: usize = 120;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
@@ -123,6 +126,8 @@ pub struct FriendsView {
     /// The person whose remove button was pressed once already.
     confirm_remove: Option<Snowflake>,
     add_name: Entity<InputState>,
+    /// The optional note sent with a friend request.
+    add_note: Entity<TextareaState>,
     /// The Search box above the list.
     search: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
@@ -137,8 +142,11 @@ impl FriendsView {
         cx: &mut Context<Self>,
     ) -> Self {
         let add_name = cx.new(|cx| InputState::new(window, cx).placeholder("Enter a username"));
+        let add_note = cx.new(|cx| TextareaState::new(window, cx).auto_grow(1, 2).placeholder("Personalize your request (Optional)"));
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
         let subscriptions = vec![
+            cx.observe(&add_name, |_, _, cx| cx.notify()),
+            cx.observe(&add_note, |_, _, cx| cx.notify()),
             cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
@@ -159,6 +167,7 @@ impl FriendsView {
             tab: Tab::Online,
             confirm_remove: None,
             add_name,
+            add_note,
             search,
             _subscriptions: subscriptions,
         }
@@ -532,72 +541,192 @@ impl FriendsView {
     }
 
     /// The Add Friend page: a username box and what happened last time.
-    fn render_add_form(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_add_form(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let outcome = self.session.read(cx).friend_request.clone();
+
+        // The note holds 120 characters at most.
+        let note = self.add_note.read(cx).value().to_string();
+        if note.chars().count() > NOTE_LIMIT {
+            let kept: String = note.chars().take(NOTE_LIMIT).collect();
+            self.add_note.update(cx, |input, cx| input.set_value(kept, window, cx));
+        }
+        let left = NOTE_LIMIT.saturating_sub(note.chars().count());
+        let ready = !self.add_name.read(cx).value().trim().is_empty();
+
         let send = cx.listener(|this, _: &ClickEvent, window, cx| {
             let name = this.add_name.read(cx).value().trim().to_owned();
             if name.is_empty() {
                 return;
             }
-            this.backend.send(Command::AddFriendByName(name));
+            let note = this.add_note.read(cx).value().trim().to_owned();
+            this.backend.send(Command::AddFriendByName(name, (!note.is_empty()).then_some(note)));
             this.add_name.update(cx, |input, cx| input.set_value("", window, cx));
+            this.add_note.update(cx, |input, cx| input.set_value("", window, cx));
         });
 
-        div()
-            .p_6()
+        let rule = || div().h(px(1.)).flex_none().bg(rgba(0x97979f3d));
+        let heading = |text: &'static str| {
+            div()
+                .text_size(px(20.))
+                .line_height(px(24.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(theme::TEXT_BRIGHT))
+                .child(text)
+        };
+        let body = |text: &'static str| {
+            div()
+                .text_size(px(16.))
+                .line_height(px(20.))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(theme::TEXT))
+                .child(text)
+        };
+
+        let send_button = div()
+            .id("send-request")
+            .h(px(32.))
+            .px(px(12.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .rounded(px(8.))
+            .bg(rgb(theme::ACCENT))
+            .text_size(px(14.))
+            .line_height(px(18.))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(0xffffff))
+            .child("Send Friend Request")
+            .map(|button| {
+                if ready {
+                    button.cursor_pointer().hover(|s| s.opacity(0.85)).on_click(send)
+                } else {
+                    button.opacity(0.5)
+                }
+            });
+
+        let form = div()
+            .mt(px(16.))
+            .rounded(px(16.))
+            .border_1()
+            .border_color(rgba(0x97979f3d))
             .flex()
             .flex_col()
-            .gap_3()
             .child(
                 div()
-                    .text_size(px(18.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(theme::TEXT_BRIGHT))
-                    .child("Add Friend"),
-            )
-            .child(
-                div()
-                    .text_color(rgb(theme::TEXT_MUTED))
-                    .child("You can add friends with their Discord username."),
-            )
-            .child(
-                // The field and its button share one rounded outline, as the
-                // official page draws them.
-                div()
+                    .h(px(56.))
+                    .flex_none()
+                    .px(px(12.))
                     .flex()
                     .items_center()
-                    .gap_2()
-                    .max_w(px(560.))
-                    .mt(px(4.))
-                    .py(px(8.))
-                    .px(px(12.))
-                    .rounded(px(16.))
-                    .border_1()
-                    .border_color(rgb(theme::BORDER))
-                    .child(div().flex_1().child(Input::new(&self.add_name).appearance(false).bordered(false)))
                     .child(
                         div()
-                            .id("send-request")
-                            .h(px(32.))
-                            .px_4()
-                            .flex()
-                            .items_center()
-                            .rounded(px(16.))
-                            .cursor_pointer()
-                            .bg(rgb(theme::ACCENT))
-                            .text_color(rgb(theme::TEXT_BRIGHT))
-                            .hover(|s| s.opacity(0.85))
-                            .on_click(send)
-                            .child("Send Friend Request"),
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(16.))
+                            .child(Input::new(&self.add_name).large().appearance(false).bordered(false)),
+                    )
+                    .child(send_button),
+            )
+            .child(rule())
+            .child(
+                div()
+                    .relative()
+                    .h(px(90.))
+                    .flex_none()
+                    .px(px(12.))
+                    .pt(px(12.))
+                    .child(Textarea::new(&self.add_note).large().appearance(false).bordered(false))
+                    .child(
+                        div()
+                            .absolute()
+                            .right(px(12.))
+                            .bottom(px(12.))
+                            .text_size(px(14.))
+                            .line_height(px(18.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(left.to_string()),
                     ),
+            );
+
+        let top = div()
+            .relative()
+            .flex_none()
+            .px(px(30.))
+            .py(px(20.))
+            .child(heading("Add Friend"))
+            .child(div().mt(px(8.)).child(body("You can add friends with their Discord username.")))
+            .child(form)
+            .child(
+                div()
+                    .mt(px(8.))
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child("What you write here will also show up in your DM if you become friends."),
             )
             .children(outcome.map(|(name, result)| {
                 let (text, color) = match result {
                     Ok(()) => (format!("Your friend request to {name} was sent."), theme::ONLINE),
                     Err(error) => (error, theme::DANGER),
                 };
-                div().text_color(rgb(color)).child(text)
+                div().mt(px(8.)).text_size(px(14.)).text_color(rgb(color)).child(text)
             }))
+            .child(
+                img(gpui_kit::SharedString::from("friends/add-friend-wumpus.svg"))
+                    .absolute()
+                    .top(px(16.))
+                    .right(px(46.))
+                    .w(px(84.))
+                    .h(px(72.)),
+            );
+
+        let explore = div()
+            .id("explore-servers")
+            .ml(px(20.))
+            .w(px(526.))
+            .h(px(56.))
+            .px(px(15.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgba(0x97979f33))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+            .on_click(|_, _, cx| cx.open_url("https://discord.com/discovery/servers"))
+            .child(
+                div()
+                    .size(px(36.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(8.))
+                    .bg(rgb(0x3d9e60))
+                    .child(icon("discovery", 24., 0x000000)),
+            )
+            .child(div().flex_1().child(body("Explore Discoverable Servers")))
+            .child(icon("chevron-right", 20., theme::TEXT_MUTED));
+
+        div()
+            .id("friends-add")
+            .size_full()
+            .overflow_y_scroll()
+            .child(top)
+            .child(rule())
+            .child(
+                div()
+                    .px(px(30.))
+                    .py(px(20.))
+                    .flex()
+                    .flex_col()
+                    .child(heading("Other Places to Make Friends"))
+                    .child(div().mt(px(8.)).child(body(
+                        "Don't have a username on hand? Check out our list of public servers that includes everything from gaming to cooking, music, anime and more.",
+                    )))
+                    .child(div().mt(px(20.)).ml(px(-30.)).child(explore)),
+            )
             .into_any_element()
     }
 
@@ -871,7 +1000,7 @@ impl Render for FriendsView {
                 .into_any_element()
         };
         if self.tab == Tab::Add {
-            return page(self.render_add_form(cx));
+            return page(self.render_add_form(window, cx));
         }
 
         let query = self.search.read(cx).value().to_string();

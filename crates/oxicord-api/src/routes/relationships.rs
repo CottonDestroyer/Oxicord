@@ -35,14 +35,15 @@ impl ApiClient {
         .await
     }
 
-    /// Sends a friend request by username. Discord may answer with a captcha
+    /// Sends a friend request by username, with the optional note that
+    /// shows in the DM once they accept. Discord may answer with a captcha
     /// challenge or a refusal, which comes back as the error.
-    pub async fn add_friend_by_name(&self, username: &str) -> Result<(), ApiError> {
+    pub async fn add_friend_by_name(&self, username: &str, note: Option<&str>) -> Result<(), ApiError> {
         self.empty(
             Method::POST,
             "/users/@me/relationships",
             "POST /users/@me/relationships",
-            Some(&json!({ "username": username, "discriminator": null })),
+            Some(&friend_request_body(username, note)),
         )
         .await
     }
@@ -96,5 +97,33 @@ impl ApiClient {
             None,
         )
         .await
+    }
+}
+
+/// The body of a friend request. The note is left out when it is empty, the
+/// way the web client sends a request without one.
+fn friend_request_body(username: &str, note: Option<&str>) -> serde_json::Value {
+    let mut body = json!({ "username": username, "discriminator": null });
+    if let Some(note) = note.map(str::trim).filter(|n| !n.is_empty()) {
+        body["note"] = json!(note);
+    }
+    body
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_request_carries_the_note_only_when_there_is_one() {
+        assert_eq!(
+            friend_request_body("wumpus", None),
+            json!({ "username": "wumpus", "discriminator": null })
+        );
+        assert_eq!(friend_request_body("wumpus", Some("  ")), friend_request_body("wumpus", None));
+        assert_eq!(
+            friend_request_body("wumpus", Some(" hi, it's me ")),
+            json!({ "username": "wumpus", "discriminator": null, "note": "hi, it's me" })
+        );
     }
 }

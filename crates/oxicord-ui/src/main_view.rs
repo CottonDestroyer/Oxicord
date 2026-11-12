@@ -2286,7 +2286,7 @@ impl MainView {
             Choice::AddFriend => {
                 let name = self.session.read(cx).store.user(user).map(|u| u.username.clone());
                 if let Some(name) = name {
-                    self.backend.send(Command::AddFriendByName(name));
+                    self.backend.send(Command::AddFriendByName(name, None));
                 }
             }
             Choice::RemoveFriend | Choice::CancelRequest | Choice::Unblock => {

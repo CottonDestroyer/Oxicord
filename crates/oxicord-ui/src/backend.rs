@@ -334,9 +334,9 @@ pub enum Command {
         user: Snowflake,
         roles: Vec<Snowflake>,
     },
-    /// Send a friend request to this username. The outcome arrives as
-    /// [`Event::FriendRequest`].
-    AddFriendByName(String),
+    /// Send a friend request to this username, with an optional note. The
+    /// outcome arrives as [`Event::FriendRequest`].
+    AddFriendByName(String, Option<String>),
     /// Fetch the details behind a profile card. The answer arrives as
     /// [`Event::Profile`].
     LoadProfile {

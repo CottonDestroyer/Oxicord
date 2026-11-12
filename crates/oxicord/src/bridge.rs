@@ -928,9 +928,9 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
-        Command::AddFriendByName(username) => {
+        Command::AddFriendByName(username, note) => {
             tokio::spawn(async move {
-                let result = api.add_friend_by_name(&username).await.map_err(|err| {
+                let result = api.add_friend_by_name(&username, note.as_deref()).await.map_err(|err| {
                     tracing::warn!(?err, "friend request failed");
                     friend_request_failure(&err)
                 });
