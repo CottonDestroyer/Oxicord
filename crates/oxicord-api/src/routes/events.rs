@@ -1,4 +1,4 @@
-use oxicord_model::{EventRsvp, EventUserCounts, Snowflake};
+use oxicord_model::{EventRsvp, EventUserCounts, NewEvent, Snowflake};
 use reqwest::Method;
 use serde_json::{Value, json};
 
@@ -54,6 +54,20 @@ impl ApiClient {
             self.empty(Method::DELETE, &path, "DELETE /guilds/:id/scheduled-events/:id/users/@me", None)
                 .await
         }
+    }
+}
+
+impl ApiClient {
+    /// Schedules a new event. Gated by the account-write rule: built and unit
+    /// tested, never sent from the real account.
+    pub async fn create_scheduled_event(&self, guild: Snowflake, event: &NewEvent) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            &format!("/guilds/{guild}/scheduled-events"),
+            "POST /guilds/:id/scheduled-events",
+            Some(&event.body()),
+        )
+        .await
     }
 }
 

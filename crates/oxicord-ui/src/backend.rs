@@ -396,6 +396,12 @@ pub enum Command {
         event: Snowflake,
         interested: bool,
     },
+    /// Schedule a new event. The gateway's `GUILD_SCHEDULED_EVENT_CREATE`
+    /// adds it to the server; a refusal arrives as a notice.
+    CreateEvent {
+        guild: Snowflake,
+        event: oxicord_model::NewEvent,
+    },
     /// Store the options picked in the Server Guide. The answer arrives as
     /// [`Event::OnboardingSaved`].
     SaveOnboarding {

@@ -1226,9 +1226,28 @@ the build moves.
       Category (with manage channels), Server Insights, Active Threads,
       Friends, Use Server Theme and Report Raid rows when their conditions
       hold, none built. Follow-ups are listed below.
-- [ ] Create Event dialog behind the header menu row (topic, location or
+- [x] Create Event dialog behind the header menu row (topic, location or
       channel, start, description, cover). Build and unit test only, no live
       write.
+      Done: the row now opens a three step wizard like the live one (strings
+      read from the live bundle): "Where is your event?" with Voice Channel,
+      Stage Channel and Somewhere Else cards (a channel list or a location
+      field under the pick), "What's your event about?" (Event Topic, Start
+      Date, Start Time, an "Add end date and time" toggle, Event Description)
+      and a Review preview with Create Event. `NewEvent` in the model builds
+      the `POST /guilds/:id/scheduled-events` body and names the first
+      problem in the web client's words (start in the future, end after
+      start, end required for an external place, location required); the API
+      call and the `Command::CreateEvent` bridge handler are built and unit
+      tested, never sent. Dev command `create-event <guild>` opens the form
+      because the account may not manage events and the menu hides the row.
+      Checked in the debug app at 1920x1080 for the steps, the channel
+      picker and the validation message. Remaining differences: the live
+      modal could not be captured (the account lacks the permission), so
+      the layout is built from the strings and the shared modal style, not
+      measured; the date and time are typed text (YYYY-MM-DD and 7:00 PM)
+      where live has a calendar and time dropdown; no repeat picker, no
+      cover image upload, no Stage "Good for" hint.
 - [ ] Server Notification Settings modal behind the header menu row (mute
       toggle, All Messages, Only @mentions, Nothing, the suppress toggles,
       Mute New Events, Mobile Push, per channel overrides). Captured live in

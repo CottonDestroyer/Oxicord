@@ -272,6 +272,11 @@ pub struct OpenServerGuide(pub Snowflake);
 
 impl EventEmitter<OpenServerGuide> for Session {}
 
+/// Opens the form that schedules a new event in a server.
+pub struct OpenCreateEvent(pub Snowflake);
+
+impl EventEmitter<OpenCreateEvent> for Session {}
+
 /// Opens a server's list of scheduled events.
 pub struct OpenEvents(pub Snowflake);
 

@@ -75,7 +75,9 @@ pub use presence::{Activity, ActivityTimestamps, ActivityType, Status};
 pub use read_state::ReadState;
 pub use relationship::{Relationship, RelationshipKind, RelationshipRemove};
 pub use role::Role;
-pub use scheduled_event::{EventPlace, EventRsvp, EventStatus, EventUserChange, EventUserCounts, ScheduledEvent};
+pub use scheduled_event::{
+    EventPlace, EventRsvp, EventStatus, EventUserChange, EventUserCounts, NewEvent, NewPlace, ScheduledEvent,
+};
 pub use search::{SearchPage, SearchQuery, ThreadPage};
 pub use snowflake::Snowflake;
 pub use prune::{PRUNE_DAYS, PruneResult, PruneState, members_label, prune_body};

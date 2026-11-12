@@ -815,6 +815,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::CreateEvent { guild, event } => {
+            tokio::spawn(async move {
+                if let Err(err) = api.create_scheduled_event(guild, &event).await {
+                    notify(&events, "create that event", &err).await;
+                }
+            });
+        }
         Command::SaveOnboarding { guild, submission } => {
             tokio::spawn(async move {
                 let result = api.update_onboarding(guild, &submission).await.map_err(|err| {

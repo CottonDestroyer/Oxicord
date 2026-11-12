@@ -18,7 +18,7 @@ use crate::{
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
     server_settings,
     session::{
-        OpenEvents, OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings,
+        OpenCreateEvent, OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings,
         Session,
     },
     theme,
@@ -267,9 +267,8 @@ impl ContextMenu {
                         this.session.update(cx, |_, cx| cx.emit(OpenServerSettings(guild)));
                         this.close(cx);
                     }, cx),
-                    // The creation form isn't built yet, so this opens the list of events.
                     Row::CreateEvent => self.header_row(row, None, None, move |this, _, cx| {
-                        this.session.update(cx, |_, cx| cx.emit(OpenEvents(guild)));
+                        this.session.update(cx, |_, cx| cx.emit(OpenCreateEvent(guild)));
                         this.close(cx);
                     }, cx),
                     Row::AppDirectory => self.header_row(row, None, None, |this, _, cx| {
