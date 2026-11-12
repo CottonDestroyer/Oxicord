@@ -10,4 +10,7 @@ pub struct ReadState {
     pub last_message_id: Option<Snowflake>,
     #[serde(default)]
     pub mention_count: u32,
+    /// When we last opened the pins of this channel.
+    #[serde(default)]
+    pub last_pin_timestamp: Option<String>,
 }

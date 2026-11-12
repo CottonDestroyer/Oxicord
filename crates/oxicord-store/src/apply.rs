@@ -379,6 +379,7 @@ impl Store {
             id: channel_id,
             last_message_id: Some(prior_last.unwrap_or_default()),
             mention_count: 0,
+            last_pin_timestamp: None,
         });
         if mine {
             // Sending a message reads the channel on the server too.
@@ -773,6 +774,7 @@ impl Store {
             id: channel,
             last_message_id: None,
             mention_count: 0,
+            last_pin_timestamp: None,
         })
     }
 

@@ -516,6 +516,13 @@ fn act(live: &Live, command: Command, events: &Sender<Event>) {
                 }
             });
         }
+        Command::AckPins(channel) => {
+            tokio::spawn(async move {
+                if let Err(err) = api.ack_pins(channel).await {
+                    tracing::debug!(?err, "pins ack failed");
+                }
+            });
+        }
         Command::LoadOwnNick(guild) => {
             tokio::spawn(async move {
                 if let Ok(nick) = api.own_nickname(guild).await {

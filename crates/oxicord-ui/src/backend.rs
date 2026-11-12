@@ -193,6 +193,8 @@ pub enum Command {
     },
     /// Mark channels read, each up to its newest message.
     AckBulk(Vec<(Snowflake, Snowflake)>),
+    /// We opened the pins of a channel.
+    AckPins(Snowflake),
     LeaveGuild(Snowflake),
     /// Create a new server with the given name. `GUILD_CREATE` from the
     /// gateway adds it to the rail; this carries no answer event.

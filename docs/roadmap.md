@@ -1106,9 +1106,36 @@ the build moves.
       placeholder updates on channel change only, so a server rename shows
       later, and the results panel is still our plain list, not the live
       "N Results" panel.
-- [ ] Header icon set: threads, mute toggle drawn with a slash when muted,
+- [x] Header icon set: threads, mute toggle drawn with a slash when muted,
       pinned messages with the new dot, members. Compare glyphs and tooltips
       with the live header.
+      Done: live checked in #yap-yap and in a DM at 1920x1080. The toolbar is
+      bare 32px boxes, 8px apart, with 24px glyphs (20px for pins), no hover
+      square: the glyph goes from muted to light on hover and to the strong
+      tone while its panel shows (CSS: icon-muted, icon-subtle, icon-strong).
+      Server order is threads, notification settings, pins, members. A DM is
+      voice call, video call, pins, add to DM, user profile toggle, so the two
+      extra profile buttons we had are gone. New glyph files copied from the
+      live svgs: bell-off (the slash bell), phone, people-add, user-profile;
+      threads, pins and members were already the live paths. The bell is drawn
+      with the slash whenever the effective level is not All Messages, muted
+      or mentions-only alike (live shows it in the mentions-only #yap-yap and
+      a plain bell in an All Messages server, both matched). Pins draws the
+      8px blurple dot at the bottom right in a ring of the page colour when
+      something was pinned after we last looked: the channel's
+      last_pin_timestamp is compared with the read state's, CHANNEL_PINS_UPDATE
+      and CHANNEL_PINS_ACK keep both current, and opening the pins panel acks
+      them locally and posts /channels/:id/pins/ack. Tooltips use the existing
+      text tip with the live aria labels (Show/Hide Member List, Show/Hide User
+      Profile, Start Voice Call and the rest). Store test covers the dot rule.
+      Remaining differences: the dot was seen drawn here only with a forced
+      flag, because the live session had already acked this channel's pins
+      (the live pin showed no dot afterwards, ours agrees); the ack request is
+      built but was never sent from the real account. The notch around the dot
+      is a filled ring, not live's SVG mask, so it differs by a pixel on
+      non-black backgrounds. Tooltip chrome is the old Tip style until the
+      shared popup item. The inbox and help icons still sit in our header; live
+      puts them in the title bar, which belongs to the Home items.
 
 ### Server list and channel list
 

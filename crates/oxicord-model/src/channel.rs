@@ -89,6 +89,9 @@ pub struct Channel {
     pub permission_overwrites: Vec<Overwrite>,
     #[serde(default)]
     pub last_message_id: Option<Snowflake>,
+    /// When something here was last pinned.
+    #[serde(default)]
+    pub last_pin_timestamp: Option<String>,
     #[serde(default)]
     pub recipients: Vec<User>,
     #[serde(default)]

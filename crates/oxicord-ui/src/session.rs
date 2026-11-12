@@ -638,6 +638,11 @@ impl Session {
     pub fn request_pins(&mut self, backend: &Backend, channel: Snowflake, cx: &mut Context<Self>) {
         self.pins.insert(channel, Load::Loading);
         backend.send(Command::LoadPins(channel));
+        // Looking at the pins is what clears the dot on the header button.
+        if self.store.pins_unread(channel) {
+            self.store.ack_pins(channel, None);
+            backend.send(Command::AckPins(channel));
+        }
         cx.notify();
     }
 
@@ -1314,9 +1319,22 @@ impl Session {
             // we already fetched are worth asking about again.
             GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "CHANNEL_PINS_UPDATE" => {
                 let channel = serde_json::from_value::<Snowflake>(data["channel_id"].clone()).ok();
+                if let Some(channel) = channel {
+                    let stamp = data["last_pin_timestamp"].as_str().map(str::to_owned);
+                    self.store.set_last_pin(channel, stamp);
+                    cx.notify();
+                }
                 if let Some(channel) = channel.filter(|c| self.pins.contains_key(c)) {
                     // The old list stays up until the new one lands.
                     backend.send(Command::LoadPins(channel));
+                }
+            }
+            // The pins were opened on another device.
+            GatewayEvent::Dispatch(DispatchEvent::Unknown { name, data }) if name == "CHANNEL_PINS_ACK" => {
+                if let Ok(channel) = serde_json::from_value::<Snowflake>(data["channel_id"].clone()) {
+                    let stamp = data["timestamp"].as_str().map(str::to_owned);
+                    self.store.ack_pins(channel, stamp);
+                    cx.notify();
                 }
             }
             // Our own note about someone changed on another device.

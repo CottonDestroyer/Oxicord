@@ -475,6 +475,39 @@ impl Store {
         self.read_states.get(&channel).and_then(|r| r.last_message_id)
     }
 
+    /// True when something was pinned in `channel` after we last opened its
+    /// pins, which the header shows as a dot on the pin button.
+    pub fn pins_unread(&self, channel: Snowflake) -> bool {
+        let Some(chan) = self.channels.get(&channel) else {
+            return false;
+        };
+        let stamp = |s: &Option<String>| {
+            s.as_deref()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map_or(0, |t| t.timestamp_micros())
+        };
+        let seen = self.read_states.get(&channel).map_or(0, |r| stamp(&r.last_pin_timestamp));        stamp(&chan.last_pin_timestamp) > seen
+    }
+
+    /// Someone pinned or unpinned a message in `channel`.
+    pub fn set_last_pin(&mut self, channel: Snowflake, stamp: Option<String>) {
+        if let Some(chan) = self.channels.get_mut(&channel) {
+            chan.last_pin_timestamp = stamp;
+        }
+    }
+
+    /// Records that we opened the pins of `channel`, here or on another
+    /// device. `None` means up to the newest pin.
+    pub fn ack_pins(&mut self, channel: Snowflake, stamp: Option<String>) {
+        let newest = self.channels.get(&channel).and_then(|c| c.last_pin_timestamp.clone());
+        let last = self.channels.get(&channel).and_then(|c| c.last_message_id);
+        // A fresh entry must not make the channel look unread.
+        self.read_states
+            .entry(channel)
+            .or_insert_with(|| ReadState { id: channel, last_message_id: last, mention_count: 0, last_pin_timestamp: None })
+            .last_pin_timestamp = stamp.or(newest);
+    }
+
     /// Rolls channel state up for the guild rail. Channels we can't view
     /// don't count.
     pub fn guild_unread(&self, guild: Snowflake) -> Unread {

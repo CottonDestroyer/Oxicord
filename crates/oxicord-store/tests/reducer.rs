@@ -1305,3 +1305,32 @@ fn an_author_reads_by_server_nickname_in_the_color_of_their_top_role() {
     store.apply(event("MESSAGE_CREATE", message));
     assert_eq!(store.member_look(id(GUILD), &user), ("Zeph".to_owned(), Some(0x0000ff)));
 }
+
+#[test]
+fn a_new_pin_lights_the_dot_until_the_pins_are_opened() {
+    let mut json = ready_json();
+    json["guilds"][0]["channels"][1]["last_pin_timestamp"] = json!("2024-05-01T12:00:00+00:00");
+    let mut store = Store::new();
+    store.apply(event("READY", json));
+
+    // Nothing acknowledged yet, so the pin is news.
+    assert!(store.pins_unread(id(11)));
+    assert!(!store.pins_unread(id(12)));
+
+    let unread_before = store.unread(id(12)).unread;
+    store.ack_pins(id(11), None);
+    assert!(!store.pins_unread(id(11)));
+
+    // A later pin brings the dot back.
+    store.set_last_pin(id(11), Some("2024-05-02T12:00:00.123456+00:00".into()));
+    assert!(store.pins_unread(id(11)));
+
+    // Another device opened them: its timestamp wins.
+    store.ack_pins(id(11), Some("2024-05-02T12:00:00.123456+00:00".into()));
+    assert!(!store.pins_unread(id(11)));
+
+    // Acknowledging pins in a channel with no read state leaves it read.
+    store.set_last_pin(id(12), Some("2024-05-03T12:00:00+00:00".into()));
+    store.ack_pins(id(12), None);
+    assert_eq!(store.unread(id(12)).unread, unread_before);
+}

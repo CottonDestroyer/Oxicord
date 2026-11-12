@@ -49,6 +49,17 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Tells the server we opened the pins of `channel`, which clears the dot.
+    pub async fn ack_pins(&self, channel: Snowflake) -> Result<(), ApiError> {
+        self.empty(
+            Method::POST,
+            &format!("/channels/{channel}/pins/ack"),
+            "POST /channels/:id/pins/ack",
+            None,
+        )
+        .await
+    }
+
     /// Our own nickname in `guild`, if we set one.
     pub async fn own_nickname(&self, guild: Snowflake) -> Result<Option<String>, ApiError> {
         let member: oxicord_model::Member = self

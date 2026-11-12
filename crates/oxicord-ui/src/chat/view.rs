@@ -200,7 +200,6 @@ impl ChatView {
                     InputEvent::PressEnter { .. } => this.run_search(cx),
                     InputEvent::Focus | InputEvent::Change => this.search_open = this.search.read(cx).value().is_empty(),
                     InputEvent::Blur => this.search_open = false,
-                    _ => {}
                 }
                 cx.notify();
             }),
@@ -460,11 +459,6 @@ impl ChatView {
     fn open_profile(&mut self, user: Snowflake, at: Option<gpui_kit::Point<gpui_kit::Pixels>>, cx: &mut Context<Self>) {
         let guild = self.guild(cx);
         self.session.update(cx, |session, cx| session.show_profile(user, guild, at, cx));
-    }
-
-    fn open_full_profile(&mut self, user: Snowflake, cx: &mut Context<Self>) {
-        let guild = self.guild(cx);
-        self.session.update(cx, |session, cx| session.show_full_profile(user, guild, cx));
     }
 
     /// Goes to a message: straight there when it is loaded, otherwise after
@@ -1874,6 +1868,21 @@ impl ChatView {
             let c = self.session.read(cx).store.channel(id)?.clone();
             c.kind.is_thread().then(|| (id, c.joined(), c.archived()))
         });
+        let panel_tip = match (in_dm, showing) {
+            (true, true) => "Hide User Profile",
+            (true, false) => "Show User Profile",
+            (false, true) => "Hide Member List",
+            (false, false) => "Show Member List",
+        };
+        // The bell is drawn with a slash unless every message notifies us,
+        // which is what the live client does for muted and mentions-only alike.
+        let (quiet, pins_unread) = self.channel.map_or((false, false), |id| {
+            let store = &self.session.read(cx).store;
+            let quiet = store
+                .channel(id)
+                .is_some_and(|c| store.is_muted(c) || store.notify_level(c) != oxicord_model::NotifyLevel::All);
+            (quiet, store.pins_unread(id))
+        });
 
         div()
             .h(px(theme::CHANNEL_HEADER_HEIGHT))
@@ -1942,14 +1951,14 @@ impl ChatView {
                     )
             }))
             .children(has_threads.then(|| {
-                toolbar_button("open-threads", "messages-square", theme::TEXT_MUTED).on_click(
+                header_button("open-threads", "messages-square", 24., false, "Threads").on_click(
                     cx.listener(|this, _, _, cx| {
                         this.session.update(cx, |s, cx| s.open_panel(PanelKind::Threads, cx));
                     }),
                 )
             }))
             .children(has_threads.then(|| {
-                toolbar_button("notification-settings", "bell", theme::TEXT_MUTED).on_click(cx.listener(
+                header_button("notification-settings", if quiet { "bell-off" } else { "bell" }, 24., false, "Notification Settings").on_click(cx.listener(
                     |this, event: &ClickEvent, _, cx| {
                         let Some(channel) = this.channel else { return };
                         let at = gpui_kit::point(event.position().x - px(190.), event.position().y + px(18.));
@@ -1959,18 +1968,13 @@ impl ChatView {
                     },
                 ))
             }))
-            .child(
-                toolbar_button("open-pins", "pin", theme::TEXT_MUTED).on_click(cx.listener(
-                    |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Pins, cx)),
-                )),
-            )
             .children(in_dm.then(|| {
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
                     .child(
-                        toolbar_button("start-voice-call", "phone", theme::TEXT_MUTED)
+                        header_button("start-voice-call", "phone", 24., false, "Start Voice Call")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let Some(channel) = this.channel else { return };
                                 let backend = this.backend.clone();
@@ -1981,14 +1985,34 @@ impl ChatView {
                             })),
                     )
                     .child(
-                        toolbar_button("start-video-call", "video", theme::TEXT_MUTED)
+                        header_button("start-video-call", "video", 24., false, "Start Video Call")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.session.update(cx, |s, cx| s.open_panel(PanelKind::VoiceDetails, cx));
                             })),
                     )
             }))
+            .child(
+                header_button("open-pins", "pin", 20., false, "Pinned Messages")
+                    .child(div().absolute().top(px(17.)).left(px(17.)).children(pins_unread.then(|| {
+                        // The dot sits in a ring of the page colour, which is
+                        // how the live client notches the glyph around it.
+                        div()
+                            .size(px(12.))
+                            .ml(px(-2.))
+                            .mt(px(-2.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(rgb(theme::BG_CHAT))
+                            .child(div().size(px(8.)).rounded_full().bg(rgb(theme::ACCENT)))
+                    })))
+                    .on_click(cx.listener(
+                        |this, _, _, cx| this.session.update(cx, |s, cx| s.open_panel(PanelKind::Pins, cx)),
+                    )),
+            )
             .children(in_dm.then(|| {
-                toolbar_button("add-to-dm", "user-plus", theme::TEXT_MUTED).on_click(cx.listener(
+                header_button("add-to-dm", "people-add", 24., false, "Add to DM").on_click(cx.listener(
                     |this, event: &ClickEvent, _, cx| {
                         let Some(channel) = this.channel else { return };
                         let at = gpui_kit::point(event.position().x - px(300.), event.position().y + px(18.));
@@ -1998,35 +2022,8 @@ impl ChatView {
                     },
                 ))
             }))
-            .children(in_dm.then(|| {
-                toolbar_button("show-profile", "circle-user-round", theme::TEXT_MUTED).on_click(cx.listener(
-                    |this, _, _, cx| {
-                        if let Some(user) = this
-                            .channel
-                            .and_then(|id| this.session.read(cx).store.channel(id))
-                            .and_then(|c| c.recipients.first().map(|u| u.id))
-                        {
-                            this.open_profile(user, None, cx);
-                        }
-                    },
-                ))
-            }))
-            .children(in_dm.then(|| {
-                toolbar_button("view-full-profile", "user", theme::TEXT_MUTED).on_click(cx.listener(
-                    |this, _, _, cx| {
-                        if let Some(user) = this
-                            .channel
-                            .and_then(|id| this.session.read(cx).store.channel(id))
-                            .and_then(|c| c.recipients.first().map(|u| u.id))
-                        {
-                            this.open_full_profile(user, cx);
-                        }
-                    },
-                ))
-            }))
             .children((has_members || in_dm).then(|| {
-                let color = if showing { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
-                toolbar_button("toggle-members", if in_dm { "circle-user-round" } else { "users" }, color)
+                header_button("toggle-members", if in_dm { "user-profile" } else { "people" }, 24., showing, panel_tip)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_members(cx)))
             }))
             .child(
@@ -2729,6 +2726,31 @@ fn toolbar_button(
         .cursor_pointer()
         .hover(|s| s.bg(rgb(theme::BG_HOVER)))
         .child(icon(glyph, 20., color))
+}
+
+/// A glyph button in the channel header. The live client draws no hover
+/// square here: the glyph goes from muted to light as the pointer arrives,
+/// and stays brighter while its panel is showing.
+fn header_button(
+    id: &'static str,
+    glyph: &'static str,
+    size: f32,
+    selected: bool,
+    tip: impl Into<String>,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let base = if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
+    let tip = tip.into();
+    div()
+        .id(id)
+        .group(id)
+        .tooltip(move |_, cx| cx.new(|_| Tip(tip.clone())).into())
+        .size(px(32.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .child(icon(glyph, size, base).group_hover(id, |s| s.text_color(rgb(theme::TEXT))))
 }
 
 /// The red line above the first message you haven't read.
