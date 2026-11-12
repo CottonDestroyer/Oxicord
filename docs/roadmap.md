@@ -1336,11 +1336,26 @@ the build moves.
 
 ### Home and direct messages
 
-- [ ] Nitro, Shop and Quests rows under Friends in the DM sidebar. Nitro and
-      Shop carry a NEW pill. Nitro opens the Nitro store page (read only
-      shell, no purchase). Shop and Quests are app-only on the web client
-      ("Opening Discord App" at /quest-home): draw the rows and open a stub
-      page saying so.
+- [x] Nitro, Shop and Quests rows under Friends in the DM sidebar. Done: the
+      rows sit at the live pitch (Friends, Nitro, Shop, Quests at y 109, 149,
+      189, 229 at 1920x1080) with the live glyphs (`nitro.svg`, `store.svg`,
+      new `quests.svg`). Each opens a read only shell in
+      `crates/oxicord-ui/src/home_pages.rs` and the title bar names it. Nitro
+      has the live nav strip (Home, What's New, Best of Nitro, Plans, Compare,
+      Gift Nitro) over the purple hero with the two buttons. Shop has its nav
+      strip (Featured, Browse, Orbs Shop, Game Shops, Game Servers, search) and
+      a note instead of the catalog. Quests is the full pane "Opening Discord
+      App." card, as the live /quest-home draws it. The NEW pill on Nitro and
+      Shop goes away once the row is opened, remembered in settings
+      (`seen_home_tabs`, unit tested). Remaining differences: the live Shop is
+      a real catalog (hero, bundles, Orbs) and the live Nitro page has the
+      What's New and plans sections, none of which are drawn; the Nitro
+      headline is gg sans italic where the live one is an image in a display
+      face; the heart and Gift Nitro glyphs, the Orbs counter and the BETA tag
+      are missing (no gift or heart icon file yet); the pill colour, size and
+      placement are unverified because the live account has already opened both
+      rows and shows no pill (the pill is blurple 11px bold from memory of the
+      earlier audit). The live gradient is pinker at the top than ours.
 - [ ] DM rows: status or activity line under the name (custom status, a bot's
       "/help" text, "Dungeon crawling | Use /raid") and the server tag chip.
       Ours shows the name only.

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,8 @@ pub struct Settings {
     /// The talk key, named the way the window names a pressed key. Empty
     /// until one is picked.
     pub push_to_talk_key: String,
+    /// Home shortcuts opened at least once, which stop wearing their NEW pill.
+    pub seen_home_tabs: BTreeSet<String>,
 }
 
 impl Default for Settings {
@@ -35,11 +37,17 @@ impl Default for Settings {
             user_volumes: BTreeMap::new(),
             push_to_talk: false,
             push_to_talk_key: String::new(),
+            seen_home_tabs: BTreeSet::new(),
         }
     }
 }
 
 impl Settings {
+    /// Whether a home shortcut still carries its NEW pill.
+    pub fn home_tab_is_new(&self, tab: &str) -> bool {
+        !self.seen_home_tabs.contains(tab)
+    }
+
     /// The key to watch, once push to talk is on and a usable key is picked.
     pub fn talk_key(&self) -> Option<String> {
         let usable = crate::talk_key::virtual_key(&self.push_to_talk_key).is_some();
@@ -99,6 +107,17 @@ mod tests {
         settings.push_to_talk_key = "v".into();
         settings.push_to_talk = false;
         assert_eq!(settings.talk_key(), None);
+    }
+
+    #[test]
+    fn a_home_tab_is_new_until_it_is_opened() {
+        let mut settings = Settings::default();
+        assert!(settings.home_tab_is_new("shop"));
+        settings.seen_home_tabs.insert("shop".into());
+        assert!(!settings.home_tab_is_new("shop"));
+        assert!(settings.home_tab_is_new("nitro"));
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(!back.home_tab_is_new("shop"));
     }
 
     #[test]

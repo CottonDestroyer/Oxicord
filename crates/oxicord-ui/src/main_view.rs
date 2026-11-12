@@ -44,6 +44,7 @@ use crate::{
     join_server::{CloseJoin, JoinServerView},
     rules_screening::{CloseRulesScreening, RulesScreeningDialog},
     friends::FriendsView,
+    home_pages::{self, Page},
     icons::icon,
     message_requests::MessageRequestsView,
     rail::{self, Entry},
@@ -160,6 +161,8 @@ pub struct MainView {
     welcome_failed: bool,
     /// The message requests page instead of the friends page.
     requests_open: bool,
+    /// The Nitro, Shop or Quests shell shown in place of the friends page.
+    home_page: Option<Page>,
     /// The channel to return to when switching back to a guild.
     last_channel: HashMap<Snowflake, Snowflake>,
     collapsed: HashSet<Snowflake>,
@@ -941,6 +944,7 @@ impl MainView {
             welcome_for: None,
             welcome_failed: false,
             requests_open: false,
+            home_page: None,
             last_channel: HashMap::new(),
             collapsed: HashSet::new(),
             sidebar_scroll: ScrollHandle::new(),
@@ -1055,6 +1059,7 @@ impl MainView {
     ) {
         self.guild = guild;
         self.requests_open = false;
+        self.home_page = None;
         self.channel = guild.and_then(|g| {
             self.last_channel.get(&g).copied().or_else(|| {
                 let store = &self.session.read(cx).store;
@@ -1115,6 +1120,7 @@ impl MainView {
     fn select_channel(&mut self, channel: Snowflake, window: &mut Window, cx: &mut Context<Self>) {
         self.channel = Some(channel);
         self.requests_open = false;
+        self.home_page = None;
         if let Some(guild) = self.guild {
             self.last_channel.insert(guild, channel);
         }
@@ -1139,6 +1145,7 @@ impl MainView {
             (Some(guild), _) => store.guild(guild).map(|g| g.name.clone()),
             (None, Some(channel)) => store.channel(channel).map(|c| store.dm_name(c)),
             (None, None) if self.requests_open => Some("Message Requests".to_owned()),
+            (None, None) if self.home_page.is_some() => self.home_page.map(|p| p.label().to_owned()),
             (None, None) => Some("Friends".to_owned()),
         };
         name.unwrap_or_default().into()
@@ -2293,6 +2300,22 @@ impl MainView {
     fn show_friends(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.channel = None;
         self.requests_open = false;
+        self.home_page = None;
+        self.sync_chat(window, cx);
+        cx.notify();
+    }
+
+    /// Opens the Nitro, Shop or Quests shell, which also retires its NEW pill.
+    fn show_home_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
+        self.channel = None;
+        self.requests_open = false;
+        self.home_page = Some(page);
+        let backend = self.backend.clone();
+        self.session.update(cx, |session, cx| {
+            if page.has_new_pill() && session.settings.home_tab_is_new(page.key()) {
+                session.change_settings(&backend, |s| { s.seen_home_tabs.insert(page.key().to_owned()); }, cx);
+            }
+        });
         self.sync_chat(window, cx);
         cx.notify();
     }
@@ -2300,6 +2323,7 @@ impl MainView {
     fn show_requests(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.channel = None;
         self.requests_open = true;
+        self.home_page = None;
         self.sync_chat(window, cx);
         cx.notify();
     }
@@ -2933,6 +2957,9 @@ impl MainView {
                 if let Some(entry) = self.render_requests_entry(cx) {
                     list = list.child(entry);
                 }
+                for page in [Page::Nitro, Page::Shop, Page::Quests] {
+                    list = list.child(self.render_home_entry(page, cx));
+                }
                 // A line between the shortcuts and the conversations.
                 list = list.child(div().mx(px(8.)).my(px(10.)).h(px(1.)).bg(rgb(theme::BORDER)));
                 list = list.child(self.render_dm_heading(cx));
@@ -3431,7 +3458,7 @@ impl MainView {
 
     /// The row above the DM list that opens the friends page.
     fn render_friends_entry(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let selected = self.channel.is_none() && !self.requests_open;
+        let selected = self.channel.is_none() && !self.requests_open && self.home_page.is_none();
         let pending = self
             .session
             .read(cx)
@@ -3457,6 +3484,43 @@ impl MainView {
             .child(div().w(px(20.)).flex_none().flex().justify_center().child(icon("friends", 20., color)))
             .child(div().flex_1().child("Friends"))
             .children(mention_badge(u32::try_from(pending).unwrap_or(u32::MAX)))
+    }
+
+    /// A shortcut under Friends: icon, name and, until first opened, a NEW pill.
+    fn render_home_entry(&mut self, page: Page, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let selected = self.home_page == Some(page) && self.channel.is_none() && !self.requests_open;
+        let new = page.has_new_pill() && self.session.read(cx).settings.home_tab_is_new(page.key());
+        let color = if selected { theme::TEXT } else { theme::TEXT_FAINT };
+
+        div()
+            .id(page.key())
+            .h(px(38.))
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(8.))
+            .rounded(px(theme::RADIUS))
+            .cursor_pointer()
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
+            .text_color(rgb(color))
+            .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_SIDEBAR }))
+            .hover(|s| s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT)))
+            .on_click(cx.listener(move |this, _, window, cx| this.show_home_page(page, window, cx)))
+            .child(div().w(px(20.)).flex_none().flex().justify_center().child(icon(page.glyph(), 20., color)))
+            .child(div().flex_1().child(page.label()))
+            .children(new.then(|| {
+                div()
+                    .h(px(16.))
+                    .px(px(6.))
+                    .flex()
+                    .items_center()
+                    .rounded(px(8.))
+                    .bg(rgb(theme::ACCENT))
+                    .text_size(px(11.))
+                    .font_weight(gpui_kit::FontWeight::BOLD)
+                    .text_color(rgb(0xffffff))
+                    .child("NEW")
+            }))
     }
 
     /// The row that opens the message requests page. The official client
@@ -4700,6 +4764,8 @@ impl Render for MainView {
             self.render_voice_area(window, cx)
         } else if self.guild.is_none() && self.channel.is_none() && self.requests_open {
             self.message_requests.clone().into_any_element()
+        } else if let (None, None, Some(which)) = (self.guild, self.channel, self.home_page) {
+            home_pages::page(which)
         } else if self.guild.is_none() && self.channel.is_none() {
             self.friends.clone().into_any_element()
         } else if self.guild.is_some() && self.channel.is_none() {
