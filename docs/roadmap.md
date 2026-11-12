@@ -1370,11 +1370,42 @@ the build moves.
       appears for anyone whose presence we do receive (friends, people met in
       a member list). The layout is from live measurements, not a capture of
       ours. Live captured at 1920x1080 only.
-- [ ] Friends page: the tab strip collapses to "Friends", Pending and Add
+- [x] Friends page: the tab strip collapses to "Friends", Pending and Add
       Friend when no one is online, plus the "Looking for accounts you've
       blocked or ignored? Go to settings" banner, the search field and the
       "Received - N" heading. Verify the full layout on an account that has
       friends before copying it.
+      Done: the strip follows the live client's own rule (read from the
+      bundle): Online shows only while a friend is online, All while there is
+      a friend, Pending while a request is open (with the red incoming
+      count), Add Friend always, and a tab that leaves the strip falls back to
+      the first one left. Header is the 32px friends icon, the title, a 4px
+      dot and 32px pills (selected grey, Add Friend filled, or tinted when
+      open). Below it: the dismissible banner (close is remembered in
+      settings), the 40px Search field (filters by name or username, with a
+      clear X), section headings "Received - N", "Sent - N", "Online - N" and
+      "All friends - N" in 14px medium, 61px rows under a hairline with a 32px
+      avatar, the 16px name, the server tag chip, the username and 36px
+      round actions. Active Now is 420px wide with the 20px heading and the
+      live empty text. Measured against live at 1920x1080 on the Pending page
+      (right edges, vertical positions within 1px). Remaining differences and
+      unverified parts: this account has no friends, so the Online and All
+      rows are not compared with live and keep the status line under the name;
+      the banner dismissed layout is assumed (dismissing writes the real
+      account setting); live has no Blocked tab (that list is in its
+      settings), ours keeps one while someone is blocked until the settings
+      rebuild has a restricted users page, and "Go to settings" opens Data &
+      Privacy for now; accept and decline icons do not tint green and red on
+      hover. The Add Friend page itself is still the old layout (see the next
+      item).
+- [ ] Add Friend page rebuild: live shows a 20px heading, the line "You can
+      add friends with their Discord username." with the Wumpus picture at
+      the right, one 16px rounded box holding the username row, a "Personalize
+      your request (Optional)" note field with a 120 counter and the line
+      "What you write here will also show up in your DM if you become
+      friends.", then "Other Places to Make Friends" with an "Explore
+      Discoverable Servers" row. The request body with a note is built and
+      unit tested only, never sent.
 - [ ] New group DM button at the right end of the friends header, and the
       inbox and help icons in the title strip.
 

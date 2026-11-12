@@ -25,6 +25,9 @@ pub struct Settings {
     pub push_to_talk_key: String,
     /// Home shortcuts opened at least once, which stop wearing their NEW pill.
     pub seen_home_tabs: BTreeSet<String>,
+    /// The "Looking for accounts you've blocked or ignored?" banner on the
+    /// friends page was closed.
+    pub restricted_notice_dismissed: bool,
 }
 
 impl Default for Settings {
@@ -38,6 +41,7 @@ impl Default for Settings {
             push_to_talk: false,
             push_to_talk_key: String::new(),
             seen_home_tabs: BTreeSet::new(),
+            restricted_notice_dismissed: false,
         }
     }
 }
@@ -118,6 +122,15 @@ mod tests {
         assert!(settings.home_tab_is_new("nitro"));
         let back: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
         assert!(!back.home_tab_is_new("shop"));
+    }
+
+    #[test]
+    fn the_friends_banner_stays_closed_once_dismissed() {
+        let mut settings = Settings::default();
+        assert!(!settings.restricted_notice_dismissed);
+        settings.restricted_notice_dismissed = true;
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(back.restricted_notice_dismissed);
     }
 
     #[test]

@@ -1,19 +1,19 @@
 use gpui_kit::{
     AnyElement, AppContext as _, ClickEvent, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, div, px, rgb,
-    component::input::{Input, InputState},
+    Subscription, Window, div, prelude::FluentBuilder as _, px, rgb, rgba,
+    component::input::{Input, InputEvent, InputState},
 };
 use oxicord_media::cdn;
-use oxicord_model::{Activity, ActivityType, RelationshipKind, Snowflake, Status};
+use oxicord_model::{Activity, ActivityType, RelationshipKind, ServerTag, Snowflake, Status};
 use oxicord_store::Changes;
 
 use crate::{
     backend::{Backend, Command},
     icons::icon,
     media::{Media, avatar},
-    member_list::presence_dot,
-    session::{DmOpened, Session},
+    member_list::{presence_dot, server_tag_chip},
+    session::{DmOpened, OpenPrivacySettings, Session},
     theme,
 };
 
@@ -28,7 +28,6 @@ enum Tab {
 }
 
 impl Tab {
-    const ALL: [Tab; 5] = [Tab::Online, Tab::All, Tab::Pending, Tab::Blocked, Tab::Add];
 
     fn label(self) -> &'static str {
         match self {
@@ -41,8 +40,38 @@ impl Tab {
     }
 }
 
+/// Which tabs the strip shows. The official client lists a tab only while it
+/// has something behind it, and keeps Add Friend always. It has no Blocked
+/// tab: that list lives in its settings. Until the settings here have one,
+/// Blocked stays on the strip while someone is blocked.
+fn visible_tabs(online: usize, friends: usize, pending: usize, blocked: usize) -> Vec<Tab> {
+    [
+        (Tab::Online, online > 0),
+        (Tab::All, friends > 0),
+        (Tab::Pending, pending > 0),
+        (Tab::Blocked, blocked > 0),
+        (Tab::Add, true),
+    ]
+    .into_iter()
+    .filter_map(|(tab, shown)| shown.then_some(tab))
+    .collect()
+}
+
+/// The tab to draw: the chosen one while it is on the strip, otherwise the
+/// first that is.
+fn shown_tab(chosen: Tab, visible: &[Tab]) -> Tab {
+    if visible.contains(&chosen) { chosen } else { visible.first().copied().unwrap_or(Tab::Add) }
+}
+
+/// Whether a person matches what was typed in the search box.
+fn matches_query(person: &Person, query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    query.is_empty() || person.name.to_lowercase().contains(&query) || person.username.to_lowercase().contains(&query)
+}
+
 struct Person {
     id: Snowflake,
+    tag: Option<ServerTag>,
     name: String,
     username: String,
     avatar: String,
@@ -65,7 +94,7 @@ enum Doing {
 
 /// The Active Now column needs room the friend list can spare.
 const ACTIVE_NOW_MIN_WINDOW: f32 = 1100.;
-const ACTIVE_NOW_WIDTH: f32 = 360.;
+const ACTIVE_NOW_WIDTH: f32 = 420.;
 
 /// What a conversation header says under a person's name: their custom
 /// status, or failing that what they are doing, as bots show their help line.
@@ -92,6 +121,8 @@ pub struct FriendsView {
     /// The person whose remove button was pressed once already.
     confirm_remove: Option<Snowflake>,
     add_name: Entity<InputState>,
+    /// The Search box above the list.
+    search: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -104,7 +135,13 @@ impl FriendsView {
         cx: &mut Context<Self>,
     ) -> Self {
         let add_name = cx.new(|cx| InputState::new(window, cx).placeholder("Enter a username"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
         let subscriptions = vec![
+            cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            }),
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.subscribe(&session, |_, _, changes: &Changes, cx| {
                 if changes.full || changes.relationships || changes.presences {
@@ -120,6 +157,7 @@ impl FriendsView {
             tab: Tab::Online,
             confirm_remove: None,
             add_name,
+            search,
             _subscriptions: subscriptions,
         }
     }
@@ -128,6 +166,7 @@ impl FriendsView {
         let store = &self.session.read(cx).store;
         Person {
             id: user.id,
+            tag: store.user(user.id).unwrap_or(user).server_tag(),
             name: store
                 .relationship_nick(user.id)
                 .unwrap_or_else(|| user.display_name().to_owned()),
@@ -172,23 +211,28 @@ impl FriendsView {
         if active.is_empty() {
             list = list.child(
                 div()
-                    .pt_4()
+                    .p(px(16.))
                     .flex()
                     .flex_col()
                     .items_center()
-                    .gap_1()
+                    .gap(px(4.))
                     .text_center()
                     .child(
                         div()
+                            .text_size(px(16.))
+                            .line_height(px(20.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(theme::TEXT_BRIGHT))
                             .child("It's quiet for now..."),
                     )
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(px(14.))
+                            .line_height(px(18.))
                             .text_color(rgb(theme::TEXT_MUTED))
-                            .child("When a friend starts a game, plays music or joins voice, it shows up here."),
+                            .child(
+                                "When a friend starts an activity\u{2014}like playing a game or hanging out on voice\u{2014}we'll show it here!",
+                            ),
                     ),
             );
         }
@@ -202,18 +246,109 @@ impl FriendsView {
             .flex_none()
             .flex()
             .flex_col()
-            .gap_4()
-            .p_4()
-            .border_l_1()
-            .border_color(rgb(theme::BORDER))
+            .gap(px(9.))
+            .pt(px(14.))
+            .pl(px(17.))
+            .pr(px(16.))
             .child(
                 div()
                     .text_size(px(20.))
-                    .font_weight(FontWeight::BOLD)
+                    .line_height(px(24.))
+                    .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(theme::TEXT_BRIGHT))
                     .child("Active Now"),
             )
             .child(list)
+            .into_any_element()
+    }
+
+    /// The notice above the list pointing at the blocked and ignored accounts.
+    fn render_banner(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .h(px(59.))
+            .flex_none()
+            .ml(px(30.))
+            .mr(px(20.))
+            .mb(px(20.))
+            .px(px(16.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .rounded(px(4.))
+            .child(icon("circle-info", 24., theme::TEXT_MUTED))
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .gap(px(4.))
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child("Looking for accounts you've blocked or ignored?")
+                    .child(
+                        div()
+                            .id("restricted-settings")
+                            .cursor_pointer()
+                            .text_color(rgb(0x2781e7))
+                            .hover(|s| s.underline())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.session.update(cx, |_, cx| cx.emit(OpenPrivacySettings));
+                            }))
+                            .child("Go to settings"),
+                    ),
+            )
+            .child(
+                div()
+                    .id("restricted-close")
+                    .size(px(24.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let backend = this.backend.clone();
+                        this.session.update(cx, |session, cx| {
+                            session.change_settings(&backend, |s| s.restricted_notice_dismissed = true, cx);
+                        });
+                    }))
+                    .child(icon("x", 14., theme::TEXT_MUTED)),
+            )
+            .into_any_element()
+    }
+
+    /// The box that narrows the list to the people matching what is typed.
+    fn render_search(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let typed = !self.search.read(cx).value().is_empty();
+        div()
+            .h(px(40.))
+            .flex_none()
+            .ml(px(24.))
+            .mr(px(16.))
+            .pl(px(4.))
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgba(0x97979f3d))
+            .child(div().size(px(30.)).flex_none().flex().items_center().justify_center().child(icon("search", 16., theme::TEXT_MUTED)))
+            .child(div().flex_1().text_size(px(16.)).child(Input::new(&self.search).appearance(false).bordered(false)))
+            .children(typed.then(|| {
+                div()
+                    .id("friends-search-clear")
+                    .size(px(30.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.search.update(cx, |input, cx| input.set_value("", window, cx));
+                    }))
+                    .child(icon("x", 14., theme::TEXT_MUTED))
+            }))
             .into_any_element()
     }
 
@@ -330,13 +465,14 @@ impl FriendsView {
             .collect()
     }
 
-    fn sections(&self, cx: &gpui_kit::App) -> Vec<Section> {
+    fn sections(&self, tab: Tab, query: &str, cx: &gpui_kit::App) -> Vec<Section> {
         let section = |title, people: Vec<Person>| {
+            let people: Vec<Person> = people.into_iter().filter(|p| matches_query(p, query)).collect();
             (!people.is_empty()).then_some(Section { title, people })
         };
         let friends = || self.people(RelationshipKind::Friend, cx);
 
-        match self.tab {
+        match tab {
             Tab::Online => section(
                 "Online",
                 friends().into_iter().filter(|p| p.status != Status::Offline).collect(),
@@ -345,8 +481,8 @@ impl FriendsView {
             .collect(),
             Tab::All => section("All friends", friends()).into_iter().collect(),
             Tab::Pending => [
-                section("Incoming", self.people(RelationshipKind::IncomingRequest, cx)),
-                section("Outgoing", self.people(RelationshipKind::OutgoingRequest, cx)),
+                section("Received", self.people(RelationshipKind::IncomingRequest, cx)),
+                section("Sent", self.people(RelationshipKind::OutgoingRequest, cx)),
             ]
             .into_iter()
             .flatten()
@@ -356,6 +492,16 @@ impl FriendsView {
                 .collect(),
             Tab::Add => Vec::new(),
         }
+    }
+
+    /// The tabs on the strip right now.
+    fn visible_tabs(&self, cx: &gpui_kit::App) -> Vec<Tab> {
+        let store = &self.session.read(cx).store;
+        let friends = store.relationships(RelationshipKind::Friend);
+        let online = friends.iter().filter(|user| store.presence(user.id) != Status::Offline).count();
+        let pending = store.relationships(RelationshipKind::IncomingRequest).len()
+            + store.relationships(RelationshipKind::OutgoingRequest).len();
+        visible_tabs(online, friends.len(), pending, store.relationships(RelationshipKind::Blocked).len())
     }
 
     fn pending_count(&self, cx: &gpui_kit::App) -> usize {
@@ -453,43 +599,57 @@ impl FriendsView {
             .into_any_element()
     }
 
-    fn render_tabs(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_tabs(&mut self, visible: &[Tab], cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let pending = self.pending_count(cx);
-        let mut tabs = div().flex().items_center().gap_1();
+        let mut tabs = div().flex().items_center().gap(px(16.)).px(px(8.));
 
-        for tab in Tab::ALL {
+        for &tab in visible {
             let selected = self.tab == tab;
+            let add = tab == Tab::Add;
             let badge = (tab == Tab::Pending && pending > 0).then(|| {
                 div()
                     .min_w(px(16.))
                     .h(px(16.))
-                    .px(px(5.))
+                    .px(px(4.))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded_full()
                     .bg(rgb(theme::BADGE))
-                    .text_size(px(11.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(0xffffff))
                     .child(pending.to_string())
             });
+            // Add Friend is the one filled button; the rest are plain until
+            // they are the open tab.
+            let (fill, text) = match (add, selected) {
+                (true, true) => (rgba(0x5865f229), 0x6374f4),
+                (true, false) => (rgba(0x5865f2ff), 0xffffff),
+                (false, true) => (rgba(0x97979f3d), theme::TEXT_BRIGHT),
+                (false, false) => (rgba(0x00000000), theme::TEXT_MUTED),
+            };
             tabs = tabs.child(
                 div()
                     .id(tab.label())
-                    .h(px(28.))
-                    .px_3()
+                    .h(px(32.))
+                    .px(px(12.))
                     .flex()
                     .items_center()
-                    .gap_2()
-                    .rounded(px(theme::RADIUS))
+                    .gap(px(8.))
+                    .rounded(px(8.))
                     .cursor_pointer()
-                    .text_color(rgb(if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED }))
-                    .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_CHAT }))
-                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                    .on_click(cx.listener(move |this, _, _, cx| {
+                    .text_size(px(16.))
+                    .line_height(px(20.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(text))
+                    .bg(fill)
+                    .when(!selected && !add, |s| s.hover(|s| s.bg(rgba(0x97979f1f)).text_color(rgb(theme::TEXT_BRIGHT))))
+                    .on_click(cx.listener(move |this, _, window, cx| {
                         this.tab = tab;
                         this.confirm_remove = None;
+                        this.search.update(cx, |input, cx| input.set_value("", window, cx));
                         cx.notify();
                     }))
                     .child(tab.label())
@@ -502,30 +662,30 @@ impl FriendsView {
             .flex_none()
             .flex()
             .items_center()
-            .gap_4()
-            .px_4()
+            .px(px(16.))
             .border_b_1()
             .border_color(rgb(theme::BORDER))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap_2()
+                    .text_size(px(16.))
+                    .line_height(px(20.))
                     .text_color(rgb(theme::TEXT_BRIGHT))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(icon("users", 20., theme::TEXT_MUTED))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(div().size(px(32.)).flex().items_center().justify_center().child(icon("friends", 24., theme::TEXT_BRIGHT)))
                     .child("Friends"),
             )
-            .child(div().w(px(1.)).h(px(20.)).bg(rgb(theme::BORDER)))
+            .child(div().ml(px(12.)).mr(px(4.)).size(px(4.)).flex_none().rounded_full().bg(rgba(0x97979f3d)))
             .child(tabs)
     }
 
     fn render_person(&mut self, person: Person, cx: &mut Context<Self>) -> AnyElement {
         let id = person.id;
         let subtitle: SharedString = match person.kind {
-            RelationshipKind::IncomingRequest => "Incoming friend request".into(),
-            RelationshipKind::OutgoingRequest => "Outgoing friend request".into(),
-            RelationshipKind::Blocked => "Blocked".into(),
+            RelationshipKind::IncomingRequest | RelationshipKind::OutgoingRequest | RelationshipKind::Blocked => {
+                person.username.clone().into()
+            }
             _ if person.custom_status.is_some() && person.status != Status::Offline => {
                 person.custom_status.clone().unwrap_or_default().into()
             }
@@ -539,7 +699,7 @@ impl FriendsView {
         };
         let arming = self.confirm_remove == Some(id);
 
-        let mut actions = div().flex().items_center().gap_2();
+        let mut actions = div().flex().items_center().gap(px(10.));
         match person.kind {
             RelationshipKind::Friend => {
                 actions = actions
@@ -566,20 +726,20 @@ impl FriendsView {
             RelationshipKind::IncomingRequest => {
                 actions = actions
                     .child(
-                        round_button(("accept", id.0), "check", theme::ONLINE).on_click(
+                        round_button(("accept", id.0), "check", theme::TEXT_MUTED).on_click(
                             cx.listener(move |this, _, _, _| {
                                 this.backend.send(Command::AcceptFriend(id));
                             }),
                         ),
                     )
                     .child(
-                        round_button(("decline", id.0), "x", theme::DANGER)
+                        round_button(("decline", id.0), "x", theme::TEXT_MUTED)
                             .on_click(cx.listener(move |this, _, _, cx| this.remove(id, cx))),
                     );
             }
             RelationshipKind::OutgoingRequest | RelationshipKind::Blocked => {
                 actions = actions.child(
-                    round_button(("cancel", id.0), "x", theme::DANGER)
+                    round_button(("cancel", id.0), "x", theme::TEXT_MUTED)
                         .on_click(cx.listener(move |this, _, _, cx| this.remove(id, cx))),
                 );
             }
@@ -589,15 +749,14 @@ impl FriendsView {
         let on_open = person.kind == RelationshipKind::Friend;
         let mut row = div()
             .id(("friend", id.0))
-            .h(px(62.))
-            .mx_4()
-            .px_2()
+            .h(px(61.))
+            .ml(px(14.))
+            .mr(px(26.))
+            .px(px(10.))
             .flex()
             .items_center()
-            .gap_3()
+            .gap(px(12.))
             .rounded(px(8.))
-            .border_t_1()
-            .border_color(rgb(theme::BORDER))
             .hover(|s| s.bg(rgb(theme::BG_HOVER)));
         if on_open {
             row = row
@@ -605,56 +764,66 @@ impl FriendsView {
                 .on_click(cx.listener(move |this, _, _, cx| this.message(id, cx)));
         }
 
-        row.child(
-            div()
-                .relative()
-                .flex_none()
-                .child(avatar(&self.media, &person.avatar, 36., &person.name, cx))
-                .children(
-                    (person.kind == RelationshipKind::Friend).then(|| presence_dot(person.status)),
-                ),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .items_baseline()
-                        .gap_2()
-                        .child(
-                            div()
-                                .truncate()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(rgb(theme::TEXT_BRIGHT))
-                                .child(person.name),
-                        )
-                        .child(
-                            div()
-                                .truncate()
-                                .text_size(px(12.))
-                                .text_color(rgb(theme::TEXT_FAINT))
-                                .child(person.username),
-                        ),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(theme::TEXT_MUTED))
-                        .child(subtitle),
-                ),
-        )
-        .child(actions)
-        .into_any_element()
+        let tag = person.tag.as_ref().map(|t| server_tag_chip(t, 14., &self.media, cx));
+        let row = row
+            .child(
+                div()
+                    .relative()
+                    .flex_none()
+                    .child(avatar(&self.media, &person.avatar, 32., &person.name, cx))
+                    .children(
+                        (person.kind == RelationshipKind::Friend).then(|| presence_dot(person.status)),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(px(16.))
+                                    .line_height(px(20.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(theme::TEXT_BRIGHT))
+                                    .child(person.name),
+                            )
+                            .children(tag),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(14.))
+                            .line_height(px(18.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(subtitle),
+                    ),
+            )
+            .child(actions);
+
+        // A hairline sits above every row, a little inside the row edges.
+        div()
+            .flex()
+            .flex_col()
+            .child(div().ml(px(30.)).mr(px(36.)).h(px(1.)).bg(rgba(0x97979f33)))
+            .child(row)
+            .into_any_element()
     }
 }
 
 impl Render for FriendsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let header = self.render_tabs(cx);
+        let visible = self.visible_tabs(cx);
+        self.tab = shown_tab(self.tab, &visible);
+        let header = self.render_tabs(&visible, cx);
         let active_now = (window.viewport_size().width >= px(ACTIVE_NOW_MIN_WINDOW))
             .then(|| self.render_active_now(cx));
         let page = |main: AnyElement| {
@@ -680,7 +849,8 @@ impl Render for FriendsView {
             return page(self.render_add_form(cx));
         }
 
-        let sections = self.sections(cx);
+        let query = self.search.read(cx).value().to_string();
+        let sections = self.sections(self.tab, &query, cx);
         let mut body = div().id("friends-body").flex_1().min_h_0().overflow_y_scroll().pb_4();
         if sections.is_empty() {
             body = body.child(
@@ -693,36 +863,46 @@ impl Render for FriendsView {
                     .gap_3()
                     .text_color(rgb(theme::TEXT_MUTED))
                     .child(icon("users", 48., theme::TEXT_FAINT))
-                    .child(match self.tab {
-                        Tab::Online => "No one is around right now.",
-                        Tab::All => "You have no friends here yet.",
-                        Tab::Pending => "There are no pending requests.",
-                        Tab::Blocked => "You haven't blocked anyone.",
-                        Tab::Add => "",
+                    .child(match (self.tab, query.trim().is_empty()) {
+                        (_, false) => "No one matches that search.",
+                        (Tab::Online, _) => "No one is around right now.",
+                        (Tab::All, _) => "You have no friends here yet.",
+                        (Tab::Pending, _) => "There are no pending requests.",
+                        (Tab::Blocked, _) => "You haven't blocked anyone.",
+                        (Tab::Add, _) => "",
                     }),
             );
         }
         for section in sections {
             body = body.child(
                 div()
-                    .px_4()
-                    .pt_4()
-                    .pb_2()
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(theme::TEXT_MUTED))
-                    .child(format!(
-                        "{} \u{2013} {}",
-                        section.title.to_uppercase(),
-                        section.people.len()
-                    )),
+                    .ml(px(24.))
+                    .pt(px(16.))
+                    .pb(px(16.))
+                    .text_size(px(14.))
+                    .line_height(px(18.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .child(format!("{} \u{2014} {}", section.title, section.people.len())),
             );
             for person in section.people {
                 body = body.child(self.render_person(person, cx));
             }
         }
 
-        page(body.into_any_element())
+        let banner = (!self.session.read(cx).settings.restricted_notice_dismissed).then(|| self.render_banner(cx));
+        page(
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .pt(px(16.))
+                .children(banner)
+                .child(self.render_search(cx))
+                .child(div().h(px(8.)).flex_none())
+                .child(body)
+                .into_any_element(),
+        )
     }
 }
 
@@ -734,7 +914,7 @@ fn round_button(
 ) -> gpui_kit::Stateful<gpui_kit::Div> {
     div()
         .id(id)
-        .size(px(34.))
+        .size(px(36.))
         .flex_none()
         .flex()
         .items_center()
@@ -743,5 +923,50 @@ fn round_button(
         .bg(rgb(theme::BG_SIDEBAR))
         .cursor_pointer()
         .hover(|s| s.bg(rgb(theme::BG_ACTIVE)))
-        .child(icon(glyph, 18., color))
+        .child(icon(glyph, 20., color))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn person(name: &str, username: &str) -> Person {
+        Person {
+            id: Snowflake(1),
+            tag: None,
+            name: name.into(),
+            username: username.into(),
+            avatar: String::new(),
+            status: Status::Offline,
+            kind: RelationshipKind::Friend,
+            custom_status: None,
+        }
+    }
+
+    #[test]
+    fn the_strip_lists_only_tabs_with_something_behind_them() {
+        assert_eq!(visible_tabs(0, 0, 0, 0), [Tab::Add]);
+        assert_eq!(visible_tabs(0, 0, 1, 0), [Tab::Pending, Tab::Add]);
+        assert_eq!(visible_tabs(0, 3, 0, 0), [Tab::All, Tab::Add]);
+        assert_eq!(visible_tabs(2, 3, 1, 1), [Tab::Online, Tab::All, Tab::Pending, Tab::Blocked, Tab::Add]);
+    }
+
+    #[test]
+    fn a_tab_that_left_the_strip_falls_back_to_the_first_one_left() {
+        let visible = visible_tabs(0, 0, 1, 0);
+        assert_eq!(shown_tab(Tab::Online, &visible), Tab::Pending);
+        assert_eq!(shown_tab(Tab::Add, &visible), Tab::Add);
+        assert_eq!(shown_tab(Tab::Online, &visible_tabs(0, 0, 0, 0)), Tab::Add);
+    }
+
+    #[test]
+    fn the_search_matches_the_name_or_the_username_in_any_case() {
+        let ann = person("Ann Lee", "annl0");
+        assert!(matches_query(&ann, ""));
+        assert!(matches_query(&ann, "  "));
+        assert!(matches_query(&ann, "ann"));
+        assert!(matches_query(&ann, "LEE"));
+        assert!(matches_query(&ann, "annl0"));
+        assert!(!matches_query(&ann, "bob"));
+    }
 }
