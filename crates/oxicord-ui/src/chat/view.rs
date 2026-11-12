@@ -30,6 +30,7 @@ use super::{
     typing::typing_text,
 };
 use crate::{
+    tip::Tip,
     backend::{Backend, Command},
     emoji_panel::{ClosePicker, EmojiPanel, Picked, PickedGif, PickedSticker},
     popup::Entry,
@@ -37,7 +38,7 @@ use crate::{
     media::{Media, avatar},
     context_menu::Target,
     dm_picker::Purpose,
-    session::{AutocompleteDone, MentionUser, OpenCreatePoll, OpenGift, OpenInbox, OpenMenu, OpenPicker, OpenPopup, OpenRulesScreening, OpenUserMenu, PanelKind, Session},
+    session::{AutocompleteDone, MentionUser, OpenCreatePoll, OpenGift, OpenMenu, OpenPicker, OpenPopup, OpenRulesScreening, OpenUserMenu, PanelKind, Session},
     theme,
 };
 
@@ -2052,15 +2053,6 @@ impl ChatView {
                     .child(div().flex_1().min_w_0().child(Input::new(&self.search).appearance(false).bordered(false).focus_bordered(false)))
                     .child(div().size(px(24.)).flex().items_center().justify_center().child(icon("search", 16., theme::TEXT_MUTED))),
             )
-            .child(
-                toolbar_button("open-inbox", "inbox", theme::TEXT_MUTED).on_click(cx.listener(|this, _, _, cx| {
-                    this.session.update(cx, |_, cx| cx.emit(OpenInbox));
-                })),
-            )
-            .child(
-                toolbar_button("open-help", "circle-question-mark", theme::TEXT_MUTED)
-                    .on_click(|_, _, cx| cx.open_url("https://support.discord.com")),
-            )
     }
 
 
@@ -3008,25 +3000,6 @@ fn reactors_line(names: &[String], count: u32, emoji: &str) -> String {
         [only] if count <= 1 => format!("{only} reacted with {word}"),
         _ if count > shown => format!("{} and {} others reacted with {word}", names.join(", "), count - shown),
         [rest @ .., last] => format!("{} and {last} reacted with {word}", rest.join(", ")),
-    }
-}
-
-/// A plain text tooltip in the menu colors.
-struct Tip(String);
-
-impl Render for Tip {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px(px(12.))
-            .py(px(8.))
-            .rounded(px(theme::RADIUS))
-            .border_1()
-            .border_color(rgb(theme::BORDER_MUTED))
-            .bg(rgb(theme::BG_MENU))
-            .text_size(px(14.))
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(rgb(theme::TEXT_BRIGHT))
-            .child(self.0.clone())
     }
 }
 

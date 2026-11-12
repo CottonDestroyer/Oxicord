@@ -311,7 +311,7 @@ impl Render for AppView {
                 .pt(px(title_bar::HEIGHT))
                 .bg(rgb(theme::BG_RAIL))
                 .child(view.clone())
-                .child(title_bar::title_bar("Oxicord".into(), window)),
+                .child(title_bar::title_bar("Oxicord".into(), None, None, window)),
             // The signed in frame draws its own, naming what is open.
             Screen::Main(view) => div()
                 .size_full()

@@ -1140,17 +1140,39 @@ impl MainView {
         cx.notify();
     }
 
-    /// What the title bar names: the server, the conversation, or Friends.
-    fn window_title(&self, cx: &App) -> SharedString {
-        let store = &self.session.read(cx).store;
-        let name = match (self.guild, self.channel) {
-            (Some(guild), _) => store.guild(guild).map(|g| g.name.clone()),
-            (None, Some(channel)) => store.channel(channel).map(|c| store.dm_name(c)),
-            (None, None) if self.requests_open => Some("Message Requests".to_owned()),
-            (None, None) if self.home_page.is_some() => self.home_page.map(|p| p.label().to_owned()),
-            (None, None) => Some("Friends".to_owned()),
-        };
-        name.unwrap_or_default().into()
+    /// What the title bar names and the picture before it: the server with
+    /// its icon, Direct Messages with the Discord mark, or the page.
+    fn window_title(&self, cx: &mut App) -> (SharedString, AnyElement) {
+        let glyph = |name: &str| icon(name, 18., theme::TEXT_BRIGHT).into_any_element();
+        if let Some(guild) = self.guild {
+            let (name, url) = {
+                let store = &self.session.read(cx).store;
+                store.guild(guild).map_or((String::new(), None), |g| {
+                    (g.name.clone(), g.icon.as_deref().map(|hash| cdn::guild_icon(guild, hash, 32)))
+                })
+            };
+            let image = url.and_then(|url| self.media.update(cx, |media, _| media.get(&url)));
+            let base = div().size(px(16.)).flex_none().rounded(px(4.)).overflow_hidden();
+            let lead = match image {
+                Some(image) => base.child(img(ImageSource::Image(image)).size_full()).into_any_element(),
+                None => base
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(rgb(theme::BG_HOVER))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .text_size(px(8.))
+                    .child(acronym(&name))
+                    .into_any_element(),
+            };
+            return (name.into(), lead);
+        }
+        match (self.channel, self.requests_open, self.home_page) {
+            (Some(_), _, _) => ("Direct Messages".into(), glyph("discord-mark")),
+            (_, true, _) => ("Message Requests".into(), glyph("message-requests")),
+            (_, _, Some(page)) => (page.label().into(), glyph(page.glyph())),
+            _ => ("Friends".into(), glyph("friends")),
+        }
     }
 
     /// Channels in sidebar order, for stepping through with the keyboard.
@@ -4904,7 +4926,7 @@ impl Render for MainView {
             )
         });
 
-        let title = self.window_title(cx);
+        let (title, title_lead) = self.window_title(cx);
         // The user card floats across the bottom of the rail and the channel list.
         let user_card = div()
             .absolute()
@@ -4998,7 +5020,18 @@ impl Render for MainView {
             .children(totp_dialog)
             .children(danger_dialog)
             // Last, so it stays usable above any dialog.
-            .child(title_bar::title_bar(title, window))
+            .child(title_bar::title_bar(
+                title,
+                Some(title_lead),
+                Some(Box::new(cx.listener(|this, _: &ClickEvent, _, cx| {
+                    this.inbox_open = !this.inbox_open;
+                    if this.inbox_open {
+                        this.inbox.update(cx, |inbox, cx| inbox.opened(cx));
+                    }
+                    cx.notify();
+                }))),
+                window,
+            ))
     }
 }
 

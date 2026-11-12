@@ -10,11 +10,13 @@ use oxicord_store::Changes;
 
 use crate::{
     backend::{Backend, Command},
+    dm_picker::Purpose,
     icons::icon,
     media::{Media, avatar},
     member_list::{presence_dot, server_tag_chip},
-    session::{DmOpened, OpenPrivacySettings, Session},
+    session::{DmOpened, OpenPicker, OpenPrivacySettings, Session},
     theme,
+    tip::Tip,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -678,6 +680,29 @@ impl FriendsView {
             )
             .child(div().ml(px(12.)).mr(px(4.)).size(px(4.)).flex_none().rounded_full().bg(rgba(0x97979f3d)))
             .child(tabs)
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("new-group-dm")
+                    .group("new-group-dm")
+                    .tooltip(|_, cx| cx.new(|_| Tip("New Group DM".into())).into())
+                    .size(px(32.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                        // Live opens a centered New Message modal; until that is
+                        // built the picker drops below the button, inside the window.
+                        let at = gpui_kit::point(event.position().x - px(384.), px(82.));
+                        this.session.update(cx, |_, cx| cx.emit(OpenPicker { purpose: Purpose::Create, at }));
+                    }))
+                    .child(
+                        icon("new-group-dm", 20., theme::TEXT_MUTED)
+                            .group_hover("new-group-dm", |s| s.text_color(rgb(theme::TEXT))),
+                    ),
+            )
     }
 
     fn render_person(&mut self, person: Person, cx: &mut Context<Self>) -> AnyElement {

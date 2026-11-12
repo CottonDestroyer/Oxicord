@@ -1406,8 +1406,31 @@ the build moves.
       friends.", then "Other Places to Make Friends" with an "Explore
       Discoverable Servers" row. The request body with a note is built and
       unit tested only, never sent.
-- [ ] New group DM button at the right end of the friends header, and the
+- [x] New group DM button at the right end of the friends header, and the
       inbox and help icons in the title strip.
+      Live (1920x1080): the 32px title strip holds, centered, a 16px rounded
+      server icon or an 18px glyph and the name in 14px medium (gap 8):
+      Friends with the friends glyph, Nitro and Shop with their row glyphs,
+      Direct Messages with the Discord mark in any conversation (not the
+      person's name), the server name with its icon in a server. At the right,
+      Inbox and Help as 18px glyphs in 24px boxes 12px apart and 12px in from
+      the edge; the channel header no longer carries them, ours matches.
+      Ours: title_bar takes the lead element and an optional Inbox handler (the
+      sign in screen passes none, so it shows no glyphs); the name stays on
+      the window middle by padding the side without the glyphs. The Tip tooltip
+      moved to its own module so the friends button shares it. The friends
+      header got the 32px new-group-dm glyph (20px, new icon from the live
+      svg) at its right end with a New Group DM tooltip.
+      Remaining: the live button opens a centered 480px "New Message" modal
+      (title 20px, "Group DMs can have up to 10 members.", search field with
+      "Add friends or server members to group DMs.", "No results found." with
+      "Search your friends or people from your servers.", Cancel and Create
+      Message footer); ours still opens the old Select Friends popup below the
+      button (new item below). Inbox has no unread pulse on the title glyph.
+      Message Requests and the Quests page titles are unverified (the live
+      page has no title for Quests and the requests route was not reachable).
+- [ ] New Message modal for the group DM button (see the notes above for the
+      live layout); keep the existing create flow behind it.
 
 ### User settings (the sidebar was rebuilt in the live client)
 

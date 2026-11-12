@@ -72,6 +72,7 @@ mod user_menu;
 mod widget_picker;
 mod switcher;
 pub mod theme;
+mod tip;
 mod title_bar;
 
 pub use app::AppView;
