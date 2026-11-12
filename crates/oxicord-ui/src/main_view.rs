@@ -139,6 +139,8 @@ struct DmItem {
     unread: Unread,
     /// The tag the other person wears, for one-to-one conversations.
     tag: Option<oxicord_model::ServerTag>,
+    /// Their custom status or what they are doing, under the name.
+    line: Option<String>,
 }
 
 /// The signed in frame: guild rail, channel list, and the content area.
@@ -2694,6 +2696,10 @@ impl MainView {
                         (ChannelType::Dm, Some(user)) => store.user(user.id).unwrap_or(user).server_tag(),
                         _ => None,
                     },
+                    line: match (c.kind, c.recipients.first()) {
+                        (ChannelType::Dm, Some(user)) => crate::friends::status_line(store.activities(user.id)),
+                        _ => None,
+                    },
                 }
             })
             .collect()
@@ -3642,8 +3648,13 @@ impl MainView {
                             .child(div().truncate().child(dm.name))
                             .children(dm.tag.map(|t| crate::member_list::server_tag_chip(&t, 14., &self.media, cx))),
                     )
-                    .children(dm.members.map(|n| {
-                        div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(format!("{n} Members"))
+                    .children(dm.members.map(|n| format!("{n} Members")).or(dm.line).map(|line| {
+                        div()
+                            .truncate()
+                            .text_size(px(12.))
+                            .line_height(px(16.))
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(line)
                     })),
             )
             .children(mention_badge(dm.unread.mentions))

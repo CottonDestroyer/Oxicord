@@ -1356,9 +1356,20 @@ the build moves.
       placement are unverified because the live account has already opened both
       rows and shows no pill (the pill is blurple 11px bold from memory of the
       earlier audit). The live gradient is pinker at the top than ours.
-- [ ] DM rows: status or activity line under the name (custom status, a bot's
+- [x] DM rows: status or activity line under the name (custom status, a bot's
       "/help" text, "Dungeon crawling | Use /raid") and the server tag chip.
-      Ours shows the name only.
+      Done: one to one rows show `friends::status_line` as a 12px muted line
+      under the name, the tag chip already existed, and group rows keep their
+      "N Members" line in the same 12px style (was 11px). Rows stay 42px with a
+      2px gap, as live. Remaining differences and unverified parts: the line
+      never showed in the debug app because Oxicord identifies without the
+      gateway capabilities on purpose (a token was revoked once with them), so
+      the server sends presences for friends only and the DM list of this
+      account, mostly bots and non friends, shows everyone offline, where live
+      shows Ticket King, Bloxlink and others online with their lines. The line
+      appears for anyone whose presence we do receive (friends, people met in
+      a member list). The layout is from live measurements, not a capture of
+      ours. Live captured at 1920x1080 only.
 - [ ] Friends page: the tab strip collapses to "Friends", Pending and Add
       Friend when no one is online, plus the "Looking for accounts you've
       blocked or ignored? Go to settings" banner, the search field and the
