@@ -20,6 +20,8 @@ pub enum AdminRequest {
     EditGuild { guild: Snowflake, fields: Value },
     /// The screening form and the card beside it.
     LoadMemberVerification(Snowflake),
+    /// The server's own tag, for the header menu. A read of its public profile.
+    LoadGuildTag(Snowflake),
     /// Answers the screening form. The gateway clears `pending` on success.
     SubmitMemberVerification {
         guild: Snowflake,
@@ -94,6 +96,8 @@ pub enum AdminEvent {
     MemberVerification(Snowflake, Box<Result<oxicord_model::VerificationInfo, String>>),
     /// How answering the screening form went.
     Verified(Snowflake, Result<(), String>),
+    /// The tag a server hands out, or none when it has no tag.
+    GuildTag(Snowflake, Option<oxicord_model::ServerTag>),
 }
 
 /// The lists last loaded, for the server whose settings are open.
@@ -134,7 +138,7 @@ impl AdminState {
                 self.prune = Load::from_result(r.map(|count| oxicord_model::PruneState { days, count, done }));
             }
             AdminEvent::Audit(g, r) if self.guild == Some(g) => self.audit = Load::from_result(r),
-            AdminEvent::MemberVerification(..) | AdminEvent::Verified(..) => {}
+            AdminEvent::MemberVerification(..) | AdminEvent::Verified(..) | AdminEvent::GuildTag(..) => {}
             _ => {}
         }
     }

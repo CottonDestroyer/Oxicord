@@ -117,6 +117,10 @@ pub struct Session {
     pub audio_output: Option<String>,
     /// The membership screening dialog, while it is open or loading.
     pub verification: Option<VerificationState>,
+    /// The tag each server hands out, as its profile told us. `None` is a
+    /// server with no tag. A server not listed hasn't been asked yet.
+    pub guild_tags: HashMap<Snowflake, Option<oxicord_model::ServerTag>>,
+    guild_tags_asked: HashSet<Snowflake>,
 }
 
 /// The form and card of the screening dialog, and how submitting went.
@@ -428,6 +432,8 @@ impl Session {
             audio_input: None,
             audio_output: None,
             verification: None,
+            guild_tags: HashMap::new(),
+            guild_tags_asked: HashSet::new(),
         }
     }
 
@@ -894,6 +900,9 @@ impl Session {
                     state.info = Load::from_result((**result).clone());
                 }
             }
+            crate::AdminEvent::GuildTag(guild, tag) => {
+                self.guild_tags.insert(*guild, tag.clone());
+            }
             crate::AdminEvent::Verified(guild, result) => {
                 if let Some(state) = &mut self.verification
                     && state.guild == *guild
@@ -905,6 +914,14 @@ impl Session {
         }
         self.admin.apply(event);
         cx.notify();
+    }
+
+    /// Asks for a server's tag once, so the header menu can show it.
+    pub fn request_guild_tag(&mut self, backend: &Backend, guild: Snowflake) {
+        if self.guild_tags.contains_key(&guild) || !self.guild_tags_asked.insert(guild) {
+            return;
+        }
+        backend.send(Command::Admin(crate::AdminRequest::LoadGuildTag(guild)));
     }
 
     /// Opens the screening dialog for `guild` and asks for its form.

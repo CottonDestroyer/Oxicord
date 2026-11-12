@@ -1026,6 +1026,17 @@ async fn admin_request(api: &ApiClient, request: AdminRequest, events: &Sender<E
             .map_err(text);
             say(AdminEvent::MemberVerification(guild, Box::new(result))).await;
         }
+        AdminRequest::LoadGuildTag(guild) => {
+            // A server without a tag, or a profile we can't read, shows no tag row.
+            let tag = api.guild_profile(guild).await.ok().and_then(|profile| {
+                Some(oxicord_model::ServerTag {
+                    tag: profile.tag.filter(|t| !t.is_empty())?,
+                    guild_id: guild,
+                    badge: profile.badge_hash.filter(|b| !b.is_empty()),
+                })
+            });
+            say(AdminEvent::GuildTag(guild, tag)).await;
+        }
         AdminRequest::SubmitMemberVerification { guild, form, answers } => {
             match api.submit_member_verification(guild, &form, &answers).await {
                 Ok(()) => say(AdminEvent::Verified(guild, Ok(()))).await,

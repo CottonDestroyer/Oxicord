@@ -66,6 +66,15 @@ pub const AUTOCOMPLETE_HOVER: u32 = 0x1b1b1d;
 pub const BORDER_OVERLAY: u32 = 0x2c2c2e;
 /// The modal frame: border-subtle at 0.2 over `BG_PANEL`.
 pub const MODAL_BORDER: u32 = 0x25252a;
+/// Label color of a row in the server header menu, and of its picture while
+/// the pointer is on the row.
+pub const HEADER_MENU_TEXT: u32 = 0xdcdcdf;
+/// The hovered row of the server header menu.
+pub const HEADER_MENU_HOVER: u32 = 0x222225;
+/// The hovered Leave Server row, the critical color at 8% over the menu.
+pub const HEADER_MENU_DANGER_HOVER: u32 = 0x211516;
+/// The frame and the group lines of the server header menu.
+pub const HEADER_MENU_BORDER: u32 = 0x2c2c30;
 /// control-critical-secondary-text-default.
 pub const DANGER: u32 = 0xeb5f5e;
 /// background-feedback-mod-critical (rgba(242,63,67,0.1)) over `BG_PANEL`.

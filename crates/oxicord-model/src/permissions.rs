@@ -48,6 +48,7 @@ bitflags! {
         const USE_EMBEDDED_ACTIVITIES = 1 << 39;
         const MODERATE_MEMBERS = 1 << 40;
         const USE_SOUNDBOARD = 1 << 42;
+        const CREATE_GUILD_EXPRESSIONS = 1 << 43;
         const CREATE_EVENTS = 1 << 44;
         const USE_EXTERNAL_SOUNDS = 1 << 45;
         const SEND_VOICE_MESSAGES = 1 << 46;

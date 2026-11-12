@@ -299,7 +299,7 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| SidePanel::new(session, media, backend, window, cx))
         };
-        let menu = cx.new(|_| ContextMenu::new(session.clone(), backend.clone()));
+        let menu = cx.new(|_| ContextMenu::new(session.clone(), media.clone(), backend.clone()));
         let join = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| JoinServerView::new(session, media, backend, window, cx))
@@ -2834,6 +2834,7 @@ impl MainView {
         let title: SharedString = head.as_ref().map_or_else(|| "Direct Messages".into(), |h| h.name.clone());
         let banner_url = head.as_ref().and_then(|h| h.banner.clone());
         let has_banner = banner_url.is_some();
+        let header_menu_open = self.menu_open && self.menu.read(cx).is_header();
         // How far the list has scrolled up. The header goes solid once the
         // banner has slid out from under it.
         let scrolled = -f32::from(self.sidebar_scroll.offset().y);
@@ -2891,7 +2892,8 @@ impl MainView {
                             .cursor_pointer()
                             .when(!has_banner, |h| h.hover(|s| s.bg(rgb(theme::BG_HOVER))))
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.open_menu(Target::Guild(guild), point(px(theme::RAIL_WIDTH + 8.), px(54.)), cx);
+                                this.session.update(cx, |session, _| session.request_guild_tag(&this.backend, guild));
+                                this.open_menu(Target::GuildHeader(guild), point(px(theme::RAIL_WIDTH + 42.), px(85.)), cx);
                             }))
                     })
                     .when(self.guild.is_none(), |header| {
@@ -2924,7 +2926,15 @@ impl MainView {
                                 .gap(px(8.))
                                 .when(tier > 0, |row| row.child(boost_badge()))
                                 .child(div().min_w_0().truncate().text_size(px(16.)).child(title))
-                                .child(icon("chevron-down", 16., if has_banner { 0xffffff } else { theme::TEXT_MUTED }).ml(px(-6.)).flex_none()),
+                                .child(
+                                    icon(
+                                        if header_menu_open { "chevron-up" } else { "chevron-down" },
+                                        16.,
+                                        if has_banner { 0xffffff } else { theme::TEXT_MUTED },
+                                    )
+                                    .ml(px(-6.))
+                                    .flex_none(),
+                                ),
                         )
                     })
                     .children(self.channel.filter(|_| self.guild.is_some()).map(|channel| {

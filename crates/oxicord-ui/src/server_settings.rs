@@ -129,7 +129,7 @@ impl Page {
             Page::Overview | Page::Invites | Page::ServerProfile | Page::ServerTag | Page::Members | Page::Access | Page::Integrations | Page::AutoMod | Page::EnableCommunity | Page::WelcomeScreen | Page::Onboarding | Page::BoostPerks | Page::Stickers | Page::Soundboard | Page::Engagement | Page::ServerTemplate | Page::Widget | Page::SafetySetup | Page::ServerInsights | Page::PartnerProgram | Page::Monetization | Page::Discovery => Permissions::MANAGE_GUILD,
             Page::Roles => Permissions::MANAGE_ROLES,
             Page::Channels => Permissions::MANAGE_CHANNELS,
-            Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS,
+            Page::Emoji => Permissions::MANAGE_GUILD_EXPRESSIONS.union(Permissions::CREATE_GUILD_EXPRESSIONS),
             Page::Bans => Permissions::BAN_MEMBERS,
             Page::AuditLog => Permissions::VIEW_AUDIT_LOG,
         }
@@ -138,7 +138,24 @@ impl Page {
 
 /// Which pages these permissions open.
 fn pages_for(perms: Permissions) -> Vec<Page> {
-    Page::ALL.into_iter().filter(|p| perms.contains(p.needs())).collect()
+    Page::ALL.into_iter().filter(|p| perms.intersects(p.needs())).collect()
+}
+
+/// What the live client needs before the server header offers Server
+/// Settings: any one of these, which is wider than owning a page of it.
+pub fn can_access(perms: Permissions) -> bool {
+    perms.intersects(
+        Permissions::MANAGE_GUILD
+            | Permissions::MANAGE_ROLES
+            | Permissions::ADMINISTRATOR
+            | Permissions::BAN_MEMBERS
+            | Permissions::MANAGE_NICKNAMES
+            | Permissions::CREATE_GUILD_EXPRESSIONS
+            | Permissions::MANAGE_GUILD_EXPRESSIONS
+            | Permissions::MANAGE_WEBHOOKS
+            | Permissions::VIEW_AUDIT_LOG
+            | Permissions::VIEW_GUILD_INSIGHTS,
+    )
 }
 
 /// Whether someone with `perms` has anything to do in server settings.
@@ -3131,6 +3148,16 @@ mod tests {
         let mods = pages_for(Permissions::BAN_MEMBERS | Permissions::VIEW_AUDIT_LOG);
         assert_eq!(mods, vec![Page::Bans, Page::AuditLog]);
         assert_eq!(pages_for(Permissions::all()).len(), Page::ALL.len());
+    }
+
+    #[test]
+    fn the_header_offers_settings_to_anyone_who_may_add_expressions() {
+        assert!(!can_access(Permissions::SEND_MESSAGES | Permissions::CREATE_EVENTS));
+        // Wider than owning a page: a person who can only add emoji gets in,
+        // and the Emoji page opens for them.
+        assert!(can_access(Permissions::CREATE_GUILD_EXPRESSIONS));
+        assert_eq!(pages_for(Permissions::CREATE_GUILD_EXPRESSIONS), vec![Page::Emoji]);
+        assert!(can_access(Permissions::MANAGE_NICKNAMES));
     }
 
     #[test]

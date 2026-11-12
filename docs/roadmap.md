@@ -1187,15 +1187,54 @@ the build moves.
       mute-events state (the live row has both). No right click menu on the
       row. The line is drawn only under the Events row; whether live also
       draws it under the Boost Goal pill alone is not checked.
-- [ ] Server header dropdown menu, as the live client draws it (grouped, with
+- [x] Server header dropdown menu, as the live client draws it (grouped, with
       icons): Server Boost, Server Tag, Invite to Server, Server Settings,
       Create Event, App Directory, Notification Settings, Privacy Settings,
       Edit Per-server Profile, Hide Muted Channels (checkbox), Leave Server
-      (red), Copy Server ID. Ours opens the older right click list (Server
-      Guide, Change Nickname, Mark as read, Mute server...) from the header
-      too. Keep that list for the right click on a server icon and give the
-      header its own menu. Create Event needs the event creation dialog (build
-      and unit test only, no live write).
+      (red), Copy Server ID. Done, checked at 1920x1080 (build 670026) in Low
+      iq gaymers and true larpers. The header now opens its own menu
+      (`Target::GuildHeader`, rows and groups in `header_menu.rs`, drawing in
+      `context_menu.rs`); the older list stays for right click on a server
+      icon. Geometry matches live: 220px card at 114,85 (centred under the
+      header, 4px below it) with a 1px 2c2c30 frame, 8px radius, 8px padding,
+      36px rows (34 for the tag row), 20px glyph at 8px, label at 36px in 14px
+      medium, muted glyph that turns bright on hover, 222225 hover (211516 on
+      Leave), 1px group lines with 8px above and below. A pixel scan of the
+      Low iq gaymers crop shows no differing row outside the label text (font
+      anti-aliasing), and the card's bottom edge lands on the same row. The
+      chevron beside the name turns up while the menu is open. Rows follow the
+      live component: Boost always; Server Tag when the server has one (a
+      read of `GET /guilds/:id/profile`, asked once on first open, new
+      `AdminRequest::LoadGuildTag`); Invite always (live opens a different
+      sheet without the right); Server Settings for anyone with one of manage
+      server, manage roles, admin, ban, manage nicknames, create or manage
+      expressions, webhooks, audit log or insights (read from the live
+      bundle, now `server_settings::can_access`; the Emoji page opens for
+      create expressions); Create Event with create or manage events; Leave
+      hidden for the owner. Added the `CREATE_GUILD_EXPRESSIONS` bit and four
+      glyphs from live (server-boost, calendar-plus, eye-off, id-badge). True
+      larpers shows the live list exactly (no tag, settings or event rows).
+      Remaining differences, all unverified against a live click since the
+      menu rows write or open modals: Server Boost shows a notice (live opens
+      the boost modal); the Server Tag row only closes the menu (live opens
+      the tag popout); Create Event opens the events list (no creation form
+      yet); Notification Settings swaps to the older list (live opens a modal);
+      Leave Server still arms with a second click (live opens a confirm
+      modal); App Directory opens the web page in the browser; the checked
+      state of Hide Muted Channels is drawn from the live indicator's CSS,
+      not from a live capture; live also adds Create Channel and Create
+      Category (with manage channels), Server Insights, Active Threads,
+      Friends, Use Server Theme and Report Raid rows when their conditions
+      hold, none built. Follow-ups are listed below.
+- [ ] Create Event dialog behind the header menu row (topic, location or
+      channel, start, description, cover). Build and unit test only, no live
+      write.
+- [ ] Server Notification Settings modal behind the header menu row (mute
+      toggle, All Messages, Only @mentions, Nothing, the suppress toggles,
+      Mute New Events, Mobile Push, per channel overrides). Captured live in
+      Low iq gaymers at 1920x1080, modal 480px wide with a Done button.
+- [ ] Leave Server confirm modal and the Server Tag popout, from the header
+      menu rows.
 - [ ] Invite glyph in the header and on the hovered channel row, as drawn live.
 
 ### Home and direct messages

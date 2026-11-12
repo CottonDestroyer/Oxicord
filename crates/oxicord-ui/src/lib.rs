@@ -10,6 +10,7 @@ mod emoji_panel;
 mod events_dialog;
 mod forum;
 mod context_menu;
+mod header_menu;
 mod dm_picker;mod create_channel_dialog;
 mod create_poll_dialog;
 mod channel_permissions;

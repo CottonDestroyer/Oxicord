@@ -5,16 +5,22 @@
 use chrono::Utc;
 use gpui_kit::{
     AnyElement, ClipboardItem, ClickEvent, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, Render, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px, rgb, rgba,
 };
 use oxicord_model::{Channel, NotifyLevel, Snowflake};
 
 use crate::{
     backend::{Backend, Command},
+    header_menu::{self, Facts, Row},
     icons::icon,
+    media::Media,
+    member_list::server_tag_chip,
     menus::{Action, MuteFor, Place, channel_link, guild_of, settings_body},
     server_settings,
-    session::{OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, Session},
+    session::{
+        OpenEvents, OpenInviteDialog, OpenPrivacySettings, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings,
+        Session,
+    },
     theme,
 };
 
@@ -22,6 +28,9 @@ use crate::{
 pub enum Target {
     Guild(Snowflake),
     Channel(Snowflake),
+    /// The dropdown under the server name, drawn as the live client does.
+    /// Right clicking a server icon opens `Guild` instead.
+    GuildHeader(Snowflake),
 }
 
 pub struct CloseMenu;
@@ -36,6 +45,7 @@ enum Section {
 
 pub struct ContextMenu {
     session: Entity<Session>,
+    media: Entity<Media>,
     backend: Backend,
     target: Option<Target>,
     at: Point<Pixels>,
@@ -44,9 +54,10 @@ pub struct ContextMenu {
 }
 
 impl ContextMenu {
-    pub fn new(session: Entity<Session>, backend: Backend) -> Self {
+    pub fn new(session: Entity<Session>, media: Entity<Media>, backend: Backend) -> Self {
         Self {
             session,
+            media,
             backend,
             target: None,
             at: Point::default(),
@@ -63,16 +74,21 @@ impl ContextMenu {
         cx.notify();
     }
 
+    /// Whether the dropdown under the server name is the menu showing.
+    pub fn is_header(&self) -> bool {
+        matches!(self.target, Some(Target::GuildHeader(_)))
+    }
+
     fn channel(&self, cx: &gpui_kit::App) -> Option<Channel> {
         match self.target? {
             Target::Channel(id) => self.session.read(cx).store.channel(id).cloned(),
-            Target::Guild(_) => None,
+            Target::Guild(_) | Target::GuildHeader(_) => None,
         }
     }
 
     fn place(&self, cx: &gpui_kit::App) -> Option<Place> {
         match self.target? {
-            Target::Guild(g) => Some(Place::Guild(g)),
+            Target::Guild(g) | Target::GuildHeader(g) => Some(Place::Guild(g)),
             Target::Channel(_) => {
                 let c = self.channel(cx)?;
                 Some(Place::Channel { guild: c.guild_id?, channel: c.id })
@@ -103,10 +119,12 @@ impl ContextMenu {
                 (Action::CopyId, Some(Target::Channel(channel))) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(channel.to_string()));
                 }
-                (Action::CopyGuildId, Some(Target::Guild(guild))) => {
+                (Action::CopyGuildId, Some(Target::Guild(guild) | Target::GuildHeader(guild))) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(guild.to_string()));
                 }
-                (Action::Leave, Some(Target::Guild(guild))) => self.backend.send(Command::LeaveGuild(guild)),
+                (Action::Leave, Some(Target::Guild(guild) | Target::GuildHeader(guild))) => {
+                    self.backend.send(Command::LeaveGuild(guild));
+                }
                 _ => {}
             }
         }
@@ -119,6 +137,189 @@ impl ContextMenu {
 
     fn mark_channel_read(&mut self, channel: Snowflake, cx: &mut Context<Self>) {
         mark_channel_read(&self.session, &self.backend, channel, cx);
+    }
+
+    /// A channel where this person may make an invite, if there is one.
+    fn invite_channel(&self, guild: Snowflake, cx: &gpui_kit::App) -> Option<Snowflake> {
+        let store = &self.session.read(cx).store;
+        store
+            .channel_groups(guild)
+            .iter()
+            .flat_map(|group| group.channels.iter())
+            .find(|c| !c.kind.is_thread() && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE))
+            .map(|c| c.id)
+    }
+
+    /// One row of the header menu: a 36px row with the picture at the left
+    /// and the label after it, or the tag chip and its caption for the tag.
+    fn header_row(
+        &mut self,
+        row: Row,
+        lead: Option<AnyElement>,
+        checked: Option<bool>,
+        on_click: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let danger = row == Row::Leave;
+        let label = if danger && self.confirm_leave { "Click again to leave" } else { row.label() };
+        let group = SharedString::from(format!("header-row-{row:?}"));
+        let color = if danger { theme::DANGER } else { theme::HEADER_MENU_TEXT };
+        let lead = lead.unwrap_or_else(|| {
+            icon(row.glyph(), 20., if danger { theme::DANGER } else { theme::TEXT_MUTED })
+                .group_hover(group.clone(), move |s| s.text_color(rgb(if danger { theme::DANGER } else { theme::HEADER_MENU_TEXT })))
+                .into_any_element()
+        });
+        div()
+            .id(("header-row", row as u64))
+            .group(group)
+            .h(px(if row == Row::Tag { 34. } else { 36. }))
+            .flex_none()
+            .px(px(8.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .rounded(px(4.))
+            .cursor_pointer()
+            .text_size(px(14.))
+            .line_height(px(18.))
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
+            .text_color(rgb(color))
+            .hover(move |s| s.bg(rgb(if danger { theme::HEADER_MENU_DANGER_HOVER } else { theme::HEADER_MENU_HOVER })))
+            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| on_click(this, window, cx)))
+            .child(lead)
+            .child(div().flex_1().min_w_0().truncate().child(label))
+            .children(checked.map(|on| {
+                div()
+                    .size(px(20.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(4.))
+                    .border_1()
+                    .border_color(rgba(if on { 0x5865f2ff } else { 0x96979ea3 }))
+                    .bg(rgba(if on { 0x5865f2ff } else { 0x00000014 }))
+                    .children(on.then(|| icon("check", 18., 0xffffff)))
+            }))
+            .into_any_element()
+    }
+
+    /// The dropdown under the server name: grouped rows with pictures, lines
+    /// between the groups.
+    fn render_header(&mut self, guild: Snowflake, cx: &mut Context<Self>) -> AnyElement {
+        let (facts, hide_muted, tag) = {
+            let session = self.session.read(cx);
+            let store = &session.store;
+            let perms = store.guild_permissions(guild);
+            let owner = store.guild(guild).and_then(|g| g.owner_id).is_some_and(|owner| store.me().is_some_and(|me| me.id == owner));
+            let tag = session.guild_tags.get(&guild).cloned().flatten();
+            let facts = Facts {
+                tag: tag.is_some(),
+                manage: server_settings::can_access(perms),
+                events: perms.intersects(oxicord_model::Permissions::CREATE_EVENTS | oxicord_model::Permissions::MANAGE_EVENTS),
+                owner,
+            };
+            (facts, store.hide_muted_channels(guild), tag)
+        };
+        let invite_channel = self.invite_channel(guild, cx);
+
+        let mut menu = div()
+            .id("context-menu")
+            .occlude()
+            .absolute()
+            .left(self.at.x)
+            .top(self.at.y)
+            .w(px(220.))
+            .p(px(8.))
+            .flex()
+            .flex_col()
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgb(theme::HEADER_MENU_BORDER))
+            .bg(rgb(theme::BG_MENU));
+
+        let layout = header_menu::groups(facts);
+        let last = layout.len() - 1;
+        for (index, group) in layout.into_iter().enumerate() {
+            for row in group {
+                let element = match row {
+                    Row::Tag => {
+                        let Some(tag) = tag.clone() else { continue };
+                        let chip = server_tag_chip(&tag, 14., &self.media, cx).into_any_element();
+                        self.header_row(row, Some(chip), None, |this, _, cx| this.close(cx), cx)
+                    }
+                    Row::Boost => self.header_row(row, None, None, |this, _, cx| {
+                        this.session.update(cx, |session, cx| {
+                            session.set_notice(Some("Server Boosts are bought in the Discord app.".to_owned()), cx);
+                        });
+                        this.close(cx);
+                    }, cx),
+                    Row::Invite => self.header_row(row, None, None, move |this, _, cx| {
+                        // The live row is always there. Without the right to make an
+                        // invite it opens a different sheet, which we don't have.
+                        this.session.update(cx, |session, cx| match invite_channel {
+                            Some(channel) => cx.emit(OpenInviteDialog(channel)),
+                            None => session.set_notice(Some("You can't create invites in this server.".to_owned()), cx),
+                        });
+                        this.close(cx);
+                    }, cx),
+                    Row::Settings => self.header_row(row, None, None, move |this, _, cx| {
+                        this.session.update(cx, |_, cx| cx.emit(OpenServerSettings(guild)));
+                        this.close(cx);
+                    }, cx),
+                    // The creation form isn't built yet, so this opens the list of events.
+                    Row::CreateEvent => self.header_row(row, None, None, move |this, _, cx| {
+                        this.session.update(cx, |_, cx| cx.emit(OpenEvents(guild)));
+                        this.close(cx);
+                    }, cx),
+                    Row::AppDirectory => self.header_row(row, None, None, |this, _, cx| {
+                        cx.open_url("https://discord.com/application-directory");
+                        this.close(cx);
+                    }, cx),
+                    // The notification modal isn't built yet, so this swaps to the
+                    // older list, which has the mute and level choices.
+                    Row::Notifications => self.header_row(row, None, None, move |this, _, cx| {
+                        this.target = Some(Target::Guild(guild));
+                        this.open = Some(Section::Notify);
+                        cx.notify();
+                    }, cx),
+                    Row::Privacy => self.header_row(row, None, None, |this, _, cx| {
+                        this.session.update(cx, |_, cx| cx.emit(OpenPrivacySettings));
+                        this.close(cx);
+                    }, cx),
+                    Row::Profile => self.header_row(row, None, None, move |this, _, cx| {
+                        this.session.update(cx, |_, cx| cx.emit(OpenServerProfile(guild)));
+                        this.close(cx);
+                    }, cx),
+                    Row::HideMuted => self.header_row(row, None, Some(hide_muted), move |this, _, cx| {
+                        this.run(Action::HideMutedChannels(!hide_muted), cx);
+                    }, cx),
+                    Row::Leave => self.header_row(row, None, None, |this, _, cx| {
+                        if this.confirm_leave {
+                            this.run(Action::Leave, cx);
+                        } else {
+                            this.confirm_leave = true;
+                            cx.notify();
+                        }
+                    }, cx),
+                    Row::CopyId => self.header_row(row, None, None, |this, _, cx| this.run(Action::CopyGuildId, cx), cx),
+                };
+                menu = menu.child(element);
+            }
+            if index != last {
+                menu = menu.child(div().flex_none().my(px(8.)).h(px(1.)).bg(rgb(theme::HEADER_MENU_BORDER)));
+            }
+        }
+
+        div()
+            .id("context-scrim")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .on_click(cx.listener(|this, _, _, cx| this.close(cx)))
+            .child(menu)
+            .into_any_element()
     }
 
     fn item(
@@ -154,10 +355,13 @@ impl ContextMenu {
 impl Render for ContextMenu {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(target) = self.target else { return div().into_any_element() };
+        if let Target::GuildHeader(guild) = target {
+            return self.render_header(guild, cx);
+        }
         let (muted, level, suppress, own_level, in_guild, hide_muted) = {
             let store = &self.session.read(cx).store;
             match target {
-                Target::Guild(g) => (
+                Target::Guild(g) | Target::GuildHeader(g) => (
                     store.guild_muted(g),
                     Some(store.guild_notify_level(g)),
                     store.suppresses_everyone(g),
@@ -200,17 +404,7 @@ impl Render for ContextMenu {
             .bg(rgb(theme::BG_MENU));
 
         let invite_channel = match target {
-            Target::Guild(g) => {
-                let store = &self.session.read(cx).store;
-                store
-                    .channel_groups(g)
-                    .iter()
-                    .flat_map(|group| group.channels.iter())
-                    .find(|c| {
-                        !c.kind.is_thread() && store.permissions_in(c).contains(oxicord_model::Permissions::CREATE_INSTANT_INVITE)
-                    })
-                    .map(|c| c.id)
-            }
+            Target::Guild(g) | Target::GuildHeader(g) => self.invite_channel(g, cx),
             Target::Channel(_) => None,
         };
         if let Some(channel) = invite_channel {
