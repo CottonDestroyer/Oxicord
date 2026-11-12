@@ -2,10 +2,9 @@
 
 use chrono::Local;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
+    AnyElement, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, px, rgb,
-    component::input::{Input, InputEvent, InputState},
 };
 use oxicord_media::cdn;
 use oxicord_model::{Channel, Message, Permissions, Snowflake};
@@ -36,7 +35,6 @@ pub struct SidePanel {
     activity: bool,
     guild: Option<Snowflake>,
     channel: Option<Snowflake>,
-    query: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -45,18 +43,12 @@ impl SidePanel {
         session: Entity<Session>,
         media: Entity<Media>,
         backend: Backend,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder("Search messages"));
         let subscriptions = vec![
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
-            cx.subscribe_in(&query, window, |this, _, event: &InputEvent, _, cx| {
-                if matches!(event, InputEvent::PressEnter { .. }) {
-                    this.submit(cx);
-                }
-            }),
         ];
         Self {
             session,
@@ -68,7 +60,6 @@ impl SidePanel {
             activity: false,
             guild: None,
             channel: None,
-            query,
             _subscriptions: subscriptions,
         }
     }
@@ -82,7 +73,7 @@ impl SidePanel {
         kind: PanelKind,
         guild: Option<Snowflake>,
         channel: Option<Snowflake>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.kind = kind;
@@ -91,7 +82,7 @@ impl SidePanel {
         match kind {
             PanelKind::Pins => self.load_pins(cx),
             PanelKind::Threads => self.load_threads(cx),
-            PanelKind::Search => self.query.update(cx, |input, cx| input.focus(window, cx)),
+            PanelKind::Search => {}
             PanelKind::VoiceDetails => {}
         }
         cx.notify();
@@ -134,17 +125,6 @@ impl SidePanel {
         let backend = self.backend.clone();
         self.session
             .update(cx, |session, cx| session.request_pins(&backend, channel, cx));
-    }
-
-    fn submit(&mut self, cx: &mut Context<Self>) {
-        let query = self.query.read(cx).value().trim().to_owned();
-        let Some(channel) = self.channel else { return };
-        if query.is_empty() || self.kind != PanelKind::Search {
-            return;
-        }
-        let (backend, guild) = (self.backend.clone(), self.guild);
-        self.session
-            .update(cx, |session, cx| session.start_search(&backend, guild, channel, query, cx));
     }
 
     fn can_unpin(&self, channel: Snowflake, cx: &gpui_kit::App) -> bool {
@@ -399,7 +379,7 @@ impl SidePanel {
                 let state = self.session.read(cx).search.clone();
                 match state {
                     None => vec![Self::note(
-                        "Type something and press Enter. You can narrow it with from:name, in:channel, has:image or mentions:name.",
+                        "Type in the search box above and press Enter. You can narrow it with from:name, in:channel, has:image or mentions:name.",
                     )],
                     Some((_, Load::Idle | Load::Loading)) => vec![Self::note("Searching...")],
                     Some((_, Load::Failed(error))) => {
@@ -618,7 +598,6 @@ impl Render for SidePanel {
                             .child(icon("x", 16., theme::TEXT_MUTED)),
                     ),
             )
-            .children((self.kind == PanelKind::Search).then(|| div().p_2().child(Input::new(&self.query))))
             .child(
                 div()
                     .id("panel-body")

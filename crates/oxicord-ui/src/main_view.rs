@@ -1185,7 +1185,7 @@ impl MainView {
             .on_action(cx.listener(|this, _: &keys::TogglePins, window, cx| this.toggle_panel(PanelKind::Pins, window, cx)))
             .on_action(cx.listener(|this, _: &keys::Search, window, cx| {
                 if this.channel.is_some() {
-                    this.open_panel(PanelKind::Search, window, cx);
+                    this.chat.update(cx, |chat, cx| chat.focus_search(window, cx));
                 }
             }))
             .on_action(cx.listener(|this, _: &keys::ToggleInbox, _, cx| {

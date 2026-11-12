@@ -45,6 +45,9 @@ use crate::{
 /// text lines up.
 const GUTTER: f32 = 40.;
 
+/// The second line of a search filter, a little dimmer than the muted text.
+const SEARCH_HINT: u32 = 0x86878f;
+
 /// The line that joins a reply to the avatar under it.
 const SPINE: u32 = 0x383940;
 
@@ -69,6 +72,9 @@ pub struct ChatView {
     loading: bool,
 
     input: Entity<TextareaState>,
+    /// The search box in the header, and whether its filter list is showing.
+    search: Entity<InputState>,
+    search_open: bool,
     /// Unsent text per channel, so switching away doesn't lose it.
     drafts: HashMap<Snowflake, String>,
     reply_to: Option<Snowflake>,
@@ -157,6 +163,8 @@ impl ChatView {
                 .placeholder("Message")
         });
 
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
+
         let emoji = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| EmojiPanel::new(session, media, backend, window, cx))
@@ -187,6 +195,15 @@ impl ChatView {
             }),
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe(&media, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&search, window, |this, _, event: &InputEvent, _, cx| {
+                match event {
+                    InputEvent::PressEnter { .. } => this.run_search(cx),
+                    InputEvent::Focus | InputEvent::Change => this.search_open = this.search.read(cx).value().is_empty(),
+                    InputEvent::Blur => this.search_open = false,
+                    _ => {}
+                }
+                cx.notify();
+            }),
             cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
                 // With suggestions showing, Enter picks one instead of sending.
                 InputEvent::PressEnter { shift: false, .. } if !this.suggestions.is_empty() => {
@@ -227,6 +244,8 @@ impl ChatView {
             fetched: HashSet::new(),
             loading: false,
             input,
+            search,
+            search_open: false,
             drafts: HashMap::new(),
             reply_to: None,
             reply_ping: true,
@@ -275,6 +294,13 @@ impl ChatView {
         self.confirm_delete = None;
         self.files.clear();
 
+        let hint = self.search_hint(cx);
+        self.search.update(cx, |input, cx| {
+            input.set_value(String::new(), window, cx);
+            input.set_placeholder(hint, window, cx);
+        });
+        self.search_open = false;
+
         let draft = channel
             .and_then(|c| self.drafts.get(&c).cloned())
             .unwrap_or_default();
@@ -297,6 +323,117 @@ impl ChatView {
         self.rebuild(cx);
         self.maybe_ack(cx);
         cx.notify();
+    }
+
+    /// What the header search box says when empty: the server or person it searches.
+    fn search_hint(&self, cx: &App) -> String {
+        let store = &self.session.read(cx).store;
+        let Some(channel) = self.channel.and_then(|c| store.channel(c)) else {
+            return "Search".to_owned();
+        };
+        if let Some(guild) = channel.guild_id.and_then(|g| store.guild(g)) {
+            return format!("Search {}", guild.name);
+        }
+        match channel.recipients.first() {
+            Some(user) if channel.kind == ChannelType::Dm => format!("Search {}", tag(user)),
+            _ => "Search".to_owned(),
+        }
+    }
+
+    /// Moves the caret to the header search box, for the search shortcut.
+    pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search.update(cx, |input, cx| input.focus(window, cx));
+    }
+
+    /// Runs what is typed in the header search box and shows the results panel.
+    fn run_search(&mut self, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel else { return };
+        let raw = self.search.read(cx).value().trim().to_owned();
+        if raw.is_empty() {
+            return;
+        }
+        self.search_open = false;
+        let (backend, guild) = (self.backend.clone(), self.guild(cx));
+        self.session.update(cx, |session, cx| {
+            session.start_search(&backend, guild, channel, raw, cx);
+            session.open_panel(PanelKind::Search, cx);
+        });
+    }
+
+    /// The list under the search box that offers the filters it understands.
+    fn search_filters(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let row = |index: usize, glyph: &'static str, title: &'static str, key: &'static str, hint: &'static str| {
+            let line = div()
+                .flex()
+                .gap(px(4.))
+                .text_size(px(14.))
+                .line_height(px(18.))
+                .font_weight(FontWeight::MEDIUM)
+                .children((!key.is_empty()).then(|| div().font_weight(FontWeight::SEMIBOLD).text_color(rgb(theme::TEXT_MUTED)).child(key)))
+                .child(div().text_color(rgb(SEARCH_HINT)).child(hint));
+            div()
+                .id(("search-filter", index))
+                .h(px(44.))
+                .flex_none()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .px(px(8.))
+                .rounded(px(4.))
+                .cursor_pointer()
+                .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    // "More filters" has no filter of its own to start typing.
+                    if !key.is_empty() {
+                        this.search.update(cx, |input, cx| {
+                            input.set_value(key.to_owned() + " ", window, cx);
+                            input.focus(window, cx);
+                        });
+                        this.search_open = false;
+                        cx.notify();
+                    }
+                }))
+                .child(div().size(px(20.)).flex_none().flex().items_center().justify_center().child(icon(glyph, 20., theme::TEXT_MUTED)))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(div().text_size(px(14.)).line_height(px(18.)).font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child(title))
+                        .child(line),
+                )
+        };
+        div()
+            .id("search-filters")
+            .absolute()
+            .top(px(theme::CHANNEL_HEADER_HEIGHT))
+            .right(px(12.))
+            .w(px(356.))
+            .occlude()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .px(px(8.))
+            .py(px(12.))
+            .rounded(px(theme::RADIUS))
+            .border_1()
+            .border_color(rgba(0x96979e33))
+            .bg(rgb(theme::BG_PANEL))
+            .shadow_lg()
+            .child(
+                div()
+                    .px(px(8.))
+                    .py(px(4.))
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child("Filters"),
+            )
+            .child(row(0, "user", "From a specific user", "from:", "user"))
+            .child(row(1, "hash", "Sent in a specific channel", "in:", "channel"))
+            .child(row(2, "paperclip", "Includes a specific type of data", "has:", "link, embed or file"))
+            .child(row(3, "at-sign", "Mentions a specific user", "mentions:", "user"))
+            .child(row(4, "sliders-horizontal", "More filters", "", "dates, author type, and more"))
     }
 
     /// Asks the window to show `user`'s card, as seen from this channel's server.
@@ -1895,7 +2032,7 @@ impl ChatView {
             .child(
                 div()
                     .id("open-search")
-                    .w(px(if dm_person.is_some() { 244. } else { 144. }))
+                    .w(px(244.))
                     .h(px(32.))
                     .flex_none()
                     .flex()
@@ -1905,19 +2042,17 @@ impl ChatView {
                     .pr(px(4.))
                     .rounded(px(theme::RADIUS))
                     .border_1()
-                    .border_color(rgb(theme::BORDER))
+                    .border_color(rgba(0x96979e3d))
                     .cursor_text()
                     .bg(rgb(theme::BG_CHAT))
                     .text_size(px(14.))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(theme::TEXT_FAINT))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.session.update(cx, |s, cx| s.open_panel(PanelKind::Search, cx))
+                    .text_color(rgb(theme::TEXT_BRIGHT))
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        this.search_open = this.search.read(cx).value().is_empty();
+                        cx.notify();
                     }))
-                    .child(div().truncate().child(match &dm_person {
-                        Some((_, _, handle)) => format!("Search {handle}"),
-                        None => "Search".to_owned(),
-                    }))
+                    .child(div().flex_1().min_w_0().child(Input::new(&self.search).appearance(false).bordered(false).focus_bordered(false)))
                     .child(div().size(px(24.)).flex().items_center().justify_center().child(icon("search", 16., theme::TEXT_MUTED))),
             )
             .child(
@@ -2467,6 +2602,7 @@ impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let picker = self.emoji_for.is_some().then(|| self.emoji.clone());
         let header = self.render_header(cx);
+        let filters = self.search_open.then(|| self.search_filters(cx));
         let body = self.render_body(cx);
         let pending = self
             .guild(cx)
@@ -2488,7 +2624,10 @@ impl Render for ChatView {
             // Escape closes what is open here first. Only when there is
             // nothing does it go on up, where it marks the channel read.
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
-                if this.emoji_for.is_some() {
+                if this.search_open {
+                    this.search_open = false;
+                    cx.notify();
+                } else if this.emoji_for.is_some() {
                     this.emoji_for = None;
                     cx.notify();
                 } else if this.reply_to.is_some() || this.editing.is_some() {
@@ -2511,6 +2650,7 @@ impl Render for ChatView {
             .children(picker.map(|panel| {
                 div().absolute().bottom(px(72.)).right(px(16. + self.aside_width)).child(panel)
             }))
+            .children(filters)
     }
 }
 

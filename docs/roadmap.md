@@ -1086,9 +1086,26 @@ the build moves.
       live; live shows a blocked-DM composer ("You cannot send messages to a user
       you have blocked." and Unblock) and an invite embed under the revealed
       message, neither of which ours does.
-- [ ] Search box in the channel header: placeholder "Search <server name>",
+- [x] Search box in the channel header: placeholder "Search <server name>",
       wider than ours, with the filter chips dropdown on focus. Ours is a small
       "Search" field.
+      Done: live checked in #yap-yap (244x32 box at rest in a server, 8px
+      radius, 24% muted border, placeholder "Search Low iq gaymers", search glyph
+      on the right; the box does not widen on focus in this build). Focus opens
+      a 356px list under the header, 4px in from the right edge, with a "Filters"
+      heading and five 44px rows with a 20px glyph, a title and a "key: hint"
+      line (from:, in:, has:, mentions:, and a "More filters" row). Ours was a
+      144px button in servers that opened a panel with a second input. Now the
+      box is a real input in the header (244px everywhere, placeholder names the
+      server or the DM person), the filter list shows while it is focused and
+      empty, picking a row types its key, Enter runs the search and opens the
+      results panel, Escape closes the list, and Ctrl+F focuses the box. The
+      side panel lost its own input. Remaining: the list closes as soon as text
+      is typed (live then shows matching users, channels and history), "More
+      filters" is inert (live opens a date and author type picker), the
+      placeholder updates on channel change only, so a server rename shows
+      later, and the results panel is still our plain list, not the live
+      "N Results" panel.
 - [ ] Header icon set: threads, mute toggle drawn with a slash when muted,
       pinned messages with the new dot, members. Compare glyphs and tooltips
       with the live header.
