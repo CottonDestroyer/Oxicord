@@ -11,6 +11,7 @@ license = "MIT"
 # One dependency for gpui, gpui-component and the bundled icons. It pins
 # the exact gpui build the components were written against.
 gpui-kit = "0.9.0"
+gpui-pre-wgpu = { version = "=0.3.11", features = ["test-support"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

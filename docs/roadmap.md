@@ -1566,6 +1566,21 @@ merged.
       form, the settings sidebar rows, a message row) so lanes can copy them.
       This is how agents without vision check layout: every measured number
       in this file becomes an `assert_box`.
+- [x] Headless preview harness, first slice: `crates/oxicord-preview` opens one
+      offscreen window with one scene and writes a PNG plus a JSON element tree,
+      without login, gateway, network or the full application. CLI mirrors
+      Rune's tooling: `cargo run -p oxicord-preview -- --scene NAME --size
+      WxH --snap out.png --tree out.json`. Scenes currently: `interaction-modal`
+      (built from `fixtures/interaction-modal.json`), `tip`, `text`. On Windows
+      GPUI's headless platform has no text system, so the harness uses the WGPU
+      headless renderer with the windowed DirectWrite text system; rectangle
+      geometry and element bounds are correct in the capture, but glyph quads
+      are absent on this platform, so the PNG cannot verify text yet. The
+      element tree lists every observed element with x/y/w/h, role, label,
+      value and placeholder, and is the agent-facing view for now. Verified
+      at 1920x1080: `screenshots/port/preview_modal.png` and
+      `preview_modal.json` show the interaction modal laid out at the same
+      coordinates as the live-driven port. docs/discord-reference.md.
 - [ ] F-06 Offline fixture mode for people. `OXICORD_OFFLINE=1` starts the app
       with the F-05 world instead of logging in, with a fake backend that
       answers reads from the world and drops writes with a notice. Lets the

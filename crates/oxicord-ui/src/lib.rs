@@ -52,6 +52,8 @@ mod server_prompts;
 mod notify;
 mod onboarding_dialog;
 mod plain;
+#[cfg(feature = "preview")]
+pub mod preview;
 mod popup;
 mod member_list;
 mod profile;
