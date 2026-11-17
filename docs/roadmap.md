@@ -1571,9 +1571,13 @@ Notifications, Keybinds, Advanced).
       switch. The where and joining controls are placeholders. Headless check:
       `--scene settings-activity` (`screenshots/port/activity_page.png`).
       Exact values are unverified. docs/discord-reference.md.
-- [ ] P8-13 Connected Apps page: Connections with Nitro Rewards, then the Authorized
+- [x] P8-13 Connected Apps page: Connections with Nitro Rewards, then the Authorized
       Apps list (Verification and Security). Merges our Connections and
-      Authorized Apps pages.
+      Authorized Apps pages. The page now renders the Connections content first
+      and the Authorized Apps content below it. Nitro Rewards is not shown yet
+      because this snapshot has no rewards data. Headless check: `--scene
+      settings-apps` (`screenshots/port/connected_apps_page.png`). Exact values
+      are unverified. docs/discord-reference.md.
 - [ ] P8-14 Developer page (Developer Mode and the related switches). Merges our
       Advanced page.
 - [ ] P8-15 Billing group shells, read only, no purchase flow: Nitro (the Nitro Basic

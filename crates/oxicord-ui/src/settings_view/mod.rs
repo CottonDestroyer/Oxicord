@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Connected Apps page.
+    pub fn open_connected_apps(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Apps;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Activity Privacy page.
     pub fn open_activity_privacy(&mut self, cx: &mut Context<Self>) {
         self.page = Page::ActivityPrivacy;

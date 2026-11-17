@@ -94,7 +94,7 @@ impl SettingsView {
             }
             Page::ContentSocial => self.content_page(cx),
             Page::DataPrivacy => self.privacy_page(cx),
-            Page::Apps => self.apps_page(cx),
+            Page::Apps => self.connected_apps_page(cx),
             Page::Devices => self.devices_page(cx),
             Page::Connections => self.connections_page(cx),
             Page::Appearance => self.appearance_page(cx),
@@ -522,6 +522,17 @@ impl SettingsView {
             .gap(px(24.))
             .child(Self::section("Data", data_rows))
             .child(Self::section("Profile Privacy", rows))
+            .into_any_element()
+    }
+
+    /// The live Connected Apps page: Connections first, then Authorized Apps.
+    fn connected_apps_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(self.connections_page(cx))
+            .child(self.apps_page(cx))
             .into_any_element()
     }
 
