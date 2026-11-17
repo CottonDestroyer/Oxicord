@@ -104,12 +104,12 @@ impl SettingsView {
             Page::System => keybinds_page(),
             Page::Advanced => self.advanced_page(cx),
             Page::Accessibility => self.accessibility_page(cx),
+            Page::LanguageTime => self.language_time_page(cx),
             Page::Nitro
             | Page::ServerBoost
             | Page::Subscriptions
             | Page::GiftInventory
             | Page::Billing
-            | Page::LanguageTime
             | Page::ActivityPrivacy => Self::placeholder_page(self.page.label()),
         };
         div().flex().flex_col().gap_2().child(body).into_any_element()
@@ -950,6 +950,38 @@ impl SettingsView {
             .child(Self::section("Color & Contrast", contrast))
             .child(Self::section("Reduced Motion", motion))
             .child(Self::section("Audio & Screen Reader", audio))
+            .into_any_element()
+    }
+
+    fn language_time_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let mut language_rows = vec![
+            Self::field_row("Language", "English (US)".into(), Some(button("change-language", "Change", Tone::Plain, |_, _, _| {}))),
+        ];
+        let mut time_rows = vec![
+            Self::field_row("Time Zone", "Automatic".into(), Some(button("change-time-zone", "Change", Tone::Plain, |_, _, _| {}))),
+        ];
+        if let Some(gate) = self.prefs_gate(cx) {
+            language_rows.push(gate);
+        } else {
+            let cycle = self.pref(Key::HourCycle, cx).as_number();
+            time_rows.extend(self.number_radios(
+                "hour-cycle-language",
+                Key::HourCycle,
+                cycle,
+                &[
+                    (0, "Automatic", Some("24 hour clock.")),
+                    (1, "12 hour", Some("3:30 PM")),
+                    (2, "24 hour", Some("15:30")),
+                ],
+                cx,
+            ));
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Language", language_rows))
+            .child(Self::section("Time", time_rows))
             .into_any_element()
     }
 

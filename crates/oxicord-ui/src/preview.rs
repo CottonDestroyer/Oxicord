@@ -41,6 +41,7 @@ pub const SCENES: &[&str] = &[
     "settings-appearance",
     "settings-accessibility",
     "settings-system",
+    "settings-language",
     "tip",
     "text",
 ];
@@ -198,6 +199,13 @@ pub fn open_scene(name: &str, window: &mut Window, cx: &mut App) -> Entity<Previ
             let media: Entity<Media> = cx.new(|_| Media::new(backend()));
             let view = cx.new(|cx| SettingsView::new(session, media, backend(), window, cx));
             view.update(cx, |view, cx| view.open_system(cx));
+            root(cx.new(|_| SettingsSheet(view)).into(), cx)
+        }
+        "settings-language" => {
+            let session = fixture_session(cx);
+            let media: Entity<Media> = cx.new(|_| Media::new(backend()));
+            let view = cx.new(|cx| SettingsView::new(session, media, backend(), window, cx));
+            view.update(cx, |view, cx| view.open_language_time(cx));
             root(cx.new(|_| SettingsSheet(view)).into(), cx)
         }
         "tip" => {

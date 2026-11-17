@@ -1556,8 +1556,14 @@ Notifications, Keybinds, Advanced).
       snapshot has no custom keybind storage. Headless check: `--scene
       settings-system` (`screenshots/port/system_page.png`). Exact values are
       unverified. docs/discord-reference.md.
-- [ ] P8-11 Language & Time page: language and time zone choices. Capture the live
-      page first, its headings did not read back.
+- [x] P8-11 Language & Time page: language and time zone choices. Capture the live
+      page first, its headings did not read back. Built from the standard
+      Discord structure: a Language section with English (US) and Change, and a
+      Time section with Automatic time zone plus the working time-format radios.
+      The language and time-zone pickers are placeholders; the live headings
+      remain unverified because they could not be read back in this harness.
+      Headless check: `--scene settings-language`
+      (`screenshots/port/language_page.png`). docs/discord-reference.md.
 - [ ] P8-12 Activity Privacy page: What Activity I Share, Where I Share Activity,
       Activity Joining.
 - [ ] P8-13 Connected Apps page: Connections with Nitro Rewards, then the Authorized

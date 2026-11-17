@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Language & Time page.
+    pub fn open_language_time(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::LanguageTime;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the System page.
     pub fn open_system(&mut self, cx: &mut Context<Self>) {
         self.page = Page::System;
