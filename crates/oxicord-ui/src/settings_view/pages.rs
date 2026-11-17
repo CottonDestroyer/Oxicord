@@ -892,7 +892,7 @@ impl SettingsView {
         page.into_any_element()
     }
 
-    fn accessibility_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn accessibility_page(&mut self, _cx: &mut Context<Self>) -> AnyElement {
         let preview = div()
             .p(px(16.))
             .rounded(px(theme::RADIUS_MD))
@@ -1316,17 +1316,21 @@ impl SettingsView {
     }
 
     fn advanced_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let mut page = div().flex().flex_col().gap_2().child(title("Advanced"));
-
+        let mut dev_rows = Vec::new();
+        let mut related_rows = vec![
+            Self::field_row("Show IDs", "Show snowflake IDs in the interface.".into(), Some(switch_row("show-ids", "", None, false, |_, _, _| {}))),
+            Self::field_row("Application Test Mode", "Test your own applications.".into(), Some(switch_row("app-test-mode", "", None, false, |_, _, _| {}))),
+        ];
         if self.prefs_gate(cx).is_none() {
-            let developer = self.pref_switch(
+            dev_rows.push(self.pref_switch(
                 "developer-mode",
-                "Developer mode",
+                "Developer Mode",
                 Some("Stored on your account. Lets tools show IDs, which this app doesn't use yet."),
                 Key::DeveloperMode,
                 cx,
-            );
-            page = page.child(group("Developers", vec![developer]));
+            ));
+        } else if let Some(gate) = self.prefs_gate(cx) {
+            dev_rows.push(gate);
         }
 
         let reset = button("reset-local", "Reset app settings", Tone::Danger, cx.listener(
@@ -1337,14 +1341,17 @@ impl SettingsView {
                 });
             },
         ));
-        page.child(group(
-            "This app",
-            vec![
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Developer Mode", dev_rows))
+            .child(Self::section("Related Settings", related_rows.drain(..).collect()))
+            .child(Self::section("This app", vec![
                 info_row("Version", env!("CARGO_PKG_VERSION").to_owned()),
                 reset,
-            ],
-        ))
-        .into_any_element()
+            ]))
+            .into_any_element()
     }
 }
 

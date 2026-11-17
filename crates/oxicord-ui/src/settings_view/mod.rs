@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Developer page.
+    pub fn open_developer(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Advanced;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Connected Apps page.
     pub fn open_connected_apps(&mut self, cx: &mut Context<Self>) {
         self.page = Page::Apps;

@@ -1578,8 +1578,12 @@ Notifications, Keybinds, Advanced).
       because this snapshot has no rewards data. Headless check: `--scene
       settings-apps` (`screenshots/port/connected_apps_page.png`). Exact values
       are unverified. docs/discord-reference.md.
-- [ ] P8-14 Developer page (Developer Mode and the related switches). Merges our
-      Advanced page.
+- [x] P8-14 Developer page (Developer Mode and the related switches). Merges our
+      Advanced page. Rebuilt into Developer Mode, Related Settings and This app
+      sections; the working Developer Mode switch stays and the related rows are
+      placeholders. Headless check: `--scene settings-developer`
+      (`screenshots/port/developer_page.png`). Exact values are unverified.
+      docs/discord-reference.md.
 - [ ] P8-15 Billing group shells, read only, no purchase flow: Nitro (the Nitro Basic
       and Nitro plan cards with the perks list), Server Boost (Server Boosts,
       perks per level, Boosting FAQ), Subscriptions, Gift Inventory (Redeem
