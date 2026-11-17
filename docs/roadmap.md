@@ -1571,16 +1571,16 @@ merged.
       without login, gateway, network or the full application. CLI mirrors
       Rune's tooling: `cargo run -p oxicord-preview -- --scene NAME --size
       WxH --snap out.png --tree out.json`. Scenes currently: `interaction-modal`
-      (built from `fixtures/interaction-modal.json`), `tip`, `text`. On Windows
-      GPUI's headless platform has no text system, so the harness uses the WGPU
-      headless renderer with the windowed DirectWrite text system; rectangle
-      geometry and element bounds are correct in the capture, but glyph quads
-      are absent on this platform, so the PNG cannot verify text yet. The
-      element tree lists every observed element with x/y/w/h, role, label,
-      value and placeholder, and is the agent-facing view for now. Verified
-      at 1920x1080: `screenshots/port/preview_modal.png` and
-      `preview_modal.json` show the interaction modal laid out at the same
-      coordinates as the live-driven port. docs/discord-reference.md.
+      (built from `fixtures/interaction-modal.json`), `tip`, `text`.
+      Windows' GPUI headless renderer has no text system, so the harness uses
+      the WGPU renderer with `CosmicTextSystem` and two frame passes; glyphs
+      render. Its headless renderer also does not paint flex children of an
+      absolute overlay, so `InteractionModalView::preview_content` exposes
+      the sheet without the overlay and the preview draws it at the canvas
+      origin. The PNG is a component crop; element-tree bounds are the
+      measured values. Verified at 1920x1080: `screenshots/port/preview_modal.png`
+      shows the real interaction modal with text, and `preview_modal.json`
+      lists its input bounds. docs/discord-reference.md.
 - [ ] F-06 Offline fixture mode for people. `OXICORD_OFFLINE=1` starts the app
       with the F-05 world instead of logging in, with a fake backend that
       answers reads from the world and drops writes with a notice. Lets the

@@ -12,12 +12,11 @@ use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, bail};
 use gpui_kit::{
-    AnyWindowHandle, App, AssetSource, Bounds, HeadlessAppContext, SharedString,
+    App, AssetSource, Bounds, HeadlessAppContext, SharedString,
     Window, WindowBounds, WindowOptions, px, size,
     assets::Assets as KitAssets,
     base::test_support,
     component::{Theme, ThemeMode},
-    platform,
 };
 use oxicord_ui::theme;
 
@@ -196,10 +195,10 @@ fn main() -> Result<()> {
     let args = parse()?;
     // GPUI has no built-in headless renderer on Windows. The WGPU one works
     // there, so always give the context a renderer that can be created here.
-    // The Windows headless platform has no text system. Borrow the windowed
-    // one for DirectWrite shaping; the WGPU renderer still draws to an image.
+    // Windows' headless platform has no real text system. The WGPU cosmic
+    // text system shapes the gg sans files and works with the WGPU renderer.
     let mut cx = HeadlessAppContext::with_platform(
-        platform::current_platform(false).text_system(),
+        Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif")),
         Arc::new(PreviewAssets),
         || {
             gpui_wgpu::WgpuHeadlessRenderer::new()
@@ -214,9 +213,9 @@ fn main() -> Result<()> {
     });
 
     let (width, height) = (args.width as f32, args.height as f32);
-    let handle = cx
+    let (handle, _) = cx
         .update(|cx| {
-            cx.open_window(
+            gpui_kit::open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(Bounds {
                         origin: Default::default(),
@@ -226,20 +225,21 @@ fn main() -> Result<()> {
                     show: false,
                     ..Default::default()
                 },
+                cx,
                 |window, cx| oxicord_ui::preview::open_scene(&args.scene, window, cx),
             )
         })
         .map_err(|err| anyhow::anyhow!("could not open a preview window: {err}"))?;
-    let handle: AnyWindowHandle = handle.into();
 
-    cx.background_executor().run_until_parked();
+    cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.refresh();
         window.draw(cx).clear(cx);
-    });
+    })
+    .map_err(|err| anyhow::anyhow!("could not build the preview frame: {err}"))?;
     // Text shaping is asynchronous: let the executor load the glyphs, then
     // build the frame again so their quads are in the scene we capture.
-    cx.background_executor().run_until_parked();
+    cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.refresh();
         window.draw(cx).clear(cx);

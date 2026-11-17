@@ -223,8 +223,11 @@ impl InteractionModalView {
     }
 }
 
-impl Render for InteractionModalView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl InteractionModalView {
+    /// The sheet itself, without the screen overlay. The headless preview
+    /// renders this directly: GPUI's headless renderer does not paint flex
+    /// children of an absolutely positioned overlay.
+    pub fn preview_content(&mut self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
         let Some(sheet) = &self.modal else {
             return div().into_any_element();
         };
@@ -370,8 +373,14 @@ impl Render for InteractionModalView {
                     .child(submit),
             );
 
+        content.into_any_element()
+    }
+}
+
+impl Render for InteractionModalView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         modal(
-            content.into_any_element(),
+            self.preview_content(cx),
             Box::new(cx.listener(|this, _: &ClickEvent, _, cx| this.close(cx))),
         )
     }

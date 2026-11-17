@@ -29,6 +29,15 @@ impl Render for PreviewRoot {
 /// The scenes an agent can ask for by `--scene`.
 pub const SCENES: &[&str] = &["interaction-modal", "tip", "text"];
 
+struct ModalSheet(Entity<crate::interaction_modal::InteractionModalView>);
+
+impl Render for ModalSheet {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sheet = self.0.update(cx, |view, cx| view.preview_content(cx));
+        div().size_full().bg(rgb(theme::BG_CHAT)).child(sheet)
+    }
+}
+
 struct HelloText;
 
 impl Render for HelloText {
@@ -62,7 +71,7 @@ pub fn open_scene(name: &str, window: &mut Window, cx: &mut App) -> Entity<Previ
             let session: Entity<Session> = cx.new(|_| Session::new(Settings::default()));
             let view = cx.new(|cx| InteractionModalView::new(session, backend(), cx));
             view.update(cx, |view, cx| view.opened(modal, window, cx));
-            root(view.into(), cx)
+            root(cx.new(|_| ModalSheet(view)).into(), cx)
         }
         "tip" => {
             let view: Entity<Tip> = cx.new(|_| Tip("Agent preview ready".into()));
