@@ -1014,29 +1014,68 @@ impl SettingsView {
 
     fn notifications_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let on = self.session.read(cx).settings.desktop_notifications;
-        let toggle = switch_row(
-            "notify-desktop",
+        let mut overview = Vec::new();
+        overview.push(Self::field_row(
             "Enable desktop notifications",
-            Some("A notification for mentions and direct messages while this window is in the background."),
-            on,
-            cx.listener(|this, _: &ClickEvent, _, cx| {
-                let backend = this.backend.clone();
-                this.session.update(cx, |s, cx| {
-                    s.change_settings(
-                        &backend,
-                        |st| st.desktop_notifications = !st.desktop_notifications,
-                        cx,
-                    );
-                });
-            }),
-        );
+            if on { "On" } else { "Off" }.into(),
+            Some(switch_row(
+                "notify-desktop",
+                "",
+                None,
+                on,
+                cx.listener(|this, _: &ClickEvent, _, cx| {
+                    let backend = this.backend.clone();
+                    this.session.update(cx, |s, cx| {
+                        s.change_settings(
+                            &backend,
+                            |st| st.desktop_notifications = !st.desktop_notifications,
+                            cx,
+                        );
+                    });
+                }),
+            )),
+        ));
+        overview.push(Self::field_row(
+            "Do Not Disturb",
+            "Silences notifications entirely.".into(),
+            None,
+        ));
+        let sounds = vec![Self::field_row(
+            "Message notifications",
+            "The sound played for a new message.".into(),
+            Some(button("message-sound", "Change", Tone::Plain, |_, _, _| {})),
+        )];
+        let badges = vec![Self::field_row(
+            "Show mention badges",
+            "Show a badge on the app icon for unread mentions.".into(),
+            None,
+        )];
+        let email = vec![
+            Self::field_row(
+                "Email notifications",
+                "Receive an email when you miss a mention or direct message.".into(),
+                None,
+            ),
+            Self::field_row(
+                "Marketing emails",
+                "Product news and announcements.".into(),
+                Some(button("unsubscribe-email", "Unsubscribe from all marketing emails", Tone::Plain, |_, _, _| {})),
+            ),
+        ];
+        let advanced = vec![Self::field_row(
+            "Advanced",
+            "More notification controls.".into(),
+            Some(button("show-advanced-notifications", "Show Advanced Notification Settings", Tone::Plain, |_, _, _| {})),
+        )];
         div()
             .flex()
             .flex_col()
-            .gap_2()
-            .child(title("Notifications"))
-            .child(group("Desktop", vec![toggle]))
-            .child(blurb("Do Not Disturb silences notifications entirely."))
+            .gap(px(24.))
+            .child(Self::section("Overview", overview))
+            .child(Self::section("Sounds", sounds))
+            .child(Self::section("Badges", badges))
+            .child(Self::section("Email", email))
+            .child(Self::section("Advanced", advanced))
             .into_any_element()
     }
 

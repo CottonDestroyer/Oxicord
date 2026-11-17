@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Notifications page.
+    pub fn open_notifications(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Notifications;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Messaging Permissions page.
     pub fn open_messaging(&mut self, cx: &mut Context<Self>) {
         self.page = Page::ContentSocial;

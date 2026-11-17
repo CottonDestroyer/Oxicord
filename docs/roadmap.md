@@ -1513,9 +1513,15 @@ Notifications, Keybinds, Advanced).
       rows because no reference data source exists in this snapshot. Headless
       check: `--scene settings-messaging` (`screenshots/port/messaging_page.png`).
       Labels and spacing are unverified. docs/discord-reference.md.
-- [ ] P8-06 Notifications page as drawn live: Overview, Sounds, Badges, Email (with
+- [x] P8-06 Notifications page as drawn live: Overview, Sounds, Badges, Email (with
       "Unsubscribe from all marketing emails"), and the Advanced group behind
-      "Show Advanced Notification Settings".
+      "Show Advanced Notification Settings". Rebuilt into Overview, Sounds,
+      Badges and Email sections; Overview keeps the working desktop-notifications
+      switch and adds Do Not Disturb. The other rows and the Advanced group are
+      placeholders because the snapshot exposes no notification settings.
+      Headless check: `--scene settings-notifications`
+      (`screenshots/port/notifications_page.png`). Exact values are unverified.
+      docs/discord-reference.md.
 - [ ] P8-07 Voice & Video page additions: the Voice group with "Show Advanced Voice
       Settings", Camera, Streaming, Sounds (with "Show 18 more sounds"),
       Soundboard with its server and sound pickers, and the Advanced group with
