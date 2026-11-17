@@ -1497,9 +1497,14 @@ Notifications, Keybinds, Advanced).
       (`screenshots/port/account_page.png`). Exact section spacing, button
       labels beyond the notes and the placeholder Age/Family actions are
       unverified. docs/discord-reference.md.
-- [ ] P8-04 Data & Privacy page: How Discord Uses My Data (use data to make Discord
+- [x] P8-04 Data & Privacy page: How Discord Uses My Data (use data to make Discord
       work), Request my data, Profile Privacy, and the related Activity Privacy
-      link.
+      link. Rebuilt as two sections: Data and Profile Privacy; the three
+      existing preference switches stay and a link opens the Activity Privacy
+      page. `Request my data` is a placeholder because no endpoint exists in
+      the reference. Headless check: `--scene settings-privacy` with a fixture
+      session (`screenshots/port/privacy_page.png`). Exact copy and spacing are
+      unverified. docs/discord-reference.md.
 - [ ] P8-05 Messaging Permissions page (replaces Content & Social): Content Filters
       (sensitive content filters), Spam Filters, Direct Message permissions,
       Friend Request permissions, Messaging in Connected Games, and the Ignore

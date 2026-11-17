@@ -34,6 +34,7 @@ pub const SCENES: &[&str] = &[
     "interaction-modal",
     "new-message",
     "settings",
+    "settings-privacy",
     "tip",
     "text",
 ];
@@ -84,6 +85,23 @@ fn backend() -> Backend {
     Backend { commands, events }
 }
 
+/// A session with fixture account data, so settings pages render their real
+/// rows in headless previews instead of the loading gate.
+fn fixture_session(cx: &mut App) -> Entity<Session> {
+    let session = cx.new(|_| Session::new(Settings::default()));
+    session.update(cx, |session, _| {
+        session.account.settings = crate::account::Load::Ready(Default::default());
+        session.account.details = crate::account::Load::Ready(oxicord_model::AccountDetails {
+            email: Some("agent@example.com".into()),
+            phone: Some("+1 555 0100".into()),
+            verified: true,
+            ..Default::default()
+        });
+        session.account.sessions = crate::account::Load::Ready(vec![]);
+    });
+    session
+}
+
 fn root(view: AnyView, cx: &mut App) -> Entity<PreviewRoot> {
     cx.new(|_| PreviewRoot(view))
 }
@@ -121,10 +139,17 @@ pub fn open_scene(name: &str, window: &mut Window, cx: &mut App) -> Entity<Previ
             root(cx.new(|_| NewMessageSheet(view)).into(), cx)
         }
         "settings" => {
-            let session: Entity<Session> = cx.new(|_| Session::new(Settings::default()));
+            let session = fixture_session(cx);
             let media: Entity<Media> = cx.new(|_| Media::new(backend()));
             let view = cx.new(|cx| SettingsView::new(session, media, backend(), window, cx));
             view.update(cx, |view, cx| view.opened(cx));
+            root(cx.new(|_| SettingsSheet(view)).into(), cx)
+        }
+        "settings-privacy" => {
+            let session = fixture_session(cx);
+            let media: Entity<Media> = cx.new(|_| Media::new(backend()));
+            let view = cx.new(|cx| SettingsView::new(session, media, backend(), window, cx));
+            view.update(cx, |view, cx| view.open_data_privacy(cx));
             root(cx.new(|_| SettingsSheet(view)).into(), cx)
         }
         "tip" => {

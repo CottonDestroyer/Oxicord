@@ -424,43 +424,73 @@ impl SettingsView {
     }
 
     fn privacy_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let mut page = div().flex().flex_col().gap_2().child(title("Data & Privacy"));
         if let Some(gate) = self.prefs_gate(cx) {
-            return page.child(gate).into_any_element();
+            return gate;
         }
 
         // Stored the other way round: true means servers may not message us.
         let restricted = self.pref(Key::DefaultGuildsRestricted, cx).as_bool();
-        let allow_dms = switch_row(
-            "allow-server-dms",
-            "Allow direct messages from server members",
-            Some("Applies to servers you join from now on."),
-            !restricted,
-            cx.listener(|this, _: &ClickEvent, _, cx| {
-                let restricted = this.pref(Key::DefaultGuildsRestricted, cx).as_bool();
-                this.set_pref(Key::DefaultGuildsRestricted, Value::Bool(!restricted), cx);
-            }),
-        );
-        let activity = self.pref_switch(
-            "show-game",
-            "Share your detected activity as a status",
-            Some("Shows what you are playing on your profile."),
-            Key::ShowCurrentGame,
-            cx,
-        );
-        let local_time = self.pref_switch(
-            "show-local-time",
-            "Show your local time on your profile",
-            None,
-            Key::ShowLocalTime,
-            cx,
-        );
+        let rows = vec![
+            Self::field_row(
+                "Allow direct messages from server members",
+                if restricted { "Off" } else { "On" }.into(),
+                Some(switch_row(
+                    "allow-server-dms",
+                    "",
+                    None,
+                    !restricted,
+                    cx.listener(|this, _: &ClickEvent, _, cx| {
+                        let restricted = this.pref(Key::DefaultGuildsRestricted, cx).as_bool();
+                        this.set_pref(Key::DefaultGuildsRestricted, Value::Bool(!restricted), cx);
+                    }),
+                )),
+            ),
+            Self::field_row(
+                "Share your detected activity as a status",
+                if self.pref(Key::ShowCurrentGame, cx).as_bool() { "On" } else { "Off" }.into(),
+                Some(self.pref_switch(
+                    "show-game",
+                    "",
+                    None,
+                    Key::ShowCurrentGame,
+                    cx,
+                )),
+            ),
+            Self::field_row(
+                "Show your local time on your profile",
+                if self.pref(Key::ShowLocalTime, cx).as_bool() { "On" } else { "Off" }.into(),
+                Some(self.pref_switch(
+                    "show-local-time",
+                    "",
+                    None,
+                    Key::ShowLocalTime,
+                    cx,
+                )),
+            ),
+        ];
 
-        page = page
-            .child(blurb("Choose what other people can see and do."))
-            .child(group("Messages", vec![allow_dms]))
-            .child(group("Profile", vec![activity, local_time]));
-        page.into_any_element()
+        let data_rows = vec![
+            Self::field_row(
+                "How Discord Uses My Data",
+                "We use your data to make Discord work, personalise your experience and keep the service safe.".into(),
+                Some(button("request-data", "Request my data", Tone::Plain, |_, _, _| {})),
+            ),
+            Self::field_row(
+                "Activity Privacy",
+                "Choose who can see the activity you share.".into(),
+                Some(button("open-activity-privacy", "Open", Tone::Plain, cx.listener(|this, _: &ClickEvent, _, cx| {
+                    this.select(Page::ActivityPrivacy, cx);
+                }))),
+            ),
+        ];
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Data", data_rows))
+            .child(Self::section("Profile Privacy", rows))
+            .into_any_element()
     }
 
     fn apps_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
