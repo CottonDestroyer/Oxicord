@@ -91,7 +91,9 @@ pub(super) fn mask_phone(phone: &str) -> String {
 impl SettingsView {
     pub(super) fn render_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let body = match self.page {
-            Page::Account => self.account_page(cx),
+            Page::AccountInfo | Page::PasswordSecurity | Page::AccountStatus | Page::FamilyCenter => {
+                self.account_page(cx)
+            }
             Page::ContentSocial => self.content_page(cx),
             Page::DataPrivacy => self.privacy_page(cx),
             Page::Apps => self.apps_page(cx),
@@ -101,10 +103,30 @@ impl SettingsView {
             Page::VoiceVideo => self.voice_page(cx),
             Page::Chat => self.chat_page(cx),
             Page::Notifications => self.notifications_page(cx),
-            Page::Keybinds => keybinds_page(),
+            Page::System => keybinds_page(),
             Page::Advanced => self.advanced_page(cx),
+            Page::Nitro
+            | Page::ServerBoost
+            | Page::Subscriptions
+            | Page::GiftInventory
+            | Page::Billing
+            | Page::Accessibility
+            | Page::LanguageTime
+            | Page::ActivityPrivacy => Self::placeholder_page(self.page.label()),
         };
         div().flex().flex_col().gap_2().child(body).into_any_element()
+    }
+
+    /// A sidebar row whose page is not implemented yet. Keeps navigation 1:1
+    /// while the entries in the live client are filled in one at a time.
+    fn placeholder_page(heading: &'static str) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(title(heading))
+            .child(blurb("This page is not implemented yet."))
+            .into_any_element()
     }
 
     /// Shown instead of a page's controls until the preferences are here.

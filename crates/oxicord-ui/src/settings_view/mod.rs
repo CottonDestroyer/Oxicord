@@ -16,7 +16,7 @@ use oxicord_settings::{Key, Value};
 
 use crate::{
     account::Load,
-    backend::Backend,
+    backend::{Backend, Command},
     icons::icon,
     media::Media,
     profile::modal,
@@ -27,77 +27,153 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
-    Account,
-    ContentSocial,
+    AccountInfo,
+    PasswordSecurity,
+    AccountStatus,
+    FamilyCenter,
     DataPrivacy,
+    ContentSocial,
+    Notifications,
+    Nitro,
+    ServerBoost,
+    Subscriptions,
+    GiftInventory,
+    Billing,
+    VoiceVideo,
+    Appearance,
+    Accessibility,
+    System,
+    LanguageTime,
+    ActivityPrivacy,
     Apps,
+    Chat,
     Devices,
     Connections,
-    Appearance,
-    VoiceVideo,
-    Chat,
-    Notifications,
-    Keybinds,
     Advanced,
 }
 
 impl Page {
-    const SECTIONS: [(&'static str, &'static [Page]); 2] = [
+    /// The sidebar as the live client draws it: group heading, then pages.
+    const SECTIONS: [(&'static str, &'static [Page]); 5] = [
         (
-            "",
+            "Account",
             &[
-                Page::Account,
-                Page::ContentSocial,
+                Page::AccountInfo,
+                Page::PasswordSecurity,
+                Page::AccountStatus,
+                Page::FamilyCenter,
                 Page::DataPrivacy,
-                Page::Apps,
-                Page::Devices,
-                Page::Connections,
+                Page::ContentSocial,
+                Page::Notifications,
             ],
         ),
         (
-            "App settings",
+            "Billing",
             &[
-                Page::Appearance,
-                Page::VoiceVideo,
-                Page::Chat,
-                Page::Notifications,
-                Page::Keybinds,
-                Page::Advanced,
+                Page::Nitro,
+                Page::ServerBoost,
+                Page::Subscriptions,
+                Page::GiftInventory,
+                Page::Billing,
             ],
         ),
+        (
+            "Experience",
+            &[
+                Page::VoiceVideo,
+                Page::Appearance,
+                Page::Accessibility,
+                Page::System,
+                Page::LanguageTime,
+            ],
+        ),
+        (
+            "Games & Apps",
+            &[Page::ActivityPrivacy, Page::Apps],
+        ),
+        ("Developer", &[Page::Advanced]),
+    ];
+
+    /// Every page the search can reach, including ones without a sidebar row.
+    const ALL: &'static [Page] = &[
+        Page::AccountInfo,
+        Page::PasswordSecurity,
+        Page::AccountStatus,
+        Page::FamilyCenter,
+        Page::DataPrivacy,
+        Page::ContentSocial,
+        Page::Notifications,
+        Page::Nitro,
+        Page::ServerBoost,
+        Page::Subscriptions,
+        Page::GiftInventory,
+        Page::Billing,
+        Page::VoiceVideo,
+        Page::Appearance,
+        Page::Accessibility,
+        Page::System,
+        Page::LanguageTime,
+        Page::ActivityPrivacy,
+        Page::Apps,
+        Page::Chat,
+        Page::Devices,
+        Page::Connections,
+        Page::Advanced,
     ];
 
     fn label(self) -> &'static str {
         match self {
-            Page::Account => "My Account",
-            Page::ContentSocial => "Content & Social",
+            Page::AccountInfo => "Account Info",
+            Page::PasswordSecurity => "Password & Security",
+            Page::AccountStatus => "Account Status",
+            Page::FamilyCenter => "Family Center",
             Page::DataPrivacy => "Data & Privacy",
-            Page::Apps => "Authorized Apps",
+            Page::ContentSocial => "Messaging Permissions",
+            Page::Notifications => "Notifications",
+            Page::Nitro => "Nitro",
+            Page::ServerBoost => "Server Boost",
+            Page::Subscriptions => "Subscriptions",
+            Page::GiftInventory => "Gift Inventory",
+            Page::Billing => "Billing",
+            Page::VoiceVideo => "Voice & Video",
+            Page::Appearance => "Appearance",
+            Page::Accessibility => "Accessibility",
+            Page::System => "System",
+            Page::LanguageTime => "Language & Time",
+            Page::ActivityPrivacy => "Activity Privacy",
+            Page::Apps => "Connected Apps",
+            Page::Chat => "Chat",
             Page::Devices => "Devices",
             Page::Connections => "Connections",
-            Page::Appearance => "Appearance",
-            Page::VoiceVideo => "Voice & Video",
-            Page::Chat => "Chat",
-            Page::Notifications => "Notifications",
-            Page::Keybinds => "Keybinds",
-            Page::Advanced => "Advanced",
+            Page::Advanced => "Developer",
         }
     }
 
     /// The icon beside the page in the sidebar.
     fn glyph(self) -> &'static str {
         match self {
-            Page::Account => "user",
-            Page::ContentSocial => "shield-check",
+            Page::AccountInfo => "user",
+            Page::PasswordSecurity => "shield-check",
+            Page::AccountStatus => "id-badge",
+            Page::FamilyCenter => "users",
             Page::DataPrivacy => "shield",
+            Page::ContentSocial => "messages-square",
+            Page::Notifications => "bell",
+            Page::Nitro => "nitro",
+            Page::ServerBoost => "server-boost",
+            Page::Subscriptions => "store",
+            Page::GiftInventory => "tag-award",
+            Page::Billing => "file",
+            Page::VoiceVideo => "mic",
+            Page::Appearance => "palette",
+            Page::Accessibility => "circle-user-round",
+            Page::System => "keyboard",
+            Page::LanguageTime => "discovery",
+            Page::ActivityPrivacy => "activity",
             Page::Apps => "layout-grid",
+            Page::Chat => "message-circle",
             Page::Devices => "laptop",
             Page::Connections => "link",
-            Page::Appearance => "palette",
-            Page::VoiceVideo => "mic",
-            Page::Chat => "message-circle",
-            Page::Notifications => "bell",
-            Page::Keybinds => "keyboard",
             Page::Advanced => "settings",
         }
     }
@@ -105,19 +181,30 @@ impl Page {
     /// Words besides the title that should find this page in the search box.
     fn keywords(self) -> &'static str {
         match self {
-            Page::Account => "email phone password display name username log out two factor 2fa",
+            Page::AccountInfo => "email phone display name username global name",
+            Page::PasswordSecurity => "password two factor 2fa authentication logged in devices",
+            Page::AccountStatus => "age group standing good",
+            Page::FamilyCenter => "family center parental controls",
             Page::ContentSocial => {
-                "explicit media filter spoilers dm spam friend requests everyone mutual activity status game"
+                "content filters spam dm direct message friend requests connected games ignore block"
             }
             Page::DataPrivacy => "direct messages server members local time privacy",
-            Page::Apps => "oauth bots integrations deauthorize revoke",
+            Page::Apps => "oauth bots integrations deauthorize revoke connections",
             Page::Devices => "sessions logged in locations",
             Page::Connections => "linked accounts steam github twitch spotify",
             Page::Appearance => "time format 12 hour 24 hour clock members list layout theme",
             Page::VoiceVideo => "microphone input volume mic sound audio push to talk key",
             Page::Chat => "embeds link previews images attachments reactions media",
             Page::Notifications => "desktop toast mentions alerts",
-            Page::Keybinds => "keyboard shortcuts hotkeys keys",
+            Page::Nitro => "subscription premium perks",
+            Page::ServerBoost => "boost level perks",
+            Page::Subscriptions => "billing renew payment",
+            Page::GiftInventory => "gifts codes inventory",
+            Page::Billing => "payment methods invoices",
+            Page::Accessibility => "text readability motion reduce animations",
+            Page::System => "keyboard shortcuts hotkeys keys",
+            Page::LanguageTime => "language timezone time zone date",
+            Page::ActivityPrivacy => "activity share status game",
             Page::Advanced => "developer mode reset about version",
         }
     }
@@ -168,7 +255,7 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search settings"));
         let display_name = cx.new(|cx| InputState::new(window, cx).placeholder("Display name"));
         let volume = f32::from(session.read(cx).settings.input_volume);
         let input_volume = cx.new(|_| SliderState::new().min(0.).max(100.).step(1.).default_value(volume));
@@ -191,7 +278,7 @@ impl SettingsView {
             session,
             media,
             backend,
-            page: Page::Account,
+            page: Page::AccountInfo,
             search,
             display_name,
             input_volume,
@@ -220,7 +307,7 @@ impl SettingsView {
 
     /// Opens straight on the Keybinds page, for its own shortcut.
     pub fn open_keybinds(&mut self, cx: &mut Context<Self>) {
-        self.page = Page::Keybinds;
+        self.page = Page::System;
         self.opened(cx);
         cx.notify();
     }
@@ -240,7 +327,7 @@ impl SettingsView {
             let account = &self.session.read(cx).account;
             let missing = !matches!(account.settings, Load::Ready(_) | Load::Loading);
             let request = match self.page {
-                Page::Account => Some(AccountRequest::LoadDetails),
+                Page::AccountInfo => Some(AccountRequest::LoadDetails),
                 Page::Apps => Some(AccountRequest::LoadApps),
                 Page::Devices => Some(AccountRequest::LoadSessions),
                 Page::Connections => Some(AccountRequest::LoadConnections),
@@ -297,99 +384,46 @@ impl SettingsView {
         self.filled = true;
     }
 
-    /// The profile card at the top of the sidebar: who we are, and a way to
-    /// jump to editing it.
-    fn render_identity(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let (name, url) = {
-            let store = &self.session.read(cx).store;
-            match store.me() {
-                Some(me) => (me.display_name().to_owned(), oxicord_media::cdn::user_avatar(me.id, me.avatar.as_deref(), 96)),
-                None => (String::new(), String::new()),
-            }
-        };
-        div()
-            .id("settings-identity")
-            .flex()
-            .items_center()
-            .gap(px(12.))
-            .px(px(8.))
-            .py(px(8.))
-            .child(crate::media::avatar(&self.media, &url, 48., &name, cx))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(16.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child(name),
-                    )
-                    .child(
-                        div()
-                            .id("edit-profiles")
-                            .flex()
-                            .items_center()
-                            .gap(px(4.))
-                            .cursor_pointer()
-                            .text_size(px(14.))
-                            .text_color(rgb(theme::TEXT_MUTED))
-                            .hover(|s| s.text_color(rgb(theme::TEXT_BRIGHT)))
-                            .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(OpenEditProfile)))
-                            .child("Edit Profiles")
-                            .child(icon("pencil", 12., theme::TEXT_MUTED)),
-                    ),
-            )
-    }
-
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let query = self.search.read(cx).value().trim().to_lowercase();
 
-        let mut nav = div().flex().flex_col().gap(px(4.));
-        let mut first = true;
+        let mut nav = div().flex().flex_col();
         for (heading, pages) in Page::SECTIONS {
             let shown: Vec<Page> = pages.iter().copied().filter(|p| p.matches(&query)).collect();
             if shown.is_empty() {
                 continue;
             }
-            // Groups are told apart by a line and, after the first, a title.
-            if !first {
-                nav = nav.child(div().my(px(8.)).mx(px(8.)).h(px(1.)).bg(rgb(theme::BORDER)));
-            }
-            if !heading.is_empty() {
-                nav = nav.child(
-                    div()
-                        .px(px(8.))
-                        .pt(px(8.))
-                        .pb(px(4.))
-                        .text_size(px(14.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(theme::TEXT_MUTED))
-                        .child(heading),
-                );
-            }
-            first = false;
+            nav = nav.child(
+                div()
+                    .pt(px(16.))
+                    .pb(px(4.))
+                    .px(px(8.))
+                    .text_size(px(12.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(heading),
+            );
             for page in shown {
                 let selected = self.page == page;
                 let color = if selected { theme::TEXT_BRIGHT } else { theme::TEXT_MUTED };
                 nav = nav.child(
                     div()
                         .id(("settings-page", page as u32))
-                        .h(px(36.))
-                        .px(px(10.))
+                        .h(px(32.))
+                        .px(px(8.))
                         .flex()
                         .items_center()
-                        .gap(px(10.))
+                        .gap(px(8.))
                         .rounded(px(theme::RADIUS))
                         .cursor_pointer()
+                        .text_size(px(16.))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(rgb(color))
                         .bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_PANEL }))
-                        .hover(|s| s.bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_HOVER })).text_color(rgb(theme::TEXT_BRIGHT)))
+                        .hover(|s| {
+                            s.bg(rgb(if selected { theme::BG_ACTIVE } else { theme::BG_HOVER }))
+                                .text_color(rgb(theme::TEXT_BRIGHT))
+                        })
                         .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.select(page, cx)))
                         .child(icon(page.glyph(), 20., color))
                         .child(page.label()),
@@ -397,33 +431,97 @@ impl SettingsView {
             }
         }
 
-        let identity = self.render_identity(cx);
+        // The search box filters every page, including ones without a sidebar
+        // row yet, so the old pages remain reachable while they are replaced.
+        if !query.is_empty() {
+            for page in Page::ALL.iter().copied() {
+                if Page::SECTIONS.iter().any(|(_, pages)| pages.contains(&page)) || !page.matches(&query) {
+                    continue;
+                }
+                nav = nav.child(
+                    div()
+                        .id(("settings-page-search", page as u32))
+                        .h(px(32.))
+                        .px(px(8.))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .rounded(px(theme::RADIUS))
+                        .cursor_pointer()
+                        .text_size(px(16.))
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .hover(|s| {
+                            s.bg(rgb(theme::BG_HOVER)).text_color(rgb(theme::TEXT_BRIGHT))
+                        })
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.select(page, cx)))
+                        .child(icon(page.glyph(), 20., theme::TEXT_MUTED))
+                        .child(page.label()),
+                );
+            }
+        }
+
+        let backend = self.backend.clone();
         div()
-            .w(px(252.))
+            .w(px(240.))
             .h_full()
             .flex_none()
             .flex()
             .flex_col()
-            .gap(px(8.))
-            .px(px(16.))
-            .pt(px(24.))
-            .pb(px(12.))
-            .bg(rgb(theme::BG_PANEL))
-            .child(identity)
-            .child(Input::new(&self.search).prefix(icon("search", 18., theme::TEXT_MUTED).mr(px(6.))))
-            .child(div().id("settings-nav").flex_1().overflow_y_scroll().child(nav))
+            .bg(rgb(theme::BG_SIDEBAR))
             .child(
                 div()
+                    .px(px(12.))
+                    .pt(px(16.))
+                    .pb(px(8.))
+                    .child(Input::new(&self.search).prefix(icon("search", 18., theme::TEXT_MUTED).mr(px(6.)))),
+            )
+            .child(div().id("settings-nav").flex_1().px(px(8.)).overflow_y_scroll().child(nav))
+            .child(
+                div()
+                    .id("settings-log-out")
+                    .mx(px(8.))
+                    .mb(px(8.))
+                    .h(px(32.))
                     .px(px(8.))
-                    .text_size(px(11.))
-                    .text_color(rgb(theme::TEXT_FAINT))
-                    .child(format!("Oxicord {}", env!("CARGO_PKG_VERSION"))),
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .rounded(px(theme::RADIUS))
+                    .cursor_pointer()
+                    .text_size(px(16.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(theme::DANGER))
+                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
+                    .on_click(cx.listener(move |_, _: &ClickEvent, _, _| backend.send(Command::Logout)))
+                    .child(icon("log-out", 20., theme::DANGER))
+                    .child("Log Out"),
+            )
+            .child(
+                div()
+                    .px(px(16.))
+                    .pb(px(12.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::TEXT_FAINT))
+                            .child("stable 670026"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(theme::ACCENT))
+                            .child("Privacy Policy  |  Terms of Service  |  More"),
+                    ),
             )
     }
 }
 
-impl Render for SettingsView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl SettingsView {
+    /// The settings window without the screen overlay, for headless previews.
+    pub fn preview_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
         self.fill_inputs(window, cx);
         self.sync_volume(window, cx);
         let sidebar = self.render_sidebar(cx);
@@ -466,7 +564,7 @@ impl Render for SettingsView {
                     .child(icon("x", 24., theme::TEXT_MUTED)),
             );
 
-        let content = div()
+        div()
             .id("settings-window")
             .occlude()
             .w(px(width))
@@ -502,10 +600,14 @@ impl Render for SettingsView {
                             .child(div().w_full().max_w(px(700.)).child(page)),
                     ),
             )
-            .into_any_element();
+            .into_any_element()
+    }
+}
 
+impl Render for SettingsView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         modal(
-            content,
+            self.preview_content(window, cx),
             Box::new(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(CloseSettings))),
         )
     }

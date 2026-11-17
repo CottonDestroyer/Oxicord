@@ -1472,9 +1472,18 @@ is the older layout (My Account, Content & Social, Data & Privacy, Authorized
 Apps, Devices, Connections, then App settings: Appearance, Voice & Video, Chat,
 Notifications, Keybinds, Advanced).
 
-- [ ] P8-02 Rebuild the settings sidebar to the live structure: group headings, the
+- [x] P8-02 Rebuild the settings sidebar to the live structure: group headings, the
       Account sub-entries that scroll to a section, the Log Out row, the
-      version footer, and the search box matching every page below.
+      version footer, and the search box matching every page below. The sidebar
+      is now 240 px with a "Search settings" box, group headings Account,
+      Billing, Experience, Games & Apps and Developer, the live page names, a
+      red Log Out row sending `Command::Logout`, and the footer build line plus
+      policy links. The group headings and row metrics came from the live notes
+      above; exact spacing and the policy-link behaviour are unverified.
+      Headless check: `cargo run -p oxicord-preview -- --scene settings --snap
+      screenshots/port/settings_sidebar.png --tree
+      screenshots/port/settings_sidebar.json`. The new pages render a clearly
+      labelled placeholder until their own roadmap items land. docs/discord-reference.md.
 - [ ] P8-03 Account page as one scrolling page: Account Info (Username, Email and
       Phone with Reveal and Edit), Password & Security (Password Edit,
       Multi-Factor Authentication "Set up", Logged-in Devices "N devices"),

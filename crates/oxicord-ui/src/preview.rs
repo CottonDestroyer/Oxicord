@@ -15,6 +15,7 @@ use crate::{
     new_message_modal::NewMessageModal,
     session::Session,
     settings::Settings,
+    settings_view::SettingsView,
     theme,
     tip::Tip,
 };
@@ -32,9 +33,19 @@ impl Render for PreviewRoot {
 pub const SCENES: &[&str] = &[
     "interaction-modal",
     "new-message",
+    "settings",
     "tip",
     "text",
 ];
+
+struct SettingsSheet(Entity<SettingsView>);
+
+impl Render for SettingsSheet {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sheet = self.0.update(cx, |view, cx| view.preview_content(window, cx));
+        div().size_full().bg(rgb(theme::BG_CHAT)).child(sheet)
+    }
+}
 
 struct NewMessageSheet(Entity<NewMessageModal>);
 
@@ -108,6 +119,13 @@ pub fn open_scene(name: &str, window: &mut Window, cx: &mut App) -> Entity<Previ
                 view.opened(window, cx);
             });
             root(cx.new(|_| NewMessageSheet(view)).into(), cx)
+        }
+        "settings" => {
+            let session: Entity<Session> = cx.new(|_| Session::new(Settings::default()));
+            let media: Entity<Media> = cx.new(|_| Media::new(backend()));
+            let view = cx.new(|cx| SettingsView::new(session, media, backend(), window, cx));
+            view.update(cx, |view, cx| view.opened(cx));
+            root(cx.new(|_| SettingsSheet(view)).into(), cx)
         }
         "tip" => {
             let view: Entity<Tip> = cx.new(|_| Tip("Agent preview ready".into()));
