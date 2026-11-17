@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Accessibility page.
+    pub fn open_accessibility(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Accessibility;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Appearance page.
     pub fn open_appearance(&mut self, cx: &mut Context<Self>) {
         self.page = Page::Appearance;

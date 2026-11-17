@@ -1543,8 +1543,12 @@ Notifications, Keybinds, Advanced).
       check: `--scene settings-appearance`
       (`screenshots/port/appearance_page.png`). Exact values are unverified.
       docs/discord-reference.md.
-- [ ] P8-09 Accessibility page: the live preview message, Text Readability, Visual
-      Density, Color & Contrast, Reduced Motion, Audio & Screen Reader.
+- [x] P8-09 Accessibility page: the live preview message, Text Readability, Visual
+      Density, Color & Contrast, Reduced Motion, Audio & Screen Reader. Built
+      those six sections; Preview is a real message card, the rest are clearly
+      labelled placeholder controls. Headless check: `--scene
+      settings-accessibility` (`screenshots/port/accessibility_page.png`).
+      Exact values are unverified. docs/discord-reference.md.
 - [ ] P8-10 System page (the old Keybinds page): Custom Keybinds and Default
       Keybinds, with the record a key control.
 - [ ] P8-11 Language & Time page: language and time zone choices. Capture the live

@@ -103,12 +103,12 @@ impl SettingsView {
             Page::Notifications => self.notifications_page(cx),
             Page::System => keybinds_page(),
             Page::Advanced => self.advanced_page(cx),
+            Page::Accessibility => self.accessibility_page(cx),
             Page::Nitro
             | Page::ServerBoost
             | Page::Subscriptions
             | Page::GiftInventory
             | Page::Billing
-            | Page::Accessibility
             | Page::LanguageTime
             | Page::ActivityPrivacy => Self::placeholder_page(self.page.label()),
         };
@@ -879,6 +879,78 @@ impl SettingsView {
             page = page.child(Self::section("Time", rows));
         }
         page.into_any_element()
+    }
+
+    fn accessibility_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let preview = div()
+            .p(px(16.))
+            .rounded(px(theme::RADIUS_MD))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .bg(rgb(theme::BG_PANEL))
+            .flex()
+            .items_start()
+            .gap_3()
+            .child(
+                div()
+                    .size(px(40.))
+                    .flex_none()
+                    .rounded_full()
+                    .bg(rgb(theme::BG_ACTIVE)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(div().font_weight(FontWeight::MEDIUM).text_color(rgb(theme::TEXT_BRIGHT)).child("Preview"))
+                            .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child("Today at 12:00")),
+                    )
+                    .child(div().text_color(rgb(theme::TEXT)).child("This is a preview of how messages look with your accessibility settings.")),
+            )
+            .into_any_element();
+
+        let readability = vec![
+            Self::field_row("Text Readability", "Standard".into(), Some(button("text-standard", "Standard", Tone::Plain, |_, _, _| {}))),
+            Self::field_row("High Contrast", "Increase contrast across the app.".into(), Some(switch_row("high-contrast-text", "", None, false, |_, _, _| {}))),
+        ];
+        let density = vec![Self::field_row(
+            "Visual Density",
+            "Default".into(),
+            Some(button("visual-density", "Default", Tone::Plain, |_, _, _| {}))),
+        ];
+        let contrast = vec![Self::field_row(
+            "Color & Contrast",
+            "Default".into(),
+            Some(button("color-contrast", "Default", Tone::Plain, |_, _, _| {}))),
+        ];
+        let motion = vec![Self::field_row(
+            "Reduced Motion",
+            "Reduce animations across the app.".into(),
+            Some(switch_row("reduced-motion", "", None, false, |_, _, _| {})),
+        )];
+        let audio = vec![
+            Self::field_row("Audio & Screen Reader", "Screen reader and text to speech options.".into(), None),
+            Self::field_row("Screen Reader Mode", "Optimise the app for screen readers.".into(), Some(switch_row("screen-reader", "", None, false, |_, _, _| {}))),
+            Self::field_row("Text to Speech", "Read messages aloud.".into(), Some(switch_row("text-to-speech", "", None, false, |_, _, _| {}))),
+        ];
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Preview", vec![preview]))
+            .child(Self::section("Text Readability", readability))
+            .child(Self::section("Visual Density", density))
+            .child(Self::section("Color & Contrast", contrast))
+            .child(Self::section("Reduced Motion", motion))
+            .child(Self::section("Audio & Screen Reader", audio))
+            .into_any_element()
     }
 
     fn chat_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
