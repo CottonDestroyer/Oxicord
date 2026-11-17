@@ -1293,11 +1293,37 @@ mod tests {
 
 /// Every shortcut, grouped the way Discord's page groups them.
 fn keybinds_page() -> AnyElement {
-    let mut page = div()
+    let section_title = |text: &'static str| {
+        div()
+            .text_size(px(20.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(rgb(theme::TEXT_BRIGHT))
+            .child(text)
+    };
+    let record = div()
+        .id("record-key")
+        .h(px(32.))
+        .px(px(12.))
+        .flex()
+        .items_center()
+        .rounded(px(theme::RADIUS))
+        .border_1()
+        .border_color(rgb(theme::BG_ACTIVE))
+        .bg(rgb(theme::BG_ACTIVE))
+        .text_color(rgb(theme::TEXT_BRIGHT))
+        .child("Record a key");
+    let custom = div()
         .flex()
         .flex_col()
-        .gap_2()
-        .child(title("Keybinds"))
+        .gap(px(8.))
+        .child(section_title("Custom Keybinds"))
+        .child(blurb("Add a shortcut for an action this app supports."))
+        .child(record);
+    let mut defaults = div()
+        .flex()
+        .flex_col()
+        .gap(px(8.))
+        .child(section_title("Default Keybinds"))
         .child(blurb("Discord's default shortcuts, for what this app can do. They can't be changed yet."));
     let mut groups: Vec<&'static str> = Vec::new();
     for s in crate::keys::SHORTCUTS {
@@ -1337,7 +1363,13 @@ fn keybinds_page() -> AnyElement {
                     .into_any_element()
             })
             .collect();
-        page = page.child(group(heading, rows));
+        defaults = defaults.child(group(heading, rows));
     }
-    page.into_any_element()
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(24.))
+        .child(custom)
+        .child(defaults)
+        .into_any_element()
 }

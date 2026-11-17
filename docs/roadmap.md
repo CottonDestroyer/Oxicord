@@ -1549,8 +1549,13 @@ Notifications, Keybinds, Advanced).
       labelled placeholder controls. Headless check: `--scene
       settings-accessibility` (`screenshots/port/accessibility_page.png`).
       Exact values are unverified. docs/discord-reference.md.
-- [ ] P8-10 System page (the old Keybinds page): Custom Keybinds and Default
-      Keybinds, with the record a key control.
+- [x] P8-10 System page (the old Keybinds page): Custom Keybinds and Default
+      Keybinds, with the record a key control. Rebuilt as two sections; the
+      default list keeps the real shortcut groups and the custom section has a
+      "Record a key" control. Recording is a placeholder because the reference
+      snapshot has no custom keybind storage. Headless check: `--scene
+      settings-system` (`screenshots/port/system_page.png`). Exact values are
+      unverified. docs/discord-reference.md.
 - [ ] P8-11 Language & Time page: language and time zone choices. Capture the live
       page first, its headings did not read back.
 - [ ] P8-12 Activity Privacy page: What Activity I Share, Where I Share Activity,
