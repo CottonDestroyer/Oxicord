@@ -149,6 +149,12 @@ impl Page {
         }
     }
 
+    /// The window title can differ from the sidebar label: the live account
+    /// page is titled "My Account" but its first section is "Account Info".
+    fn title(self) -> &'static str {
+        if self == Page::AccountInfo { "My Account" } else { self.label() }
+    }
+
     /// The icon beside the page in the sidebar.
     fn glyph(self) -> &'static str {
         match self {
@@ -525,7 +531,7 @@ impl SettingsView {
         self.fill_inputs(window, cx);
         self.sync_volume(window, cx);
         let sidebar = self.render_sidebar(cx);
-        let title = self.page.label();
+        let title = self.page.title();
         // About 40px of air around it, up to the size of the official one.
         let viewport = window.viewport_size();
         let width = (f32::from(viewport.width) - 80.).min(1400.);

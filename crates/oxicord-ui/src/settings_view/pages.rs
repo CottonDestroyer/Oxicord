@@ -1,9 +1,9 @@
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, StatefulInteractiveElement as _,
     Styled as _, div, px, rgb, rgba,
-    component::{input::{Input, }, slider::Slider},
+    component::slider::Slider,
 };
-use oxicord_media::cdn;
 use oxicord_settings::{Key, Value};
 
 use super::{
@@ -15,10 +15,8 @@ use super::{
 use crate::{
     AccountRequest, Settings,
     account::Load,
-    backend::Command,
     danger_dialog::{Danger, OpenDanger},
     icons::icon,
-    media::avatar,
     session::{OpenChangePassword, OpenTotpSetup},
     theme,
 };
@@ -194,204 +192,169 @@ impl SettingsView {
     }
 
     fn account_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let (name, username, avatar_url, details) = {
+        let (name, username, details, device_count) = {
             let session = self.session.read(cx);
             let me = session.store.me();
             (
                 me.map(|m| m.display_name().to_owned()).unwrap_or_default(),
                 me.map(|m| m.username.clone()).unwrap_or_default(),
-                me.map(|m| cdn::user_avatar(m.id, m.avatar.as_deref(), 128)).unwrap_or_default(),
                 session.account.details.clone(),
+                match &session.account.sessions {
+                    Load::Ready(sessions) => sessions.len(),
+                    _ => 0,
+                },
             )
         };
+        let reveal = self.reveal_contact;
+        let show = |value: &str, masked: String| if reveal { value.to_owned() } else { masked };
+        let mut account_rows: Vec<AnyElement> = vec![
+            Self::field_row("Username", username, Some(button("edit-username", "Edit", Tone::Plain, cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(super::OpenEditProfile))))),
+        ];
+        match &details {
+            Load::Ready(d) => {
+                account_rows.push(Self::field_row(
+                    "Email",
+                    d.email.as_deref().map_or("Not set".into(), |e| show(e, mask_email(e))),
+                    Some(button("edit-email", "Edit", Tone::Plain, cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(super::OpenEditProfile)))),
+                ));
+                account_rows.push(Self::field_row(
+                    "Phone",
+                    d.phone.as_deref().map_or("Not set".into(), |p| show(p, mask_phone(p))),
+                    Some(button("edit-phone", "Edit", Tone::Plain, cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(super::OpenEditProfile)))),
+                ));
+                account_rows.push(Self::field_row(
+                    "Email verified",
+                    if d.verified { "Yes" } else { "No" }.into(),
+                    None,
+                ));
+                account_rows.push(
+                    div().child(button(
+                        "reveal-contact",
+                        if reveal { "Hide" } else { "Reveal" },
+                        Tone::Plain,
+                        cx.listener(|this, _: &ClickEvent, _, cx| {
+                            this.reveal_contact = !this.reveal_contact;
+                            cx.notify();
+                        }),
+                    )).into_any_element(),
+                );
+            }
+            Load::Failed(error) => account_rows.push(status_line("triangle-alert", error.clone(), theme::DANGER)),
+            _ => account_rows.push(status_line("loader-circle", "Loading...".into(), theme::TEXT_MUTED)),
+        }
 
-        let header = div()
+        let session_for_password = self.session.clone();
+        let session_for_totp = self.session.clone();
+        let mut security_rows: Vec<AnyElement> = vec![
+            Self::field_row(
+                "Password",
+                "••••••••".into(),
+                Some(button("edit-password", "Edit", Tone::Plain, move |_, _, cx| {
+                    session_for_password.update(cx, |_, cx| cx.emit(OpenChangePassword));
+                })),
+            ),
+        ];
+        if let Load::Ready(d) = &details {
+            let action = if d.mfa_enabled {
+                button("remove-totp", "Remove Authenticator App", Tone::Danger, move |_, _, cx| {
+                    session_for_totp.update(cx, |_, cx| cx.emit(OpenDanger(Danger::RemoveTotp)));
+                })
+            } else {
+                button("set-up-mfa", "Set up", Tone::Plain, move |_, _, cx| {
+                    session_for_totp.update(cx, |_, cx| cx.emit(OpenTotpSetup));
+                })
+            };
+            security_rows.push(Self::field_row(
+                "Multi-Factor Authentication",
+                if d.mfa_enabled { "Enabled" } else { "Not enabled" }.into(),
+                Some(action),
+            ));
+        }
+        security_rows.push(Self::field_row(
+            "Logged-in Devices",
+            format!("{device_count} device{}", if device_count == 1 { "" } else { "s" }),
+            Some(button("open-devices", "View", Tone::Plain, cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.select(Page::Devices, cx);
+            }))),
+        ));
+
+        let session_for_disable = self.session.clone();
+        let session_for_delete = self.session.clone();
+        let status_rows = vec![
+            Self::field_row("Age Group", "Not set".into(), Some(button("confirm-age", "Confirm Age", Tone::Plain, |_, _, _| {}))),
+            Self::field_row("Account Standing", "All good".into(), None),
+            Self::field_row("Family Center", "Not set up".into(), Some(button("set-up-family", "Set up Family Center", Tone::Plain, |_, _, _| {}))),
+        ];
+        let danger_rows = vec![
+            danger_row(
+                "Disable your account",
+                "Temporarily disable your account.",
+                button("disable-account", "Disable Account", Tone::Danger, move |_, _, cx| {
+                    session_for_disable.update(cx, |_, cx| cx.emit(OpenDanger(Danger::DisableAccount)));
+                }),
+            ),
+            danger_row(
+                "Close your account",
+                "Permanently close your account.",
+                button("delete-account", "Delete Account", Tone::DangerFilled, move |_, _, cx| {
+                    session_for_delete.update(cx, |_, cx| cx.emit(OpenDanger(Danger::DeleteAccount)));
+                }),
+            ),
+        ];
+        let _ = name;
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Account Info", account_rows))
+            .child(Self::section("Password & Security", security_rows))
+            .child(Self::section("Account Status", status_rows))
+            .child(Self::section("", danger_rows))
+            .into_any_element()
+    }
+
+    /// One labelled field with an optional action on the right.
+    fn field_row(label: &'static str, value: String, action: Option<AnyElement>) -> AnyElement {
+        div()
             .flex()
             .items_center()
-            .gap_4()
-            .child(avatar(&self.media, &avatar_url, 72., &name, cx))
+            .justify_between()
+            .gap_3()
+            .py(px(8.))
             .child(
                 div()
                     .flex()
                     .flex_col()
+                    .gap(px(2.))
                     .child(
                         div()
-                            .text_size(px(20.))
-                            .text_color(rgb(theme::TEXT_BRIGHT))
-                            .child(name),
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(theme::TEXT_MUTED))
+                            .child(label),
                     )
-                    .child(div().text_color(rgb(theme::TEXT_MUTED)).child(username)),
+                    .child(div().text_color(rgb(theme::TEXT_BRIGHT)).child(value)),
             )
-            .child(
-                div()
-                    .id("open-edit-profile")
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .px(px(10.))
-                    .h(px(32.))
-                    .rounded(px(theme::RADIUS))
-                    .bg(rgb(theme::BG_ACTIVE))
-                    .cursor_pointer()
-                    .text_size(px(14.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(theme::TEXT_BRIGHT))
-                    .hover(|s| s.bg(rgb(theme::BG_HOVER)))
-                    .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(super::OpenEditProfile)))
-                    .child("Edit Profile")
-                    .child(icon("pencil", 14., theme::TEXT_BRIGHT)),
-            );
+            .children(action)
+            .into_any_element()
+    }
 
-        let mut contact = Vec::new();
-        match &details {
-            Load::Ready(d) => {
-                let reveal = self.reveal_contact;
-                let show = |value: &str, masked: String| if reveal { value.to_owned() } else { masked };
-                contact.push(info_row(
-                    "Email",
-                    d.email.as_deref().map_or("Not set".into(), |e| show(e, mask_email(e))),
-                ));
-                contact.push(info_row(
-                    "Phone",
-                    d.phone.as_deref().map_or("Not set".into(), |p| show(p, mask_phone(p))),
-                ));
-                contact.push(info_row(
-                    "Email verified",
-                    if d.verified { "Yes" } else { "No" }.into(),
-                ));
-                contact.push(info_row(
-                    "Two-factor authentication",
-                    if d.mfa_enabled { "On" } else { "Off" }.into(),
-                ));
-                let session_for_password = self.session.clone();
-                contact.push(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap_3()
-                        .child(
-                            div()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(theme::TEXT_MUTED))
-                                .child("Password"),
-                        )
-                        .child(button("edit-password", "Edit", Tone::Plain, move |_, _, cx| {
-                            session_for_password.update(cx, |_, cx| cx.emit(OpenChangePassword));
-                        }))
-                        .into_any_element(),
-                );
-                // The way in while it is off, the way out while it is on.
-                let session_for_totp = self.session.clone();
-                let action = if d.mfa_enabled {
-                    button("remove-totp", "Remove Authenticator App", Tone::Danger, move |_, _, cx| {
-                        session_for_totp.update(cx, |_, cx| cx.emit(OpenDanger(Danger::RemoveTotp)));
-                    })
-                } else {
-                    button("enable-totp", "Enable Authenticator App", Tone::Plain, move |_, _, cx| {
-                        session_for_totp.update(cx, |_, cx| cx.emit(OpenTotpSetup));
-                    })
-                };
-                contact.push(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap_3()
-                        .child(
-                            div()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(theme::TEXT_MUTED))
-                                .child("Authenticator app"),
-                        )
-                        .child(action)
-                        .into_any_element(),
-                );
-                contact.push(
-                    div()
-                        .child(button(
-                            "reveal-contact",
-                            if reveal { "Hide" } else { "Reveal" },
-                            Tone::Plain,
-                            cx.listener(|this, _: &ClickEvent, _, cx| {
-                                this.reveal_contact = !this.reveal_contact;
-                                cx.notify();
-                            }),
-                        ))
-                        .into_any_element(),
-                );
-                let session_for_copy = self.session.clone();
-                contact.push(
-                    div()
-                        .child(button(
-                            "copy-user-id",
-                            "Copy User ID",
-                            Tone::Plain,
-                            move |_, _, cx| {
-                                if let Some(me) = session_for_copy.read(cx).store.me() {
-                                    cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(me.id.to_string()));
-                                }
-                            },
-                        ))
-                        .into_any_element(),
-                );
-            }
-            Load::Failed(error) => {
-                contact.push(status_line("triangle-alert", error.clone(), theme::DANGER));
-            }
-            _ => contact.push(status_line("loader-circle", "Loading...".into(), theme::TEXT_MUTED)),
-        }
-
-        let name_row = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .child(div().flex_1().child(Input::new(&self.display_name)))
-            .child(button("save-name", "Save", Tone::Primary, cx.listener(
-                |this, _: &ClickEvent, _, cx| {
-                    let name = this.display_name.read(cx).value().trim().to_owned();
-                    let backend = this.backend.clone();
-                    this.session.update(cx, |s, cx| {
-                        s.request_account(&backend, AccountRequest::SetDisplayName(name), cx);
-                    });
-                },
-            )))
-            .into_any_element();
-
-        let backend = self.backend.clone();
-        let session_for_disable = self.session.clone();
-        let disable_row = danger_row(
-            "Disable your account",
-            "Temporarily disable your account.",
-            button("disable-account", "Disable Account", Tone::Danger, move |_, _, cx| {
-                session_for_disable.update(cx, |_, cx| cx.emit(OpenDanger(Danger::DisableAccount)));
-            }),
-        );
-        let session_for_delete = self.session.clone();
-        let delete_row = danger_row(
-            "Close your account",
-            "Permanently close your account.",
-            button("delete-account", "Delete Account", Tone::DangerFilled, move |_, _, cx| {
-                session_for_delete.update(cx, |_, cx| cx.emit(OpenDanger(Danger::DeleteAccount)));
-            }),
-        );
+    /// A titled block of account fields.
+    fn section(title: &'static str, rows: Vec<AnyElement>) -> AnyElement {
         div()
             .flex()
             .flex_col()
-            .gap_2()
-            .child(title("My Account"))
-            .child(header)
-            .child(group("Display name", vec![name_row]))
-            .child(group("Account", contact))
-            .child(group("Account status", vec![disable_row, delete_row]))
-            .child(group(
-                "Session",
-                vec![div()
-                    .child(button("log-out", "Log out", Tone::Danger, move |_, _, _| {
-                        backend.send(Command::Logout);
-                    }))
-                    .into_any_element()],
-            ))
+            .gap(px(8.))
+            .when(!title.is_empty(), |block| {
+                block.child(
+                    div()
+                        .text_size(px(20.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(theme::TEXT_BRIGHT))
+                        .child(title),
+                )
+            })
+            .child(div().flex().flex_col().children(rows))
             .into_any_element()
     }
 

@@ -1484,13 +1484,19 @@ Notifications, Keybinds, Advanced).
       screenshots/port/settings_sidebar.png --tree
       screenshots/port/settings_sidebar.json`. The new pages render a clearly
       labelled placeholder until their own roadmap items land. docs/discord-reference.md.
-- [ ] P8-03 Account page as one scrolling page: Account Info (Username, Email and
+- [x] P8-03 Account page as one scrolling page: Account Info (Username, Email and
       Phone with Reveal and Edit), Password & Security (Password Edit,
       Multi-Factor Authentication "Set up", Logged-in Devices "N devices"),
       Account Status (Age Group with Confirm Age, Account Standing "All
       good"), Family Center ("Set up Family Center"), and the Disable and
       Close account rows. The existing dialogs stay, only their entry points
-      move. Devices becomes the Logged-in Devices detail page.
+      move. Devices becomes the Logged-in Devices detail page. Implemented in
+      `settings_view/pages.rs` with the live section names and "My Account"
+      window title; the Logged-in Devices row counts `account.sessions` and
+      opens the Devices page. Headless check reuses the `settings` scene
+      (`screenshots/port/account_page.png`). Exact section spacing, button
+      labels beyond the notes and the placeholder Age/Family actions are
+      unverified. docs/discord-reference.md.
 - [ ] P8-04 Data & Privacy page: How Discord Uses My Data (use data to make Discord
       work), Request my data, Profile Privacy, and the related Activity Privacy
       link.
