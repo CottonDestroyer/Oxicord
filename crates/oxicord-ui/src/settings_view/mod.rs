@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Activity Privacy page.
+    pub fn open_activity_privacy(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::ActivityPrivacy;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Language & Time page.
     pub fn open_language_time(&mut self, cx: &mut Context<Self>) {
         self.page = Page::LanguageTime;

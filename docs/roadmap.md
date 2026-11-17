@@ -1564,8 +1564,13 @@ Notifications, Keybinds, Advanced).
       remain unverified because they could not be read back in this harness.
       Headless check: `--scene settings-language`
       (`screenshots/port/language_page.png`). docs/discord-reference.md.
-- [ ] P8-12 Activity Privacy page: What Activity I Share, Where I Share Activity,
-      Activity Joining.
+- [x] P8-12 Activity Privacy page: What Activity I Share, Where I Share Activity,
+      Activity Joining. Built those three sections; the working
+      "Share your detected activity as a status" switch stays in the first,
+      Where I Share Activity has an Edit action, and Activity Joining has a
+      switch. The where and joining controls are placeholders. Headless check:
+      `--scene settings-activity` (`screenshots/port/activity_page.png`).
+      Exact values are unverified. docs/discord-reference.md.
 - [ ] P8-13 Connected Apps page: Connections with Nitro Rewards, then the Authorized
       Apps list (Verification and Security). Merges our Connections and
       Authorized Apps pages.

@@ -105,12 +105,12 @@ impl SettingsView {
             Page::Advanced => self.advanced_page(cx),
             Page::Accessibility => self.accessibility_page(cx),
             Page::LanguageTime => self.language_time_page(cx),
+            Page::ActivityPrivacy => self.activity_privacy_page(cx),
             Page::Nitro
             | Page::ServerBoost
             | Page::Subscriptions
             | Page::GiftInventory
-            | Page::Billing
-            | Page::ActivityPrivacy => Self::placeholder_page(self.page.label()),
+            | Page::Billing => Self::placeholder_page(self.page.label()),
         };
         div().flex().flex_col().gap_2().child(body).into_any_element()
     }
@@ -950,6 +950,45 @@ impl SettingsView {
             .child(Self::section("Color & Contrast", contrast))
             .child(Self::section("Reduced Motion", motion))
             .child(Self::section("Audio & Screen Reader", audio))
+            .into_any_element()
+    }
+
+    fn activity_privacy_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let share = self.pref(Key::ShowCurrentGame, cx).as_bool();
+        let mut share_rows = vec![Self::field_row(
+            "Share your detected activity as a status",
+            if share { "On" } else { "Off" }.into(),
+            Some(switch_row(
+                "share-activity",
+                "",
+                None,
+                share,
+                cx.listener(|this, _: &ClickEvent, _, cx| {
+                    let now = this.pref(Key::ShowCurrentGame, cx).as_bool();
+                    this.set_pref(Key::ShowCurrentGame, Value::Bool(!now), cx);
+                }),
+            )),
+        )];
+        if let Some(gate) = self.prefs_gate(cx) {
+            share_rows.push(gate);
+        }
+        let where_rows = vec![Self::field_row(
+            "Where I Share Activity",
+            "All servers and friends".into(),
+            Some(button("activity-where", "Edit", Tone::Plain, |_, _, _| {})),
+        )];
+        let joining_rows = vec![Self::field_row(
+            "Allow Joining",
+            "Let friends join your game without asking.".into(),
+            Some(switch_row("activity-joining", "", None, false, |_, _, _| {})),
+        )];
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("What Activity I Share", share_rows))
+            .child(Self::section("Where I Share Activity", where_rows))
+            .child(Self::section("Activity Joining", joining_rows))
             .into_any_element()
     }
 
