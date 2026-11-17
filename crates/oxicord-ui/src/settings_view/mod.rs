@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Appearance page.
+    pub fn open_appearance(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Appearance;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Voice & Video page.
     pub fn open_voice(&mut self, cx: &mut Context<Self>) {
         self.page = Page::VoiceVideo;

@@ -1533,10 +1533,16 @@ Notifications, Keybinds, Advanced).
       Soundboard are placeholder rows. Headless check: `--scene settings-voice`
       (`screenshots/port/voice_page.png`). Exact labels are unverified.
       docs/discord-reference.md.
-- [ ] P8-08 Appearance page as drawn live: Theme with Default Themes and Color
+- [x] P8-08 Appearance page as drawn live: Theme with Default Themes and Color
       Themes (locked ones link to Nitro), App Icon, Messages (display mode and
-      spacing), Chat Box, Search, Streamer Mode. Ours has a time format and a
-      members list switch only.
+      spacing), Chat Box, Search, Streamer Mode. Rebuilt into those six
+      sections; Dark is marked selected, Light and Color Themes point at Nitro,
+      and the existing member-list switch and time-format choices stay. The
+      display mode, spacing, chat box, search and streamer rows are placeholders
+      because the snapshot has no appearance preferences for them. Headless
+      check: `--scene settings-appearance`
+      (`screenshots/port/appearance_page.png`). Exact values are unverified.
+      docs/discord-reference.md.
 - [ ] P8-09 Accessibility page: the live preview message, Text Readability, Visual
       Density, Color & Contrast, Reduced Motion, Audio & Screen Reader.
 - [ ] P8-10 System page (the old Keybinds page): Custom Keybinds and Default

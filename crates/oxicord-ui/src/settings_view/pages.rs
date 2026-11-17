@@ -802,43 +802,83 @@ impl SettingsView {
     }
 
     fn appearance_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let mut page = div().flex().flex_col().gap_2().child(title("Appearance"));
-
         let members = self.session.read(cx).settings.show_members;
-        let layout = switch_row(
-            "layout-members",
+        let members_row = Self::field_row(
             "Show the member list",
-            Some("Keep the list of people beside server channels."),
-            members,
-            cx.listener(|this, _: &ClickEvent, _, cx| {
-                let backend = this.backend.clone();
-                this.session.update(cx, |s, cx| {
-                    s.change_settings(&backend, |st| st.show_members = !st.show_members, cx);
-                });
-            }),
+            if members { "On" } else { "Off" }.into(),
+            Some(switch_row(
+                "layout-members",
+                "",
+                None,
+                members,
+                cx.listener(|this, _: &ClickEvent, _, cx| {
+                    let backend = this.backend.clone();
+                    this.session.update(cx, |s, cx| {
+                        s.change_settings(&backend, |st| st.show_members = !st.show_members, cx);
+                    });
+                }),
+            )),
         );
-        page = page.child(group("Layout", vec![layout]));
 
-        match self.prefs_gate(cx) {
-            Some(gate) => page = page.child(gate),
-            None => {
-                let cycle = self.pref(Key::HourCycle, cx).as_number();
-                let rows = self.number_radios(
-                    "hour-cycle",
-                    Key::HourCycle,
-                    cycle,
-                    &[
-                        (0, "Automatic", Some("24 hour clock.")),
-                        (1, "12 hour", Some("3:30 PM")),
-                        (2, "24 hour", Some("15:30")),
-                    ],
-                    cx,
-                );
-                page = page.child(group("Time format", rows));
-            }
+        let theme_rows = vec![
+            Self::field_row("Dark", "Selected".into(), Some(button("theme-dark", "Selected", Tone::Plain, |_, _, _| {}))),
+            Self::field_row("Light", "Not available".into(), Some(button("theme-light", "Locked", Tone::Plain, |_, _, _| {}))),
+            Self::field_row("Color Themes", "Unlock more themes with Nitro.".into(), Some(button("theme-nitro", "Nitro", Tone::Primary, |_, _, _| {}))),
+        ];
+        let icon_rows = vec![Self::field_row(
+            "App Icon",
+            "Choose the icon shown in your taskbar.".into(),
+            Some(button("app-icon", "Change", Tone::Plain, |_, _, _| {})),
+        )];
+        let message_rows = vec![
+            Self::field_row("Display Mode", "Cozy".into(), Some(button("display-mode", "Cozy", Tone::Plain, |_, _, _| {}))),
+            Self::field_row("Message Spacing", "Default".into(), Some(button("message-spacing", "Default", Tone::Plain, |_, _, _| {}))),
+            members_row,
+        ];
+        let chat_box_rows = vec![Self::field_row(
+            "Chat Box",
+            "Choose how the message box behaves.".into(),
+            Some(button("chat-box", "Settings", Tone::Plain, |_, _, _| {})),
+        )];
+        let search_rows = vec![Self::field_row(
+            "Search",
+            "Choose whether search shows a preview of results.".into(),
+            None,
+        )];
+        let streamer_rows = vec![
+            Self::field_row("Streamer Mode", "Hide personal information while streaming.".into(), None),
+            Self::field_row("Hide Personal Information", "Off".into(), Some(button("streamer-mode", "Enable", Tone::Plain, |_, _, _| {}))),
+        ];
+
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Theme", theme_rows))
+            .child(Self::section("App Icon", icon_rows))
+            .child(Self::section("Messages", message_rows))
+            .child(Self::section("Chat Box", chat_box_rows))
+            .child(Self::section("Search", search_rows))
+            .child(Self::section("Streamer Mode", streamer_rows));
+
+        if let Some(gate) = self.prefs_gate(cx) {
+            page = page.child(gate);
+        } else {
+            let cycle = self.pref(Key::HourCycle, cx).as_number();
+            let rows = self.number_radios(
+                "hour-cycle",
+                Key::HourCycle,
+                cycle,
+                &[
+                    (0, "Automatic", Some("24 hour clock.")),
+                    (1, "12 hour", Some("3:30 PM")),
+                    (2, "24 hour", Some("15:30")),
+                ],
+                cx,
+            );
+            page = page.child(Self::section("Time", rows));
         }
-        page.child(blurb("Oxicord only has its dark theme for now."))
-            .into_any_element()
+        page.into_any_element()
     }
 
     fn chat_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
