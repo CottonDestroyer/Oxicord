@@ -1445,8 +1445,19 @@ the build moves.
       button (new item below). Inbox has no unread pulse on the title glyph.
       Message Requests and the Quests page titles are unverified (the live
       page has no title for Quests and the requests route was not reachable).
-- [ ] P8-01 New Message modal for the group DM button (see the notes above for the
-      live layout); keep the existing create flow behind it.
+- [x] P8-01 New Message modal for the group DM button (see the notes above for the
+      live layout); keep the existing create flow behind it. Implemented as
+      `crates/oxicord-ui/src/new_message_modal.rs`, opened by the Friends
+      header's New Group DM button through `OpenNewMessage`; the old DmPicker
+      stays for the other entry points. Uses the live strings and values in the
+      notes: 480 px wide, 20 px title, the 10-member note, the search
+      placeholder, the two empty-state lines, and Cancel / Create Message.
+      Headless verification: `cargo run -p oxicord-preview -- --scene
+      new-message --snap screenshots/port/new_message_modal.png --tree
+      screenshots/port/new_message_modal.json` renders both the empty and
+      sample-friend states. Live verification is not available through this
+      harness, so the exact row height, checkbox size and avatar metrics remain
+      unverified. docs/discord-reference.md.
 
 ### User settings (the sidebar was rebuilt in the live client)
 

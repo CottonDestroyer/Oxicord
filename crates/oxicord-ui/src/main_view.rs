@@ -41,6 +41,7 @@ use crate::{
     timeout_dialog::{CloseTimeout, TimeoutDialog},
     roles_dialog::{CloseRoles, RolesDialog},
     nickname_dialog::{CloseNickname, NicknameDialog},
+    new_message_modal::{CloseNewMessage, NewMessageModal},
     join_server::{CloseJoin, JoinServerView},
     rules_screening::{CloseRulesScreening, RulesScreeningDialog},
     friends::FriendsView,
@@ -62,7 +63,7 @@ use crate::{
     member_list::{MemberList, presence_dot, status_shape},
     popup::{ClosePopup, PopupMenu},
     profile,
-    session::{OpenChangePassword, OpenTotpSetup, DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreateEvent, OpenNotificationSettings, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
+    session::{OpenChangePassword, OpenTotpSetup, DmOpened, JumpTo, MentionUser, OpenBanMember, OpenChannelSettings, OpenCreateServer, OpenKickMember, OpenCreateChannel, OpenCreateEvent, OpenNotificationSettings, OpenCreatePoll, OpenEvents, OpenForward, OpenGift, OpenInbox, OpenInteractionModal, OpenPollVoters, OpenInviteDialog, OpenMenu, OpenNickname, OpenPanel, OpenPicker, OpenNewMessage, OpenPopup, OpenPrivacySettings, OpenRolesMember, OpenRulesScreening, OpenServerGuide, OpenServerProfile, OpenServerSettings, OpenTimeoutMember, OpenUserMenu, PanelKind, Session, ShowProfile},
     settings_view::{CloseSettings, OpenEditProfile, SettingsView},
     server_settings::{CloseServerSettings, ServerSettings},
     side_panel::{ClosePanel, SidePanel},
@@ -265,6 +266,8 @@ pub struct MainView {
     switcher: Entity<QuickSwitcher>,
     switcher_open: bool,
     picker: Entity<DmPicker>,
+    new_message: Entity<NewMessageModal>,
+    new_message_open: bool,
     popup: Entity<PopupMenu>,
     popup_open: bool,
     /// Listens to the volume slider in the open user menu.
@@ -434,6 +437,10 @@ impl MainView {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| DmPicker::new(session, media, backend, window, cx))
         };
+        let new_message = {
+            let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
+            cx.new(|cx| NewMessageModal::new(session, media, backend, window, cx))
+        };
         let inbox = {
             let (session, media, backend) = (session.clone(), media.clone(), backend.clone());
             cx.new(|cx| Inbox::new(session, media, backend, cx))
@@ -558,6 +565,15 @@ impl MainView {
             }),
             cx.subscribe_in(&session, window, |this, _, open: &OpenPicker, window, cx| {
                 this.open_picker(open.purpose, open.at, window, cx);
+            }),
+            cx.subscribe(&new_message, |this, _, _: &CloseNewMessage, cx| {
+                this.new_message_open = false;
+                cx.notify();
+            }),
+            cx.subscribe_in(&session, window, |this, _, _: &OpenNewMessage, window, cx| {
+                this.new_message_open = true;
+                this.new_message.update(cx, |modal, cx| modal.opened(window, cx));
+                cx.notify();
             }),
             cx.subscribe(&switcher, |this, _, _: &CloseSwitcher, cx| {
                 this.switcher_open = false;
@@ -1029,6 +1045,8 @@ impl MainView {
             switcher,
             switcher_open: false,
             picker,
+            new_message,
+            new_message_open: false,
             popup,
             popup_open: false,
             volume_sub: None,
@@ -4900,6 +4918,7 @@ impl Render for MainView {
         let interaction_modal = self.interaction_modal_open.then(|| self.interaction_modal.clone());
         let switcher = self.switcher_open.then(|| self.switcher.clone());
         let picker = self.picker_open.then(|| self.picker.clone());
+        let new_message = self.new_message_open.then(|| self.new_message.clone());
         let popup = self.popup_open.then(|| self.popup.clone());
         let invite = self.invite_open.then(|| self.invite.clone());
         let edit_channel = self.edit_channel_open.then(|| self.edit_channel.clone());
@@ -5011,6 +5030,7 @@ impl Render for MainView {
             .children(server_settings)
             .children(switcher)
             .children(picker)
+            .children(new_message)
             .children(popup)
             .children(inbox)
             .children(channel_status_modal)

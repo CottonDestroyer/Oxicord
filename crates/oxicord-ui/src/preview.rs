@@ -6,11 +6,13 @@ use gpui_kit::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
     Styled as _, Window, div, px, rgb,
 };
-use oxicord_model::InteractionModal;
+use oxicord_model::{InteractionModal, User};
 
 use crate::{
     backend::Backend,
     interaction_modal::InteractionModalView,
+    media::Media,
+    new_message_modal::NewMessageModal,
     session::Session,
     settings::Settings,
     theme,
@@ -27,7 +29,21 @@ impl Render for PreviewRoot {
 }
 
 /// The scenes an agent can ask for by `--scene`.
-pub const SCENES: &[&str] = &["interaction-modal", "tip", "text"];
+pub const SCENES: &[&str] = &[
+    "interaction-modal",
+    "new-message",
+    "tip",
+    "text",
+];
+
+struct NewMessageSheet(Entity<NewMessageModal>);
+
+impl Render for NewMessageSheet {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sheet = self.0.update(cx, |view, cx| view.preview_content(window, cx));
+        div().size_full().bg(rgb(theme::BG_CHAT)).child(sheet)
+    }
+}
 
 struct ModalSheet(Entity<crate::interaction_modal::InteractionModalView>);
 
@@ -72,6 +88,26 @@ pub fn open_scene(name: &str, window: &mut Window, cx: &mut App) -> Entity<Previ
             let view = cx.new(|cx| InteractionModalView::new(session, backend(), cx));
             view.update(cx, |view, cx| view.opened(modal, window, cx));
             root(cx.new(|_| ModalSheet(view)).into(), cx)
+        }
+        "new-message" => {
+            let session: Entity<Session> = cx.new(|_| Session::new(Settings::default()));
+            let media: Entity<Media> = cx.new(|_| Media::new(backend()));
+            let view = cx.new(|cx| NewMessageModal::new(session, media, backend(), window, cx));
+            view.update(cx, |view, cx| {
+                view.set_preview_users(
+                    [
+                        r#"{"id":"10","username":"alex","global_name":"Alex Rivera"}"#,
+                        r#"{"id":"11","username":"sam","global_name":"Sam Lee"}"#,
+                        r#"{"id":"12","username":"jordan","global_name":"Jordan Kim"}"#,
+                    ]
+                    .into_iter()
+                    .map(|json| serde_json::from_str::<User>(json).expect("sample user"))
+                    .collect(),
+                    cx,
+                );
+                view.opened(window, cx);
+            });
+            root(cx.new(|_| NewMessageSheet(view)).into(), cx)
         }
         "tip" => {
             let view: Entity<Tip> = cx.new(|_| Tip("Agent preview ready".into()));

@@ -44,6 +44,7 @@ mod login;
 mod main_view;
 mod media;
 mod nameplate_dialog;
+mod new_message_modal;
 mod message_requests;
 mod menus;
 mod nickname_dialog;

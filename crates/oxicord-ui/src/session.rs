@@ -372,6 +372,11 @@ pub struct OpenPicker {
 
 impl EventEmitter<OpenPicker> for Session {}
 
+/// The Friends header asked for the centered New Message modal.
+pub struct OpenNewMessage;
+
+impl EventEmitter<OpenNewMessage> for Session {}
+
 /// Someone picked a message in a list and wants to go to its channel, and
 /// to the message itself when one is named.
 pub struct JumpTo {
