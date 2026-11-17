@@ -1522,11 +1522,17 @@ Notifications, Keybinds, Advanced).
       Headless check: `--scene settings-notifications`
       (`screenshots/port/notifications_page.png`). Exact values are unverified.
       docs/discord-reference.md.
-- [ ] P8-07 Voice & Video page additions: the Voice group with "Show Advanced Voice
+- [x] P8-07 Voice & Video page additions: the Voice group with "Show Advanced Voice
       Settings", Camera, Streaming, Sounds (with "Show 18 more sounds"),
       Soundboard with its server and sound pickers, and the Advanced group with
       "Show Diagnostic Settings" and "Reset all Voice & Video settings". Video,
-      soundboard playback and streaming stay inert (see Out of scope).
+      soundboard playback and streaming stay inert (see Out of scope). Rebuilt
+      into Voice, Camera, Streaming, Sounds, Soundboard and Advanced sections.
+      The working Input Volume, Noise Suppression and Push to talk controls stay
+      in Voice; Reset restores their defaults. Camera, Streaming, Sounds and
+      Soundboard are placeholder rows. Headless check: `--scene settings-voice`
+      (`screenshots/port/voice_page.png`). Exact labels are unverified.
+      docs/discord-reference.md.
 - [ ] P8-08 Appearance page as drawn live: Theme with Default Themes and Color
       Themes (locked ones link to Nitro), App Icon, Messages (display mode and
       spacing), Chat Box, Search, Streamer Mode. Ours has a time format and a

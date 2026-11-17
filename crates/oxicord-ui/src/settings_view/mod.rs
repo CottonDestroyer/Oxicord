@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Voice & Video page.
+    pub fn open_voice(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::VoiceVideo;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Notifications page.
     pub fn open_notifications(&mut self, cx: &mut Context<Self>) {
         self.page = Page::Notifications;

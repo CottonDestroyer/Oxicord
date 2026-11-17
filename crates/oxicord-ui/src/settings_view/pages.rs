@@ -911,11 +911,12 @@ impl SettingsView {
                     .child(format!("{percent}%")),
             )
             .into_any_element();
+        let suppression_on = self.session.read(cx).settings.noise_suppression;
         let suppression = switch_row(
             "noise-suppression",
             "Enable noise suppression",
             Some("Takes keyboard clatter, fans and hiss out of your microphone. Uses RNNoise, not Krisp."),
-            self.session.read(cx).settings.noise_suppression,
+            suppression_on,
             cx.listener(|this, _: &ClickEvent, _, cx| {
                 let backend = this.backend.clone();
                 this.session.update(cx, |s, cx| s.change_settings(&backend, |st| st.noise_suppression = !st.noise_suppression, cx));
@@ -996,19 +997,60 @@ impl SettingsView {
             )
             .child(key_button)
             .into_any_element();
+        let voice_rows = vec![
+            Self::field_row("Input Volume", format!("{percent}%"), Some(slider)),
+            Self::field_row("Noise Suppression", if suppression_on { "On" } else { "Off" }.into(), Some(suppression)),
+            Self::field_row("Input Mode", if on { "Push to talk" } else { "Voice Activity" }.into(), Some(toggle)),
+            shortcut,
+            Self::field_row(
+                "Advanced",
+                "More microphone and voice processing controls.".into(),
+                Some(button("advanced-voice", "Show Advanced Voice Settings", Tone::Plain, |_, _, _| {})),
+            ),
+        ];
+        let camera_rows = vec![Self::field_row(
+            "Camera",
+            "Choose a camera and preview your video.".into(),
+            Some(button("camera-settings", "Camera", Tone::Plain, |_, _, _| {})),
+        )];
+        let streaming_rows = vec![Self::field_row(
+            "Streaming",
+            "Choose how your screen is shared in a call.".into(),
+            Some(button("streaming-settings", "Streaming", Tone::Plain, |_, _, _| {})),
+        )];
+        let sound_rows = vec![
+            Self::field_row("Sounds", "Call join, leave and message sounds.".into(), None),
+            Self::field_row("More sounds", "A longer list of notification sounds.".into(), Some(button("more-sounds", "Show 18 more sounds", Tone::Plain, |_, _, _| {}))),
+        ];
+        let soundboard_rows = vec![
+            Self::field_row("Soundboard", "Pick the server and sounds shown in the soundboard.".into(), None),
+            Self::field_row("Server", "No server selected".into(), Some(button("soundboard-server", "Choose", Tone::Plain, |_, _, _| {}))),
+            Self::field_row("Sounds", "No sounds selected".into(), Some(button("soundboard-sounds", "Choose", Tone::Plain, |_, _, _| {}))),
+        ];
+        let advanced_rows = vec![
+            Self::field_row("Diagnostics", "Inspect the voice connection and audio devices.".into(), Some(button("voice-diagnostics", "Show Diagnostic Settings", Tone::Plain, |_, _, _| {}))),
+            Self::field_row("Reset", "Restore every Voice & Video setting to its default.".into(), Some(button("reset-voice", "Reset all Voice & Video settings", Tone::Danger, cx.listener(|this, _: &ClickEvent, _, cx| {
+                let backend = this.backend.clone();
+                this.session.update(cx, |s, cx| {
+                    s.change_settings(&backend, |st| {
+                        st.input_volume = 100;
+                        st.noise_suppression = true;
+                        st.push_to_talk = false;
+                        st.push_to_talk_key.clear();
+                    }, cx);
+                });
+            })))),
+        ];
         div()
             .flex()
             .flex_col()
-            .gap_2()
-            .child(title("Voice & Video"))
-            .child(group("Input Volume", vec![slider]))
-            .child(blurb("How loud your microphone is for everyone in the call."))
-            .child(group("Noise Suppression", vec![suppression]))
-            .child(blurb("Applies before your voice is sent, so everyone in the call hears it."))
-            .child(group("Input Mode", vec![toggle, shortcut]))
-            .child(blurb(
-                "Push to talk needs a shortcut. Any letter, number or function key works. Escape cancels.",
-            ))
+            .gap(px(24.))
+            .child(Self::section("Voice", voice_rows))
+            .child(Self::section("Camera", camera_rows))
+            .child(Self::section("Streaming", streaming_rows))
+            .child(Self::section("Sounds", sound_rows))
+            .child(Self::section("Soundboard", soundboard_rows))
+            .child(Self::section("Advanced", advanced_rows))
             .into_any_element()
     }
 
