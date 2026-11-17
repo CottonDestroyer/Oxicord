@@ -1584,11 +1584,16 @@ Notifications, Keybinds, Advanced).
       placeholders. Headless check: `--scene settings-developer`
       (`screenshots/port/developer_page.png`). Exact values are unverified.
       docs/discord-reference.md.
-- [ ] P8-15 Billing group shells, read only, no purchase flow: Nitro (the Nitro Basic
+- [x] P8-15 Billing group shells, read only, no purchase flow: Nitro (the Nitro Basic
       and Nitro plan cards with the perks list), Server Boost (Server Boosts,
       perks per level, Boosting FAQ), Subscriptions, Gift Inventory (Redeem
       Codes, Gifts I Purchased), Billing (Payment Methods, Transaction
-      History).
+      History). Built read-only shells for all five. Nitro shows the two plan
+      cards with the perks list; Server Boost shows the perks per level and FAQ;
+      Subscriptions, Gift Inventory and Billing show empty states and inert
+      actions. Headless check: `--scene settings-nitro`
+      (`screenshots/port/nitro_page.png`). Plan copy and perks are unverified.
+      docs/discord-reference.md.
 - [ ] P8-16 (do it inside F-07) Menu style shared by all popup and context menus: live draws the glyph at
       the left of each label, sizes the card to its content (201px for the
       plus menu), rounds it at 8px and gives rows 36px height with a 2px

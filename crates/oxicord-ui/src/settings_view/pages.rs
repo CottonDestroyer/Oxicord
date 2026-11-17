@@ -106,11 +106,11 @@ impl SettingsView {
             Page::Accessibility => self.accessibility_page(cx),
             Page::LanguageTime => self.language_time_page(cx),
             Page::ActivityPrivacy => self.activity_privacy_page(cx),
-            Page::Nitro
-            | Page::ServerBoost
-            | Page::Subscriptions
-            | Page::GiftInventory
-            | Page::Billing => Self::placeholder_page(self.page.label()),
+            Page::Nitro => self.nitro_page(cx),
+            Page::ServerBoost => self.server_boost_page(cx),
+            Page::Subscriptions => self.subscriptions_page(cx),
+            Page::GiftInventory => self.gift_inventory_page(cx),
+            Page::Billing => self.billing_page(cx),
         };
         div().flex().flex_col().gap_2().child(body).into_any_element()
     }
@@ -1033,6 +1033,85 @@ impl SettingsView {
             .child(Self::section("Language", language_rows))
             .child(Self::section("Time", time_rows))
             .into_any_element()
+    }
+
+    fn nitro_page(&mut self, _cx: &mut Context<Self>) -> AnyElement {
+        let plan = |name: &'static str, price: &'static str, perks: &[&'static str], featured: bool| {
+            let mut card = div()
+                .flex_1()
+                .min_w(px(240.))
+                .p(px(16.))
+                .flex()
+                .flex_col()
+                .gap(px(8.))
+                .rounded(px(theme::RADIUS_MD))
+                .border_1()
+                .border_color(rgb(if featured { theme::ACCENT } else { theme::BORDER }))
+                .bg(rgb(theme::BG_PANEL))
+                .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(theme::TEXT_BRIGHT)).child(name))
+                .child(div().text_size(px(16.)).text_color(rgb(theme::TEXT_MUTED)).child(price));
+            for perk in perks {
+                card = card.child(div().flex().items_center().gap_2().child(icon("check", 16., theme::ACCENT)).child(div().text_color(rgb(theme::TEXT)).child(*perk)));
+            }
+            card.into_any_element()
+        };
+        let plans = div()
+            .flex()
+            .gap(px(16.))
+            .child(plan("Nitro Basic", "US$2.99 / month", &["Custom emoji anywhere", "Larger uploads", "Custom profile"], false))
+            .child(plan("Nitro", "US$9.99 / month", &["Everything in Basic", "2 Server Boosts", "HD streaming", "Custom profile themes"], true));
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Plans", vec![plans.into_any_element()]))
+            .into_any_element()
+    }
+
+    fn server_boost_page(&mut self, _cx: &mut Context<Self>) -> AnyElement {
+        let boost = div()
+            .p(px(16.))
+            .rounded(px(theme::RADIUS_MD))
+            .border_1()
+            .border_color(rgb(theme::BORDER))
+            .bg(rgb(theme::BG_PANEL))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(theme::TEXT_BRIGHT)).child("Server Boosts"))
+            .child(div().text_color(rgb(theme::TEXT_MUTED)).child("Boost a server to unlock perks for everyone."))
+            .into_any_element();
+        let levels = Self::section("Perks per Level", vec![
+            Self::field_row("Level 1", "2 Boosts".into(), None),
+            Self::field_row("Level 2", "7 Boosts".into(), None),
+            Self::field_row("Level 3", "14 Boosts".into(), None),
+        ]);
+        let faq = Self::section("Boosting FAQ", vec![Self::field_row("How do Boosts work?", "Read the FAQ.".into(), Some(button("boost-faq", "Open", Tone::Plain, |_, _, _| {})))]);
+        div().flex().flex_col().gap(px(24.)).child(boost).child(levels).child(faq).into_any_element()
+    }
+
+    fn subscriptions_page(&mut self, _cx: &mut Context<Self>) -> AnyElement {
+        Self::section("Subscriptions", vec![Self::field_row("Subscriptions", "You have no active subscriptions.".into(), None)])
+    }
+
+    fn gift_inventory_page(&mut self, _cx: &mut Context<Self>) -> AnyElement {
+        let redeem = Self::section("Redeem Codes", vec![Self::field_row(
+            "Gift Code",
+            "Enter a code to redeem a gift.".into(),
+            Some(button("redeem-code", "Redeem", Tone::Plain, |_, _, _| {})),
+        )]);
+        let gifts = Self::section("Gifts I Purchased", vec![Self::field_row("Gifts", "You haven't purchased any gifts.".into(), None)]);
+        div().flex().flex_col().gap(px(24.)).child(redeem).child(gifts).into_any_element()
+    }
+
+    fn billing_page(&mut self, _cx: &mut Context<Self>) -> AnyElement {
+        let methods = Self::section("Payment Methods", vec![Self::field_row(
+            "Payment Methods",
+            "No payment methods added.".into(),
+            Some(button("add-payment", "Add Payment Method", Tone::Plain, |_, _, _| {})),
+        )]);
+        let history = Self::section("Transaction History", vec![Self::field_row("Transactions", "No transactions yet.".into(), None)]);
+        div().flex().flex_col().gap(px(24.)).child(methods).child(history).into_any_element()
     }
 
     fn chat_page(&mut self, cx: &mut Context<Self>) -> AnyElement {

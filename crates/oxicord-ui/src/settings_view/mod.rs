@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Nitro page.
+    pub fn open_nitro(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::Nitro;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Opens straight on the Developer page.
     pub fn open_developer(&mut self, cx: &mut Context<Self>) {
         self.page = Page::Advanced;
