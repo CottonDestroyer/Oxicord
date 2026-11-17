@@ -1505,10 +1505,14 @@ Notifications, Keybinds, Advanced).
       the reference. Headless check: `--scene settings-privacy` with a fixture
       session (`screenshots/port/privacy_page.png`). Exact copy and spacing are
       unverified. docs/discord-reference.md.
-- [ ] P8-05 Messaging Permissions page (replaces Content & Social): Content Filters
+- [x] P8-05 Messaging Permissions page (replaces Content & Social): Content Filters
       (sensitive content filters), Spam Filters, Direct Message permissions,
       Friend Request permissions, Messaging in Connected Games, and the Ignore
-      & Block list.
+      & Block list. Rebuilt into those six sections, keeping the existing
+      preference controls. Connected Games and Ignore & Block are placeholder
+      rows because no reference data source exists in this snapshot. Headless
+      check: `--scene settings-messaging` (`screenshots/port/messaging_page.png`).
+      Labels and spacing are unverified. docs/discord-reference.md.
 - [ ] P8-06 Notifications page as drawn live: Overview, Sounds, Badges, Email (with
       "Unsubscribe from all marketing emails"), and the Advanced group behind
       "Show Advanced Notification Settings".

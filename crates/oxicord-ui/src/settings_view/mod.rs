@@ -304,6 +304,13 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Opens straight on the Messaging Permissions page.
+    pub fn open_messaging(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::ContentSocial;
+        self.opened(cx);
+        cx.notify();
+    }
+
     /// Called when the window is shown: fetch what the open page needs.
     pub fn opened(&mut self, cx: &mut Context<Self>) {
         self.reveal_contact = false;

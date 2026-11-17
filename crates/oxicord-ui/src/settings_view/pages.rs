@@ -359,9 +359,8 @@ impl SettingsView {
     }
 
     fn content_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let mut page = div().flex().flex_col().gap_2().child(title("Content & Social"));
         if let Some(gate) = self.prefs_gate(cx) {
-            return page.child(gate).into_any_element();
+            return gate;
         }
 
         let filter = self.pref(Key::ExplicitContentFilter, cx).as_number();
@@ -415,12 +414,45 @@ impl SettingsView {
             })
             .collect();
 
-        page = page
-            .child(blurb("Controls what Discord checks for you and who can reach you."))
-            .child(group("Explicit image filter", filter_rows))
-            .child(group("Direct message spam filter", spam_rows))
-            .child(group("Who can send you a friend request", friend_rows));
-        page.into_any_element()
+        let restricted = self.pref(Key::DefaultGuildsRestricted, cx).as_bool();
+        let dm_rows = vec![
+            Self::field_row(
+                "Allow direct messages from server members",
+                if restricted { "Off" } else { "On" }.into(),
+                Some(switch_row(
+                    "allow-server-dms-messaging",
+                    "",
+                    None,
+                    !restricted,
+                    cx.listener(|this, _: &ClickEvent, _, cx| {
+                        let restricted = this.pref(Key::DefaultGuildsRestricted, cx).as_bool();
+                        this.set_pref(Key::DefaultGuildsRestricted, Value::Bool(!restricted), cx);
+                    }),
+                )),
+            ),
+        ];
+        let games_rows = vec![Self::field_row(
+            "Messaging in Connected Games",
+            "Choose who can message you while you play.".into(),
+            Some(button("connected-games", "Manage", Tone::Plain, |_, _, _| {})),
+        )];
+        let block_rows = vec![Self::field_row(
+            "Ignore & Block",
+            "Manage the people you have ignored or blocked.".into(),
+            Some(button("manage-blocks", "Manage", Tone::Plain, |_, _, _| {})),
+        )];
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(Self::section("Content Filters", filter_rows))
+            .child(Self::section("Spam Filters", spam_rows))
+            .child(Self::section("Direct Message permissions", dm_rows))
+            .child(Self::section("Friend Request permissions", friend_rows))
+            .child(Self::section("Messaging in Connected Games", games_rows))
+            .child(Self::section("Ignore & Block", block_rows))
+            .into_any_element()
     }
 
     fn privacy_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
